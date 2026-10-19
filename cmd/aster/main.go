@@ -170,7 +170,7 @@ func commandRun(args []string) error {
 	}
 }
 func commandCompile(args []string) error {
-	args = flagsBeforePositionals(args, "-o", "--output")
+	args = flagsBeforePositionals(args, "-o")
 	fs := flag.NewFlagSet("compile", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	out := fs.String("o", "", "output bytecode path")
