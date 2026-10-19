@@ -59,7 +59,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 			}
 			text := l.source[start:l.offset]
 			if kind == token.Int {
-				if _, err := strconv.ParseInt(text, 10, 64); err != nil {
+				if _, err := strconv.ParseInt(text, 10, 64); err != nil && text != "9223372036854775808" {
 					return nil, l.errorAt(pos, "integer literal is outside the i64 range")
 				}
 			}
