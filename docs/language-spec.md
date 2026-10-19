@@ -46,6 +46,7 @@ The JSON bytecode format is versioned independently of source syntax. Version 2 
 
 - Bindings are immutable by default. Assignment is permitted only to `let mut` variables.
 - A variable without a type annotation uses its initializer's type.
+- Nested type constructors such as `Array<Array<i64>>` are limited to 256 levels. The parser and type checker reject deeper types, and the bytecode verifier uses the same shared limit.
 - Implicit numeric conversions are not performed.
 - `if` and `while` conditions must have type `bool`.
 - A function without an explicit return type returns `unit`.
