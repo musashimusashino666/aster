@@ -342,7 +342,11 @@ func (c *Checker) checkExpr(e ast.Expr) (Type, error) {
 				return "", c.err(item.Pos(), "array elements must have one type; expected %s, got %s", elemType, t)
 			}
 		}
-		return Type("Array<" + elemType.String() + ">"), nil
+		arrayType := Type("Array<" + elemType.String() + ">")
+		if !langtypes.ValidName(arrayType.String()) {
+			return "", c.err(n.Pos(), "type nesting exceeds limit %d", langtypes.MaxNestingDepth)
+		}
+		return arrayType, nil
 	case *ast.IndexExpr:
 		collectionType, err := c.checkExpr(n.Collection)
 		if err != nil {
