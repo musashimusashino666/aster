@@ -3,9 +3,9 @@ package tests
 import (
 	"bytes"
 	"os"
-	"strings"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/bytecode"
