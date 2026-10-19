@@ -133,3 +133,39 @@ func TestVMRejectsOversizedArrayBuildInstruction(t *testing.T) {
 		t.Fatalf("expected oversized array instruction rejection, got %v", err)
 	}
 }
+
+func TestVMRejectsExcessiveActiveLocalSlots(t *testing.T) {
+	// Each recursive frame allocates 70,000 slots. The individual function
+	// passes bytecode verification, but the aggregate live-frame budget is
+	// exceeded before the general call-depth limit.
+	p := &bytecode.Program{
+		Format:    "aster-bytecode",
+		Version:   bytecode.FormatVersion,
+		Constants: []bytecode.Value{},
+		Functions: []bytecode.Function{
+			{
+				Name:   "recurse",
+				Locals: 70000,
+				Return: "unit",
+				Code: []bytecode.Instruction{
+					{Op: bytecode.OpCall, A: 0, B: 0},
+					{Op: bytecode.OpReturn},
+				},
+			},
+			{
+				Name:   "__aster_main",
+				Return: "unit",
+				Code: []bytecode.Instruction{
+					{Op: bytecode.OpCall, A: 0, B: 0},
+					{Op: bytecode.OpPop},
+					{Op: bytecode.OpHalt},
+				},
+			},
+		},
+		Entry: 1,
+	}
+	err := Run(p, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "active local slot limit exceeded") {
+		t.Fatalf("expected cumulative frame allocation limit error, got %v", err)
+	}
+}

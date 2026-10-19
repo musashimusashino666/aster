@@ -13,6 +13,10 @@ import (
 
 const maxStackDepth = 1 << 20
 const maxCallDepth = 4096
+
+// maxActiveLocalSlots bounds the sum of local slots across all live call frames.
+// It is a deterministic allocation budget, not a complete process memory quota.
+const maxActiveLocalSlots = 1 << 18
 const maxInstructionSteps = 100_000_000
 const maxInt64 = int64(1<<63 - 1)
 const minInt64 = -1 << 63
@@ -24,10 +28,11 @@ type frame struct {
 	stackBase int
 }
 type VM struct {
-	program *bytecode.Program
-	stack   []bytecode.Value
-	frames  []frame
-	out     io.Writer
+	program          *bytecode.Program
+	stack            []bytecode.Value
+	frames           []frame
+	activeLocalSlots int
+	out              io.Writer
 }
 
 func Run(program *bytecode.Program, out io.Writer) error {
@@ -39,6 +44,10 @@ func Run(program *bytecode.Program, out io.Writer) error {
 	}
 	v := &VM{program: program, out: out, stack: make([]bytecode.Value, 0, 128)}
 	entry := program.Functions[program.Entry]
+	if entry.Locals > maxActiveLocalSlots {
+		return v.fault(bytecode.Instruction{}, "active local slot limit exceeded (entry requires %d slots, maximum %d)", entry.Locals, maxActiveLocalSlots)
+	}
+	v.activeLocalSlots = entry.Locals
 	v.frames = append(v.frames, frame{function: program.Entry, locals: make([]bytecode.Value, entry.Locals)})
 	steps := uint64(0)
 	for len(v.frames) > 0 {
@@ -191,6 +200,9 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			fr.ip = i.A
 		}
 	case bytecode.OpCall:
+		if len(v.frames) >= maxCallDepth {
+			return v.fault(i, "call depth limit exceeded (maximum %d)", maxCallDepth)
+		}
 		if i.A < 0 || i.A >= len(v.program.Functions) {
 			return v.fault(i, "invalid function index %d", i.A)
 		}
@@ -201,11 +213,15 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		if len(v.stack) < i.B {
 			return v.fault(i, "not enough arguments on stack")
 		}
+		if target.Locals > maxActiveLocalSlots-v.activeLocalSlots {
+			return v.fault(i, "active local slot limit exceeded (requested %d additional slots, %d of %d already active)", target.Locals, v.activeLocalSlots, maxActiveLocalSlots)
+		}
 		argsStart := len(v.stack) - i.B
 		args := append([]bytecode.Value(nil), v.stack[argsStart:]...)
 		v.stack = v.stack[:argsStart]
 		locals := make([]bytecode.Value, target.Locals)
 		copy(locals, args)
+		v.activeLocalSlots += len(locals)
 		v.frames = append(v.frames, frame{function: i.A, locals: locals, stackBase: len(v.stack)})
 	case bytecode.OpBuiltin:
 		if len(v.stack) < i.B {
@@ -256,6 +272,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			return err
 		}
 		fr := v.frames[len(v.frames)-1]
+		v.activeLocalSlots -= len(fr.locals)
 		v.frames = v.frames[:len(v.frames)-1]
 		v.stack = v.stack[:fr.stackBase]
 		push(x)

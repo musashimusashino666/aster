@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/lexer"
 	"github.com/aster-lang/aster/internal/token"
 )
@@ -97,13 +98,20 @@ func (p *Parser) function(start token.Token) (ast.Decl, error) {
 	return &ast.Function{At: start.Pos, Name: name.Lexeme, Params: params, ReturnType: ret, Body: body}, nil
 }
 func (p *Parser) typeRef() (ast.TypeRef, error) {
+	return p.typeRefDepth(0)
+}
+
+func (p *Parser) typeRefDepth(depth int) (ast.TypeRef, error) {
 	t, err := p.consume(token.Ident, "expected type name")
 	if err != nil {
 		return ast.TypeRef{}, err
 	}
 	ref := ast.TypeRef{Name: t.Lexeme, At: t.Pos}
 	if p.match(token.Less) {
-		element, e := p.typeRef()
+		if depth >= langtypes.MaxNestingDepth {
+			return ast.TypeRef{}, p.errorAt(t, fmt.Sprintf("type nesting exceeds limit %d", langtypes.MaxNestingDepth))
+		}
+		element, e := p.typeRefDepth(depth + 1)
 		if e != nil {
 			return ast.TypeRef{}, e
 		}

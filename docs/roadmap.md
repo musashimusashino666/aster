@@ -16,7 +16,7 @@ This roadmap is a planning document, not a commitment that work is already in pr
 - [x] Bytecode control-flow, operand-stack, abstract-type, call-signature, and local-initialization verifier
 - [x] Control-flow and operand-stack-height verifier (stack underflow, merge consistency, and termination stack state)
 - [x] Fuzz targets for lexer, parser, bytecode loader, and bytecode instruction validation (broader sustained fuzz campaigns remain future work)
-- [ ] Differential testing between VM and native executable
+- [ ] Expand differential testing between VM and native executable (current tests cover selected outputs and runtime error classes; generated-program/property-based coverage remains future work)
 - [ ] Formatter and stable diagnostic codes
 - [ ] More exact return-flow analysis and error spans
 - [ ] Benchmark harness with pinned workloads and reproducible methodology
@@ -33,7 +33,7 @@ This roadmap is a planning document, not a commitment that work is already in pr
 
 ## Phase 0.4 — backend and platform expansion
 
-- [ ] Typed intermediate representation
+- [ ] Typed intermediate representation shared by bytecode and native backends (introduce incrementally, preserving source spans and explicit runtime semantics)
 - [ ] Independent native backend using LLVM or Cranelift
 - [ ] WebAssembly backend plus explicit host API bindings
 - [ ] Cross-compilation and target capability manifests
