@@ -29,7 +29,7 @@ The checker is run before both backends. This ensures that type errors are rejec
 
 ## Bytecode
 
-Bytecode is a versioned JSON format to make early inspection and debugging easy. It is not yet a compact, signed, or stable distribution format. The loader rejects unknown JSON fields, validates the format version, checks instruction references and applies structural size limits. Untrusted bytecode should still be treated cautiously until a full control-flow and stack verifier is added.
+Bytecode is a versioned JSON format to make early inspection and debugging easy. It is not yet a compact, signed, or stable distribution format. The loader rejects unknown JSON fields, validates the format version, checks instruction references and applies structural size limits. A control-flow dataflow pass checks operand-stack heights at jumps and merge points, rejects underflow and fallthrough past a function end, and requires `RETURN` and `HALT` to see the expected stack height. It checks unreachable code regions too. This is a stack-height verifier, not a full abstract type verifier, so untrusted bytecode should still be treated cautiously.
 
 ## Native backend
 

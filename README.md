@@ -28,6 +28,7 @@
 | Arrays (`Array<T>`), homogeneous literals, `len`, checked indexing | Implemented; array elements are currently read-only |
 | `Option`, `Result`, enums, structs, user generics | Planned; not implemented |
 | Bytecode compiler and JSON bytecode file | Implemented |
+| Bytecode structural and operand-stack-height verification | Implemented; full abstract type verification remains future work |
 | Bytecode VM with runtime checks and resource limits | Implemented |
 | Native executable build | Implemented via Aster-to-Go code generation and host Go compiler |
 | Cross-platform executable | Depends on the Go toolchain and its target support |
