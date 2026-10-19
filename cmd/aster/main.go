@@ -2,6 +2,7 @@
 package main
 
 import (
+	_ "embed"
 	"flag"
 	"fmt"
 	"io"
@@ -18,7 +19,10 @@ import (
 	"github.com/aster-lang/aster/internal/vm"
 )
 
-const version = "0.1.0"
+//go:embed VERSION
+var versionFile string
+
+var version = strings.TrimSpace(versionFile)
 
 func main() {
 	if err := dispatch(os.Args[1:]); err != nil {
