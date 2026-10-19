@@ -11,9 +11,20 @@ import (
 	"github.com/aster-lang/aster/internal/token"
 )
 
+const maxSyntaxNestingDepth = 256
+
 type Parser struct {
-	tokens  []token.Token
-	current int
+	tokens       []token.Token
+	current      int
+	nestingDepth int
+}
+
+func (p *Parser) enterNesting(at token.Token, context string) (func(), error) {
+	if p.nestingDepth >= maxSyntaxNestingDepth {
+		return nil, p.errorAt(at, fmt.Sprintf("syntax nesting exceeds limit %d while parsing %s", maxSyntaxNestingDepth, context))
+	}
+	p.nestingDepth++
+	return func() { p.nestingDepth-- }, nil
 }
 
 func Parse(source, sourceName string) (*ast.Program, error) {
@@ -211,6 +222,11 @@ func (p *Parser) letStatement(start token.Token) (ast.Stmt, error) {
 	return &ast.LetStmt{At: start.Pos, Name: name.Lexeme, Mutable: mutable, Annotation: annotation, Value: value}, nil
 }
 func (p *Parser) ifStatement(start token.Token) (ast.Stmt, error) {
+	leave, err := p.enterNesting(start, "if statement")
+	if err != nil {
+		return nil, err
+	}
+	defer leave()
 	cond, err := p.expression(0)
 	if err != nil {
 		return nil, err
@@ -265,6 +281,11 @@ func (p *Parser) block() (*ast.BlockStmt, error) {
 	return p.blockAfterOpen(t)
 }
 func (p *Parser) blockAfterOpen(start token.Token) (*ast.BlockStmt, error) {
+	leave, err := p.enterNesting(start, "block")
+	if err != nil {
+		return nil, err
+	}
+	defer leave()
 	b := &ast.BlockStmt{At: start.Pos}
 	for !p.check(token.RBrace) && !p.check(token.EOF) {
 		before := p.current
@@ -313,50 +334,77 @@ func precedence(k token.Kind) int {
 	}
 }
 func (p *Parser) expression(min int) (ast.Expr, error) {
+	expr, _, err := p.parseExpression(min)
+	return expr, err
+}
+
+// parseExpression returns the expression and its AST height. Tracking AST height
+// matters in addition to recursive parser depth: a long left-associative operator
+// or postfix chain is built iteratively but later traversed recursively by the
+// checker and backends.
+func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
+	leave, err := p.enterNesting(p.peek(), "expression")
+	if err != nil {
+		return nil, 0, err
+	}
+	defer leave()
+
 	var left ast.Expr
+	leftDepth := 0
 	t := p.advance()
 	switch t.Kind {
 	case token.Int:
 		n, err := strconv.ParseInt(t.Lexeme, 10, 64)
 		if err != nil {
 			if t.Lexeme == "9223372036854775808" {
-				return nil, p.errorAt(t, "integer literal out of range; this magnitude is valid only immediately after unary '-' (write -9223372036854775808)")
+				return nil, 0, p.errorAt(t, "integer literal out of range; this magnitude is valid only immediately after unary '-' (write -9223372036854775808)")
 			}
-			return nil, p.errorAt(t, "integer literal out of range")
+			return nil, 0, p.errorAt(t, "integer literal out of range")
 		}
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "i64", Text: t.Lexeme, Int: n}
+		leftDepth = 1
 	case token.Float:
 		n, err := strconv.ParseFloat(t.Lexeme, 64)
 		if err != nil {
-			return nil, p.errorAt(t, "invalid float")
+			return nil, 0, p.errorAt(t, "invalid float")
 		}
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "f64", Text: t.Lexeme, Float: n}
+		leftDepth = 1
 	case token.String:
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "string", Text: t.Lexeme, String: t.Lexeme}
+		leftDepth = 1
 	case token.True:
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "bool", Text: "true", Bool: true}
+		leftDepth = 1
 	case token.False:
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "bool", Text: "false", Bool: false}
+		leftDepth = 1
 	case token.Ident:
 		left = &ast.IdentifierExpr{At: t.Pos, Name: t.Lexeme}
+		leftDepth = 1
 	case token.LBracket:
 		elements := []ast.Expr{}
+		maxElementDepth := 0
 		if !p.check(token.RBracket) {
 			for {
-				item, err := p.expression(0)
+				item, itemDepth, err := p.parseExpression(0)
 				if err != nil {
-					return nil, err
+					return nil, 0, err
 				}
 				elements = append(elements, item)
+				if itemDepth > maxElementDepth {
+					maxElementDepth = itemDepth
+				}
 				if !p.match(token.Comma) {
 					break
 				}
 			}
 		}
 		if _, err := p.consume(token.RBracket, "expected ']' after array elements"); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		left = &ast.ArrayExpr{At: t.Pos, Elements: elements}
+		leftDepth = maxElementDepth + 1
 	case token.Minus:
 		// The positive magnitude 2^63 is only valid as part of the i64 minimum
 		// literal. The lexer permits this one magnitude so the unary parser can
@@ -364,45 +412,53 @@ func (p *Parser) expression(min int) (ast.Expr, error) {
 		if p.check(token.Int) && p.peek().Lexeme == "9223372036854775808" {
 			p.advance()
 			left = &ast.LiteralExpr{At: t.Pos, Kind: "i64", Text: "-9223372036854775808", Int: -1 << 63}
+			leftDepth = 1
 		} else {
-			right, err := p.expression(precUnary)
+			right, rightDepth, err := p.parseExpression(precUnary)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			left = &ast.UnaryExpr{At: t.Pos, Op: string(t.Kind), Right: right}
+			leftDepth = rightDepth + 1
 		}
 	case token.Bang:
-		right, err := p.expression(precUnary)
+		right, rightDepth, err := p.parseExpression(precUnary)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		left = &ast.UnaryExpr{At: t.Pos, Op: string(t.Kind), Right: right}
+		leftDepth = rightDepth + 1
 	case token.LParen:
-		e, err := p.expression(0)
+		e, expressionDepth, err := p.parseExpression(0)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if _, err = p.consume(token.RParen, "expected ')' after expression"); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		left = e
+		leftDepth = expressionDepth
 	default:
-		return nil, p.errorAt(t, fmt.Sprintf("expected expression, got %s", t.Kind))
+		return nil, 0, p.errorAt(t, fmt.Sprintf("expected expression, got %s", t.Kind))
+	}
+
+	if leftDepth > maxSyntaxNestingDepth {
+		return nil, 0, p.errorAt(t, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
 	}
 	for {
 		if p.check(token.LBracket) && precCall >= min {
 			var err error
-			left, err = p.finishIndex(left)
+			left, leftDepth, err = p.finishIndex(left, leftDepth)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			continue
 		}
 		if p.check(token.LParen) && precCall >= min {
 			var err error
-			left, err = p.finishCall(left)
+			left, leftDepth, err = p.finishCall(left, leftDepth)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			continue
 		}
@@ -411,45 +467,69 @@ func (p *Parser) expression(min int) (ast.Expr, error) {
 			break
 		}
 		op := p.advance()
-		right, err := p.expression(pr + 1)
+		right, rightDepth, err := p.parseExpression(pr + 1)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
+		}
+		if rightDepth > leftDepth {
+			leftDepth = rightDepth
+		}
+		leftDepth++
+		if leftDepth > maxSyntaxNestingDepth {
+			return nil, 0, p.errorAt(op, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
 		}
 		left = &ast.BinaryExpr{At: op.Pos, Left: left, Op: string(op.Kind), Right: right}
 	}
-	return left, nil
-}
-func (p *Parser) finishIndex(collection ast.Expr) (ast.Expr, error) {
-	start := p.advance()
-	index, err := p.expression(0)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = p.consume(token.RBracket, "expected ']' after index"); err != nil {
-		return nil, err
-	}
-	return &ast.IndexExpr{At: start.Pos, Collection: collection, Index: index}, nil
+	return left, leftDepth, nil
 }
 
-func (p *Parser) finishCall(callee ast.Expr) (ast.Expr, error) {
+func (p *Parser) finishIndex(collection ast.Expr, collectionDepth int) (ast.Expr, int, error) {
+	start := p.advance()
+	index, indexDepth, err := p.parseExpression(0)
+	if err != nil {
+		return nil, 0, err
+	}
+	if _, err = p.consume(token.RBracket, "expected ']' after index"); err != nil {
+		return nil, 0, err
+	}
+	depth := collectionDepth
+	if indexDepth > depth {
+		depth = indexDepth
+	}
+	depth++
+	if depth > maxSyntaxNestingDepth {
+		return nil, 0, p.errorAt(start, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+	}
+	return &ast.IndexExpr{At: start.Pos, Collection: collection, Index: index}, depth, nil
+}
+
+func (p *Parser) finishCall(callee ast.Expr, calleeDepth int) (ast.Expr, int, error) {
 	start := p.advance()
 	args := []ast.Expr{}
+	maxChildDepth := calleeDepth
 	if !p.check(token.RParen) {
 		for {
-			arg, err := p.expression(0)
+			arg, argDepth, err := p.parseExpression(0)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			args = append(args, arg)
+			if argDepth > maxChildDepth {
+				maxChildDepth = argDepth
+			}
 			if !p.match(token.Comma) {
 				break
 			}
 		}
 	}
 	if _, err := p.consume(token.RParen, "expected ')' after arguments"); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return &ast.CallExpr{At: start.Pos, Callee: callee, Args: args}, nil
+	depth := maxChildDepth + 1
+	if depth > maxSyntaxNestingDepth {
+		return nil, 0, p.errorAt(start, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+	}
+	return &ast.CallExpr{At: start.Pos, Callee: callee, Args: args}, depth, nil
 }
 func (p *Parser) check(k token.Kind) bool { return p.peek().Kind == k }
 func (p *Parser) checkNext(k token.Kind) bool {
