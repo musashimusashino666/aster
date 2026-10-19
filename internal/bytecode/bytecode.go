@@ -27,6 +27,7 @@ const (
 	maxConstantValueNodes       = 2 << 20
 	maxTotalConstantStringBytes = 32 << 20
 	maxTotalConstantArrayItems  = 1 << 18
+	maxTypedVerifierStateCells  = 1 << 20
 )
 
 type ValueKind string
@@ -248,6 +249,13 @@ func (p *Program) Validate() error {
 		if err := validateFunctionStack(f); err != nil {
 			return err
 		}
+	}
+	typedStateCells := 0
+	for _, f := range p.Functions {
+		if f.Locals > 0 && len(f.Code) > (maxTypedVerifierStateCells-typedStateCells)/f.Locals {
+			return fmt.Errorf("program exceeds typed verifier state safety limit")
+		}
+		typedStateCells += len(f.Code) * f.Locals
 	}
 	for fi := range p.Functions {
 		if err := validateFunctionTypes(p, fi, constantTypes); err != nil {
