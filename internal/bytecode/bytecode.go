@@ -213,8 +213,125 @@ func (p *Program) Validate() error {
 			}
 		}
 	}
+	for fi, f := range p.Functions {
+		if err := validateFunctionStack(fi, f); err != nil {
+			return err
+		}
+	}
 	return nil
 }
+
+
+const maxVerifiedStackDepth = 1 << 20
+
+// validateFunctionStack performs a control-flow dataflow analysis over operand
+// stack heights. Orphaned (unreachable) code regions are checked as independent
+// blocks with an empty entry stack so malformed dead code cannot hide underflow.
+func validateFunctionStack(functionIndex int, fn Function) error {
+	_ = functionIndex
+	depths := make([]int, len(fn.Code))
+	for i := range depths {
+		depths[i] = -1
+	}
+
+	for root := 0; root < len(fn.Code); root++ {
+		if depths[root] >= 0 {
+			continue
+		}
+		depths[root] = 0
+		queue := []int{root}
+
+		for head := 0; head < len(queue); head++ {
+			pc := queue[head]
+			ins := fn.Code[pc]
+			depth := depths[pc]
+			required, delta := 0, 0
+
+			switch ins.Op {
+			case OpConst, OpLoadLocal:
+				delta = 1
+			case OpBuildArray:
+				required, delta = ins.A, 1-ins.A
+			case OpIndex:
+				required, delta = 2, -1
+			case OpStoreLocal, OpPop:
+				required, delta = 1, -1
+			case OpNeg, OpNot:
+				required = 1
+			case OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual, OpNotEqual,
+				OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
+				required, delta = 2, -1
+			case OpJump:
+				// No stack effect.
+			case OpJumpIfFalse, OpJumpIfTrue:
+				required, delta = 1, -1
+			case OpCall:
+				required, delta = ins.B, 1-ins.B
+			case OpBuiltin:
+				required, delta = ins.B, 1-ins.B
+			case OpReturn:
+				if depth != 1 {
+					return fmt.Errorf("function %q instruction %d: RETURN requires exactly one stack value, got %d", fn.Name, pc, depth)
+				}
+				continue
+			case OpHalt:
+				if depth != 0 {
+					return fmt.Errorf("function %q instruction %d: HALT requires an empty operand stack, got %d", fn.Name, pc, depth)
+				}
+				continue
+			default:
+				// Unknown instructions are rejected by the structural pass in Validate.
+				return fmt.Errorf("function %q instruction %d: cannot verify opcode %q", fn.Name, pc, ins.Op)
+			}
+
+			if depth < required {
+				return fmt.Errorf("function %q instruction %d: operand stack underflow for %s (needs %d values, has %d)", fn.Name, pc, ins.Op, required, depth)
+			}
+			nextDepth := depth + delta
+			if nextDepth < 0 {
+				return fmt.Errorf("function %q instruction %d: invalid negative operand stack height %d", fn.Name, pc, nextDepth)
+			}
+			if nextDepth > maxVerifiedStackDepth {
+				return fmt.Errorf("function %q instruction %d: operand stack height %d exceeds limit %d", fn.Name, pc, nextDepth, maxVerifiedStackDepth)
+			}
+
+			enqueue := func(target int) error {
+				if target < 0 || target >= len(fn.Code) {
+					return fmt.Errorf("function %q instruction %d: control flow falls past the end of the function", fn.Name, pc)
+				}
+				if depths[target] == -1 {
+					depths[target] = nextDepth
+					queue = append(queue, target)
+					return nil
+				}
+				if depths[target] != nextDepth {
+					return fmt.Errorf("function %q instruction %d: control-flow merge at instruction %d has inconsistent operand stack heights %d and %d", fn.Name, pc, target, depths[target], nextDepth)
+				}
+				return nil
+			}
+
+			switch ins.Op {
+			case OpJump:
+				if err := enqueue(ins.A); err != nil {
+					return err
+				}
+			case OpJumpIfFalse, OpJumpIfTrue:
+				if err := enqueue(ins.A); err != nil {
+					return err
+				}
+				if err := enqueue(pc + 1); err != nil {
+					return err
+				}
+			default:
+				if err := enqueue(pc + 1); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func validTypeName(t string) bool {
 	switch t {
 	case "i64", "f64", "bool", "string", "unit":
