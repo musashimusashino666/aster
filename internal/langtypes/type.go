@@ -1,0 +1,37 @@
+// Package langtypes defines type-name constraints shared by the parser,
+// checker, bytecode verifier, and code generators.
+package langtypes
+
+import "strings"
+
+// MaxNestingDepth limits nested generic types such as Array<Array<i64>>.
+// Keeping this in a dependency-light package avoids different acceptance rules
+// in the source frontend and bytecode verifier.
+const MaxNestingDepth = 256
+
+// MaxTypeNameBytes is the longest valid spelling of a maximally nested type.
+const MaxTypeNameBytes = MaxNestingDepth*7 + len("string")
+
+// ValidName reports whether s is a supported source-level type name.
+func ValidName(s string) bool {
+	if len(s) == 0 || len(s) > MaxTypeNameBytes {
+		return false
+	}
+	depth := 0
+	for strings.HasPrefix(s, "Array<") && strings.HasSuffix(s, ">") {
+		depth++
+		if depth > MaxNestingDepth {
+			return false
+		}
+		s = s[len("Array<") : len(s)-1]
+	}
+	if depth > 0 && s == "unit" {
+		return false
+	}
+	switch s {
+	case "i64", "f64", "bool", "string", "unit":
+		return true
+	default:
+		return false
+	}
+}
