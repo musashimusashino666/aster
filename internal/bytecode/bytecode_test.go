@@ -544,3 +544,21 @@ func TestValidateRejectsExcessivelyNestedParameterType(t *testing.T) {
 		t.Fatalf("expected type nesting limit rejection, got %v", err)
 	}
 }
+
+func TestValidateRejectsUnitLocalStorage(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{Unit()},
+		Function{
+			Name:   "main",
+			Locals: 1,
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpStoreLocal, A: 0},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "locals cannot hold unit") {
+		t.Fatalf("expected unit local storage rejection, got %v", err)
+	}
+}
