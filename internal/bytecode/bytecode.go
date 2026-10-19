@@ -28,7 +28,10 @@ const (
 	maxTotalConstantStringBytes = 32 << 20
 	maxTotalConstantArrayItems  = 1 << 18
 	maxTypedVerifierStateCells  = 1 << 20
+	maxTotalParameterTypes      = 1 << 20
 )
+
+const maxTypeNameBytes = maxTypeNestingDepth*7 + len("string")
 
 type ValueKind string
 
@@ -465,6 +468,7 @@ type bytecodePreflight struct {
 	arrayItems       int
 	functionEntries  int
 	instructionCount int
+	parameterTypes   int
 }
 
 const preflightErrorPrefix = "bytecode preflight: "
@@ -654,16 +658,69 @@ func preflightFunction(dec *json.Decoder, limits *bytecodePreflight) error {
 		if !ok {
 			return fmt.Errorf("invalid function object key")
 		}
-		if field == "code" {
+		switch field {
+		case "code":
 			if err := preflightInstructions(dec, limits); err != nil {
 				return err
 			}
-		} else if err := skipPreflightJSONValue(dec, 0); err != nil {
-			return err
+		case "param_types":
+			if err := preflightParameterTypes(dec, limits); err != nil {
+				return err
+			}
+		case "return":
+			if err := preflightTypeName(dec); err != nil {
+				return err
+			}
+		default:
+			if err := skipPreflightJSONValue(dec, 0); err != nil {
+				return err
+			}
 		}
 	}
 	_, err = dec.Token() // closing '}'
 	return err
+}
+
+
+func preflightParameterTypes(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		limits.parameterTypes++
+		if limits.parameterTypes > maxTotalParameterTypes {
+			return fmt.Errorf("%sparameter type metadata exceeds %d-entry safety limit", preflightErrorPrefix, maxTotalParameterTypes)
+		}
+		value, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		if typ, ok := value.(string); ok {
+			if len(typ) > maxTypeNameBytes {
+				return fmt.Errorf("%sparameter type name exceeds %d-byte safety limit", preflightErrorPrefix, maxTypeNameBytes)
+			}
+		} else if err := skipPreflightJSONToken(dec, value, 0); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token() // closing ']'
+	return err
+}
+
+func preflightTypeName(dec *json.Decoder) error {
+	value, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if typ, ok := value.(string); ok && len(typ) > maxTypeNameBytes {
+		return fmt.Errorf("%stype name exceeds %d-byte safety limit", preflightErrorPrefix, maxTypeNameBytes)
+	}
+	return skipPreflightJSONToken(dec, value, 0)
 }
 
 func preflightInstructions(dec *json.Decoder, limits *bytecodePreflight) error {
