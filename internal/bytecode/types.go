@@ -51,14 +51,35 @@ type abstractLocal struct {
 	initialized bool
 }
 
+type abstractStackNode struct {
+	typ    string
+	parent *abstractStackNode
+	depth  int
+}
+
 type abstractState struct {
-	stack  []string
+	stack  *abstractStackNode
 	locals []abstractLocal
+}
+
+func abstractStackDepth(stack *abstractStackNode) int {
+	if stack == nil {
+		return 0
+	}
+	return stack.depth
+}
+
+func pushAbstractType(s *abstractState, typ string) {
+	depth := 1
+	if s.stack != nil {
+		depth = s.stack.depth + 1
+	}
+	s.stack = &abstractStackNode{typ: typ, parent: s.stack, depth: depth}
 }
 
 func cloneAbstractState(s *abstractState) *abstractState {
 	return &abstractState{
-		stack:  append([]string(nil), s.stack...),
+		stack:  s.stack,
 		locals: append([]abstractLocal(nil), s.locals...),
 	}
 }
@@ -68,14 +89,17 @@ func cloneAbstractState(s *abstractState) *abstractState {
 // it is initialized on every incoming path; its inferred type remains a
 // constraint even when initialization is not definite.
 func mergeAbstractState(dst, src *abstractState, fn string, pc int) (bool, error) {
-	if len(dst.stack) != len(src.stack) {
-		return false, fmt.Errorf("function %q instruction %d: inconsistent operand stack heights %d and %d", fn, pc, len(dst.stack), len(src.stack))
+	dstDepth, srcDepth := abstractStackDepth(dst.stack), abstractStackDepth(src.stack)
+	if dstDepth != srcDepth {
+		return false, fmt.Errorf("function %q instruction %d: inconsistent operand stack heights %d and %d", fn, pc, dstDepth, srcDepth)
 	}
 	changed := false
-	for i := range dst.stack {
-		if dst.stack[i] != src.stack[i] {
-			return false, fmt.Errorf("function %q instruction %d: operand stack type mismatch at depth %d: %s versus %s", fn, pc, i, dst.stack[i], src.stack[i])
+	left, right := dst.stack, src.stack
+	for depth := 0; left != nil && right != nil; depth++ {
+		if left.typ != right.typ {
+			return false, fmt.Errorf("function %q instruction %d: operand stack type mismatch at depth %d: %s versus %s", fn, pc, dstDepth-depth-1, left.typ, right.typ)
 		}
+		left, right = left.parent, right.parent
 	}
 	for i := range dst.locals {
 		left, right := dst.locals[i], src.locals[i]
@@ -96,12 +120,11 @@ func mergeAbstractState(dst, src *abstractState, fn string, pc int) (bool, error
 }
 
 func abstractPop(s *abstractState, fn string, pc int, op Op) (string, error) {
-	if len(s.stack) == 0 {
+	if s.stack == nil {
 		return "", fmt.Errorf("function %q instruction %d: abstract stack underflow for %s", fn, pc, op)
 	}
-	last := len(s.stack) - 1
-	t := s.stack[last]
-	s.stack = s.stack[:last]
+	t := s.stack.typ
+	s.stack = s.stack.parent
 	return t, nil
 }
 
@@ -131,7 +154,7 @@ func validateFunctionTypes(p *Program, fi int, constantTypes []string) error {
 		component := nextComponent
 		nextComponent++
 		initial := &abstractState{
-			stack:  []string{},
+			stack:  nil,
 			locals: make([]abstractLocal, fn.Locals),
 		}
 		for i, typ := range fn.ParamTypes {
@@ -202,7 +225,7 @@ func validateFunctionTypes(p *Program, fi int, constantTypes []string) error {
 
 func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstractState, constantTypes []string) (bool, error) {
 	fn := p.Functions[fi]
-	push := func(t string) { s.stack = append(s.stack, t) }
+	push := func(t string) { pushAbstractType(s, t) }
 	pop := func() (string, error) { return abstractPop(s, fn.Name, pc, ins.Op) }
 
 	switch ins.Op {
@@ -235,17 +258,23 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		if ins.A == 0 {
 			return false, fmt.Errorf("function %q instruction %d: cannot infer the element type of an empty array", fn.Name, pc)
 		}
-		first := len(s.stack) - ins.A
-		elementType := s.stack[first]
-		if elementType == "unit" {
-			return false, fmt.Errorf("function %q instruction %d: arrays cannot contain unit values", fn.Name, pc)
-		}
-		for i := first + 1; i < len(s.stack); i++ {
-			if s.stack[i] != elementType {
-				return false, fmt.Errorf("function %q instruction %d: array elements have inconsistent types %s and %s", fn.Name, pc, elementType, s.stack[i])
+		cursor := s.stack
+		elementType := ""
+		for i := 0; i < ins.A; i++ {
+			if cursor == nil {
+				return false, fmt.Errorf("function %q instruction %d: abstract stack underflow while building array", fn.Name, pc)
 			}
+			if i == 0 {
+				elementType = cursor.typ
+				if elementType == "unit" {
+					return false, fmt.Errorf("function %q instruction %d: arrays cannot contain unit values", fn.Name, pc)
+				}
+			} else if cursor.typ != elementType {
+				return false, fmt.Errorf("function %q instruction %d: array elements have inconsistent types %s and %s", fn.Name, pc, elementType, cursor.typ)
+			}
+			cursor = cursor.parent
 		}
-		s.stack = s.stack[:first]
+		s.stack = cursor
 		push("Array<" + elementType + ">")
 	case OpIndex:
 		indexType, err := pop()
@@ -311,24 +340,30 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		}
 	case OpCall:
 		target := p.Functions[ins.A]
-		start := len(s.stack) - ins.B
-		for i, want := range target.ParamTypes {
-			got := s.stack[start+i]
+		cursor := s.stack
+		for i := len(target.ParamTypes) - 1; i >= 0; i-- {
+			if cursor == nil {
+				return false, fmt.Errorf("function %q instruction %d: abstract stack underflow while checking call to %q", fn.Name, pc, target.Name)
+			}
+			got, want := cursor.typ, target.ParamTypes[i]
 			if got != want {
 				return false, fmt.Errorf("function %q instruction %d: argument %d to %q has type %s; expected %s", fn.Name, pc, i+1, target.Name, got, want)
 			}
+			cursor = cursor.parent
 		}
-		s.stack = s.stack[:start]
+		s.stack = cursor
 		push(target.Return)
 	case OpBuiltin:
-		start := len(s.stack) - ins.B
-		got := s.stack[start]
+		if s.stack == nil {
+			return false, fmt.Errorf("function %q instruction %d: abstract stack underflow for builtin", fn.Name, pc)
+		}
+		got := s.stack.typ
+		s.stack = s.stack.parent
 		switch ins.A {
 		case 0:
 			if got == "unit" {
 				return false, fmt.Errorf("function %q instruction %d: print cannot display unit values", fn.Name, pc)
 			}
-			s.stack = s.stack[:start]
 			push("unit")
 		case 1:
 			if got != "string" {
@@ -336,31 +371,29 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 					return false, fmt.Errorf("function %q instruction %d: len requires string or Array<T>, got %s", fn.Name, pc, got)
 				}
 			}
-			s.stack = s.stack[:start]
 			push("i64")
 		case 2:
 			if got != "bool" {
 				return false, fmt.Errorf("function %q instruction %d: assert requires bool, got %s", fn.Name, pc, got)
 			}
-			s.stack = s.stack[:start]
 			push("unit")
 		default:
 			return false, fmt.Errorf("function %q instruction %d: unknown builtin %d", fn.Name, pc, ins.A)
 		}
 	case OpReturn:
-		if len(s.stack) != 1 {
-			return false, fmt.Errorf("function %q instruction %d: RETURN requires exactly one stack value, got %d", fn.Name, pc, len(s.stack))
+		if abstractStackDepth(s.stack) != 1 {
+			return false, fmt.Errorf("function %q instruction %d: RETURN requires exactly one stack value, got %d", fn.Name, pc, abstractStackDepth(s.stack))
 		}
-		if s.stack[0] != fn.Return {
-			return false, fmt.Errorf("function %q instruction %d: RETURN type mismatch: expected %s, got %s", fn.Name, pc, fn.Return, s.stack[0])
+		if s.stack.typ != fn.Return {
+			return false, fmt.Errorf("function %q instruction %d: RETURN type mismatch: expected %s, got %s", fn.Name, pc, fn.Return, s.stack.typ)
 		}
 		return true, nil
 	case OpHalt:
 		if fi != p.Entry {
 			return false, fmt.Errorf("function %q instruction %d: HALT outside entry function", fn.Name, pc)
 		}
-		if len(s.stack) != 0 {
-			return false, fmt.Errorf("function %q instruction %d: HALT requires an empty operand stack, got %d", fn.Name, pc, len(s.stack))
+		if s.stack != nil {
+			return false, fmt.Errorf("function %q instruction %d: HALT requires an empty operand stack, got %d", fn.Name, pc, abstractStackDepth(s.stack))
 		}
 		return true, nil
 	default:
