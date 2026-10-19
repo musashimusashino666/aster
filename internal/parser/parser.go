@@ -154,6 +154,7 @@ func (p *Parser) statement() (ast.Stmt, error) {
 	}
 	return &ast.ExprStmt{At: expr.Pos(), Expr: expr}, nil
 }
+
 // indexedAssignmentAhead recognizes the unsupported target form `name[index] = value`
 // to return a direct, actionable diagnostic instead of a generic missing-semicolon error.
 func (p *Parser) indexedAssignmentAhead() bool {
