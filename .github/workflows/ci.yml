@@ -51,4 +51,4 @@ jobs:
         run: make examples
 
       - name: Check native array index bounds on 32-bit target
-        run: GOARCH=386 go test ./tests -run '^TestArrayIndexBoundsMatchBackends/large_positive_index
+        run: GOARCH=386 go test ./tests -run TestArrayIndexBoundsMatchBackends/large_positive_index
