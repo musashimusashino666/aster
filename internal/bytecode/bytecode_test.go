@@ -31,7 +31,6 @@ func TestReadRejectsTrailingJSON(t *testing.T) {
 	}
 }
 
-
 func stackVerifierProgram(entry int, constants []Value, functions ...Function) *Program {
 	return &Program{
 		Format:    "aster-bytecode",
