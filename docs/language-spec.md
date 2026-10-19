@@ -49,10 +49,10 @@ Calls and operators are parsed with the following precedence, from low to high:
 - A function without an explicit return type returns `unit`.
 - Non-unit functions must return the declared type on all statically recognized paths. Current return-flow analysis handles direct returns, blocks, and `if/else`; it does not treat loops as guaranteed to execute.
 - `&&` and `||` short-circuit.
-- `Array<T>` is a homogeneous dynamically sized array. Non-empty array literals infer `T`; a declared `Array<T>` parameter or return type is supported. Array indexing uses `values[index]`; runtime checks reject negative and out-of-range indices. `len` returns array element count. Array elements cannot be assigned to in 0.1, and empty array literals are rejected in 0.1, even when a variable has an `Array<T>` annotation.
+- `Array<T>` is a homogeneous dynamically sized array. Non-empty array literals infer `T`; a declared `Array<T>` parameter or return type is supported. Array indexing uses `values[index]`; runtime checks reject negative and out-of-range indices. `len` returns array element count. Array elements cannot be assigned to in 0.1, and empty array literals are rejected in 0.1, even when a variable has an `Array<T>` annotation. The bytecode VM limits each array to 262,144 elements; the current native backend does not enforce the same array-size limit.
 - `i64` addition, subtraction, multiplication, negation, and `min_i64 / -1` overflow produce runtime errors. Integer division and remainder by zero produce runtime errors. The minimum value can be written as `-9223372036854775808`; the corresponding positive magnitude is not a valid `i64` literal.
 - Floating-point division by zero and non-finite results are runtime errors in the current implementation. This is a deliberate prototype policy, not an inherent property of IEEE-754.
-- Strings are immutable. `len` counts Unicode code points.
+- Strings are immutable. `len` counts Unicode code points. The bytecode VM limits each string value to 16 MiB of UTF-8 bytes; the current native backend does not enforce the same string-size limit.
 - `print`, `len`, and `assert` are reserved built-ins. Variables cannot store `unit` values, and `print` rejects a `unit` argument; a call returning `unit` can be used as an expression statement.
 
 ## Unsupported syntax in 0.1
