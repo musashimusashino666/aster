@@ -227,6 +227,9 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 			}
 			valueType = annotated
 		}
+		if valueType == Unit {
+			return false, c.err(n.Value.Pos(), "variables cannot hold unit values; use the call as an expression statement")
+		}
 		c.scopes.define(n.Name, Variable{Type: valueType, Mutable: n.Mutable})
 		return false, nil
 	case *ast.AssignStmt:
@@ -424,8 +427,12 @@ func (c *Checker) checkExpr(e ast.Expr) (Type, error) {
 			if len(args) != 1 {
 				return "", c.err(n.Pos(), "print expects exactly one argument")
 			}
-			if _, err := c.checkExpr(args[0]); err != nil {
+			argType, err := c.checkExpr(args[0])
+			if err != nil {
 				return "", err
+			}
+			if argType == Unit {
+				return "", c.err(args[0].Pos(), "print cannot display a unit value")
 			}
 			return Unit, nil
 		}
