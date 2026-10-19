@@ -184,10 +184,21 @@ Only `native` is a supported build target in this version. Unsupported targets f
 - Native and VM behavior should be tested against the same examples, especially overflow, division by zero, branches, recursion, and short-circuit logic.
 - Do not mark a backend or domain library as supported until CI exercises it.
 
+## Local checks and CI
+
+Run the same local checks used by the project automation:
+
+```bash
+make check
+make examples
+```
+
+The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci.yml) checks Go formatting, runs the test suite and race detector, runs `go vet`, builds the CLI, and executes the examples on Go 1.23 and the latest stable Go release.
+
 ## Roadmap
 
 See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The next priorities are stronger bytecode verification, a richer standard library, mutable array indexing, records, a formatter, modules, and an official conformance suite. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
 
 ## License
 
-MIT; see [`LICENSE`](LICENSE).
+MIT; see [`LICENSE.txt`](LICENSE.txt).
