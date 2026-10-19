@@ -1,0 +1,25 @@
+# Build outputs
+/bin/
+/aster
+/aster.exe
+*.test
+
+# Aster bytecode output
+*.abc.json
+
+# Go test and profiling output
+coverage.out
+*.prof
+*.pprof
+
+# Benchmark-generated binaries and result files (keep benchmark source)
+/bench/*.out
+/bench/*.test
+/bench/*.prof
+/bench/*.pprof
+/bench/*_result.json
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
