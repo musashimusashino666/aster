@@ -278,7 +278,11 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 			cursor = cursor.parent
 		}
 		s.stack = cursor
-		push("Array<" + elementType + ">")
+		arrayType := "Array<" + elementType + ">"
+		if !validTypeName(arrayType) {
+			return false, fmt.Errorf("function %q instruction %d: array type nesting exceeds limit %d", fn.Name, pc, maxTypeNestingDepth)
+		}
+		push(arrayType)
 	case OpIndex:
 		indexType, err := pop()
 		if err != nil {
