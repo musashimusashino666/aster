@@ -428,6 +428,9 @@ func validTypeName(t string) bool {
 		}
 		t = t[len("Array<") : len(t)-1]
 	}
+	if depth > 0 && t == "unit" {
+		return false
+	}
 	switch t {
 	case "i64", "f64", "bool", "string", "unit":
 		return true
