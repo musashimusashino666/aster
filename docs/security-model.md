@@ -10,8 +10,9 @@ Aster 0.1 is a prototype. It has not undergone an independent security audit and
 - Checked signed-integer arithmetic and explicit division-by-zero errors.
 - Recursion, operand-stack depth, bytecode-size, and instruction-budget limits in the VM.
 - Bytecode version and structural validation, including bounded pool/code sizes.
-- Native code generation uses mangled identifiers and checked arithmetic helpers.
-- Temporary build directories are removed after native compilation.
+- Native code is a normal host executable and has the same process privileges as its caller.
+- The VM has no comprehensive total allocation quota for strings and arrays; memory exhaustion remains possible for programs that repeatedly grow data.
+
 
 ## Current gaps
 
