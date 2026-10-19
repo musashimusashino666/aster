@@ -9,6 +9,7 @@ Aster 0.1 is a prototype. It has not undergone an independent security audit and
 - Runtime type checks in the bytecode VM even after static checking.
 - Checked signed-integer arithmetic and explicit division-by-zero errors.
 - Recursion, operand-stack depth, bytecode-size, and instruction-budget limits in the VM.
+- Per-value allocation bounds in the VM: strings are limited to 16 MiB of UTF-8 bytes, arrays to 262,144 elements, rendered output to 16 MiB, and loaded bytecode JSON to 64 MiB. The loader preflights constant-pool, function, instruction, string-byte, and array limits while streaming JSON tokens, before expanding the full program into Go structs.
 - Bytecode version and structural validation, including bounded pool/code sizes, plus control-flow/operand-stack height verification.
 - Native code generation uses mangled identifiers and checked arithmetic helpers; regression tests cover checked arithmetic for annotated array elements.
 - Temporary build directories are removed after native compilation.
@@ -17,8 +18,8 @@ Aster 0.1 is a prototype. It has not undergone an independent security audit and
 
 - The bytecode verifier checks control flow and stack heights, but does not perform full abstract type verification or prove all semantic invariants.
 - No sandbox for file, network, or process access; those libraries are not present yet.
-- Native code is a normal host executable and has the same process privileges as its caller. VM instruction, call-depth, and operand-stack limits do not currently apply to generated native executables.
-- The VM has no comprehensive total allocation quota for strings and arrays; memory exhaustion remains possible for programs that repeatedly grow data.
+- Native code is a normal host executable and has the same process privileges as its caller. VM instruction, call-depth, operand-stack, string, array, and printed-output limits do not currently apply to generated native executables.
+- The VM has per-value and decoded-constant bounds, but no comprehensive process-wide allocation quota. Repeated temporary allocations can still consume CPU and memory, and the VM is not a sandbox.
 - No dependency signature verification or package lockfile yet.
 - No fuzzing campaign, formal semantics, independent audit, or release attestation.
 - The type system does not yet model ownership or borrowing; the design proposal's full memory-safety model is future work, not implemented behavior.
