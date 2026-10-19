@@ -21,8 +21,14 @@ func TestFlagsBeforePositionals(t *testing.T) {
 		{
 			name:  "equals syntax after source",
 			args:  []string{"examples/hello.ast", "--engine=native"},
-			flags: []string{"--engine"},
+			flags: []string{"--engine", "-engine"},
 			want:  []string{"--engine=native", "examples/hello.ast"},
+		},
+		{
+			name:  "single dash flag after source",
+			args:  []string{"examples/hello.ast", "-engine", "native"},
+			flags: []string{"--engine", "-engine"},
+			want:  []string{"-engine", "native", "examples/hello.ast"},
 		},
 		{
 			name:  "multiple build flags after source",
