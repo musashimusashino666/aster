@@ -8,6 +8,8 @@ import (
 	"io"
 	"math"
 	"strings"
+
+	"github.com/aster-lang/aster/internal/langtypes"
 )
 
 const FormatVersion = 2
@@ -23,7 +25,7 @@ const (
 	maxFunctionCount            = 100000
 	maxJSONNestingDepth         = 1024
 	maxArrayNestingDepth        = 256
-	maxTypeNestingDepth         = 256
+	maxTypeNestingDepth         = langtypes.MaxNestingDepth
 	maxConstantValueNodes       = 2 << 20
 	maxTotalConstantStringBytes = 32 << 20
 	maxTotalConstantArrayItems  = 1 << 18
@@ -31,7 +33,7 @@ const (
 	maxTotalParameterTypes      = 1 << 20
 )
 
-const maxTypeNameBytes = maxTypeNestingDepth*7 + len("string")
+const maxTypeNameBytes = langtypes.MaxTypeNameBytes
 
 type ValueKind string
 
@@ -431,23 +433,7 @@ func validateConstantValueLimits(root Value, constantIndex int, totalValues, tot
 }
 
 func validTypeName(t string) bool {
-	depth := 0
-	for strings.HasPrefix(t, "Array<") && strings.HasSuffix(t, ">") {
-		depth++
-		if depth > maxTypeNestingDepth {
-			return false
-		}
-		t = t[len("Array<") : len(t)-1]
-	}
-	if depth > 0 && t == "unit" {
-		return false
-	}
-	switch t {
-	case "i64", "f64", "bool", "string", "unit":
-		return true
-	default:
-		return false
-	}
+	return langtypes.ValidName(t)
 }
 
 func Write(w io.Writer, p *Program) error {
