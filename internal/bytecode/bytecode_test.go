@@ -27,7 +27,7 @@ func TestRejectsUnknownOpcode(t *testing.T) {
 }
 
 func TestReadRejectsTrailingJSON(t *testing.T) {
-	input := `{"format":"aster-bytecode","version":1,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0} {}`
+	input := `{"format":"aster-bytecode","version":2,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0} {}`
 	if _, err := Read(strings.NewReader(input)); err == nil {
 		t.Fatal("expected trailing JSON rejection")
 	}
@@ -163,10 +163,10 @@ func TestValidateRejectsFallthroughPastFunctionEnd(t *testing.T) {
 }
 
 func FuzzReadBytecodeNeverPanics(f *testing.F) {
-	f.Add(`{"format":"aster-bytecode","version":1,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
+	f.Add(`{"format":"aster-bytecode","version":2,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
 	f.Add("")
 	f.Add("{}")
-	f.Add(`{"format":"aster-bytecode","version":1,"constants":[{"kind":"array","array":[]}],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
+	f.Add(`{"format":"aster-bytecode","version":2,"constants":[{"kind":"array","array":[]}],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
 	f.Fuzz(func(t *testing.T, input string) {
 		_, _ = Read(bytes.NewReader([]byte(input)))
 	})
@@ -474,5 +474,55 @@ func TestReadRejectsLegacyBytecodeVersion(t *testing.T) {
 	input := `{"format":"aster-bytecode","version":1,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`
 	if _, err := Read(strings.NewReader(input)); err == nil || !strings.Contains(err.Error(), "unsupported bytecode version") {
 		t.Fatalf("expected legacy format rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsArrayOfUnitParameterType(t *testing.T) {
+	p := stackVerifierProgram(1, nil,
+		Function{
+			Name:       "takesArray",
+			Params:     1,
+			ParamTypes: []string{"Array<unit>"},
+			Locals:     1,
+			Return:     "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpPop},
+				{Op: OpReturn},
+			},
+		},
+		Function{Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}}},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "invalid type") {
+		t.Fatalf("expected Array<unit> metadata rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsInconsistentArrayConstant(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{Array([]Value{I64(1), Str("wrong")})},
+		Function{Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}}},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "inconsistent types") {
+		t.Fatalf("expected heterogeneous array constant rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsLocalTypeChange(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{I64(1), Str("wrong")},
+		Function{
+			Name:   "main",
+			Locals: 1,
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpStoreLocal, A: 0},
+				{Op: OpConst, A: 1},
+				{Op: OpStoreLocal, A: 0},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "cannot store string") {
+		t.Fatalf("expected local type change rejection, got %v", err)
 	}
 }
