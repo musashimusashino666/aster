@@ -152,7 +152,10 @@ func (g *generator) statement(s ast.Stmt) error {
 		if err != nil {
 			return err
 		}
-		t := g.exprType(n.Value)
+		t, err := g.exprType(n.Value)
+		if err != nil {
+			return fmt.Errorf("codegen: infer initializer type for %q: %w", n.Name, err)
+		}
 		if n.Annotation != nil {
 			t = sourceTypeName(*n.Annotation)
 		}
@@ -259,7 +262,11 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 			}
 			items[i] = x
 		}
-		return goType(g.exprType(n)) + "{" + strings.Join(items, ", ") + "}", nil
+		arrayType, err := g.exprType(n)
+		if err != nil {
+			return "", err
+		}
+		return goType(arrayType) + "{" + strings.Join(items, ", ") + "}", nil
 	case *ast.IndexExpr:
 		collection, err := g.expression(n.Collection)
 		if err != nil {
@@ -277,8 +284,14 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if n.Op == "-" && g.exprType(n.Right) == "i64" {
-			return "asterNegI64(" + r + ")", nil
+		if n.Op == "-" {
+			rightType, err := g.exprType(n.Right)
+			if err != nil {
+				return "", err
+			}
+			if rightType == "i64" {
+				return "asterNegI64(" + r + ")", nil
+			}
 		}
 		if n.Op == "!" {
 			return "(!" + r + ")", nil
@@ -293,7 +306,10 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		t := g.exprType(n.Left)
+		t, err := g.exprType(n.Left)
+		if err != nil {
+			return "", err
+		}
 		if n.Op == "+" && t == "string" {
 			return "(" + l + " + " + r + ")", nil
 		}
@@ -328,8 +344,14 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		case "print":
 			return "asterPrint(" + joined + ")", nil
 		case "len":
-			if len(n.Args) == 1 && g.exprType(n.Args[0]) != "string" {
-				return "int64(len(" + joined + "))", nil
+			if len(n.Args) == 1 {
+				argType, err := g.exprType(n.Args[0])
+				if err != nil {
+					return "", err
+				}
+				if argType != "string" {
+					return "int64(len(" + joined + "))", nil
+				}
 			}
 			return "asterLenString(" + joined + ")", nil
 		case "assert":
@@ -340,45 +362,69 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 	}
 	return "", fmt.Errorf("codegen: unsupported expression %T", e)
 }
-func (g *generator) exprType(e ast.Expr) string {
+func (g *generator) exprType(e ast.Expr) (string, error) {
 	switch n := e.(type) {
 	case *ast.LiteralExpr:
-		return n.Kind
+		switch n.Kind {
+		case "i64", "f64", "bool", "string":
+			return n.Kind, nil
+		default:
+			return "", fmt.Errorf("unknown literal kind %q", n.Kind)
+		}
 	case *ast.IdentifierExpr:
 		if t, ok := g.scope.find(n.Name); ok {
-			return t
+			return t, nil
 		}
+		return "", fmt.Errorf("unknown identifier %q", n.Name)
 	case *ast.ArrayExpr:
-		if len(n.Elements) > 0 {
-			return "Array<" + g.exprType(n.Elements[0]) + ">"
+		if len(n.Elements) == 0 {
+			return "", fmt.Errorf("cannot infer the type of an empty array")
 		}
+		elementType, err := g.exprType(n.Elements[0])
+		if err != nil {
+			return "", fmt.Errorf("infer array element type: %w", err)
+		}
+		return "Array<" + elementType + ">", nil
 	case *ast.IndexExpr:
-		if elem, ok := arrayElementType(g.exprType(n.Collection)); ok {
-			return elem
+		collectionType, err := g.exprType(n.Collection)
+		if err != nil {
+			return "", err
 		}
+		elementType, ok := arrayElementType(collectionType)
+		if !ok {
+			return "", fmt.Errorf("cannot infer indexed element type from %q", collectionType)
+		}
+		return elementType, nil
 	case *ast.UnaryExpr:
 		return g.exprType(n.Right)
 	case *ast.BinaryExpr:
-		if n.Op == "&&" || n.Op == "||" || n.Op == "==" || n.Op == "!=" || n.Op == "<" || n.Op == "<=" || n.Op == ">" || n.Op == ">=" {
-			return "bool"
+		switch n.Op {
+		case "&&", "||", "==", "!=", "<", "<=", ">", ">=":
+			return "bool", nil
+		default:
+			return g.exprType(n.Left)
 		}
-		return g.exprType(n.Left)
 	case *ast.CallExpr:
-		if id, ok := n.Callee.(*ast.IdentifierExpr); ok {
-			switch id.Name {
-			case "print", "assert":
-				return "unit"
-			case "len":
-				return "i64"
-			default:
-				if r, ok := g.returns[id.Name]; ok {
-					return r
-				}
-			}
+		id, ok := n.Callee.(*ast.IdentifierExpr)
+		if !ok {
+			return "", fmt.Errorf("cannot infer return type for non-identifier callee %T", n.Callee)
 		}
+		switch id.Name {
+		case "print", "assert":
+			return "unit", nil
+		case "len":
+			return "i64", nil
+		default:
+			if ret, ok := g.returns[id.Name]; ok {
+				return ret, nil
+			}
+			return "", fmt.Errorf("unknown function %q", id.Name)
+		}
+	default:
+		return "", fmt.Errorf("unsupported expression type %T", e)
 	}
-	return "unit"
 }
+
 func sourceTypeName(t ast.TypeRef) string {
 	if t.Element != nil {
 		return t.Name + "<" + sourceTypeName(*t.Element) + ">"
