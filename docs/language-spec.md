@@ -4,7 +4,7 @@ This document describes the syntax and semantics implemented in the current prot
 
 ## Source model
 
-A source file is UTF-8 text. The current lexer supports ASCII identifiers, decimal integer and floating-point literals, quoted strings with `\\n`, `\\r`, `\\t`, `\\0`, `\\\\`, and `\\"` escapes, `//` line comments, and nested `/* ... */` comments. Source positions are currently byte-based columns.
+A source file is UTF-8 text. The current lexer supports ASCII identifiers, decimal integer and floating-point literals, quoted strings with `\n`, `\r`, `\t`, `\0`, `\\`, and `\"` escapes, `//` line comments, and nested `/* ... */` comments. Source positions are currently byte-based columns.
 
 Identifiers begin with an ASCII letter or `_`, followed by ASCII letters, digits, or `_`. A file contains function declarations and top-level statements. Functions are visible throughout the file, including forward references and recursion. Imports and multiple compilation units are not supported yet.
 
@@ -53,7 +53,7 @@ Calls and operators are parsed with the following precedence, from low to high:
 - `i64` addition, subtraction, multiplication, negation, and `min_i64 / -1` overflow produce runtime errors. Integer division and remainder by zero produce runtime errors.
 - Floating-point division by zero and non-finite results are runtime errors in the current implementation. This is a deliberate prototype policy, not an inherent property of IEEE-754.
 - Strings are immutable. `len` counts Unicode code points.
-- `print`, `len`, and `assert` are reserved built-ins.
+- `print`, `len`, and `assert` are reserved built-ins. Variables cannot store `unit` values, and `print` rejects a `unit` argument; a call returning `unit` can be used as an expression statement.
 
 ## Unsupported syntax in 0.1
 
