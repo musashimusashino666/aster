@@ -138,7 +138,7 @@ func flagsBeforePositionals(args []string, valueFlags ...string) []string {
 }
 
 func commandRun(args []string) error {
-	args = flagsBeforePositionals(args, "--engine")
+	args = flagsBeforePositionals(args, "--engine", "-engine")
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	engine := fs.String("engine", "vm", "execution engine: vm or native")
