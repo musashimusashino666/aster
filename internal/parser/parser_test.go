@@ -43,3 +43,10 @@ func TestParserReportsEndOfInputAfterOperator(t *testing.T) {
 		t.Fatalf("expected EOF diagnostic, got %v", err)
 	}
 }
+
+func TestRejectsCompilerInternalFunctionName(t *testing.T) {
+	_, err := Parse("fn __aster_main() -> i64 { return 42; }", "test.ast")
+	if err == nil || !strings.Contains(err.Error(), "reserved for compiler internals") {
+		t.Fatalf("expected compiler-internal function name to be rejected, got %v", err)
+	}
+}
