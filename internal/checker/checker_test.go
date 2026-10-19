@@ -62,3 +62,17 @@ func TestArraysAreHomogeneousAndTyped(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestRejectsUnitValueInInferredBinding(t *testing.T) {
+	err := checkSource(t, "let x = print(1);")
+	if err == nil || !strings.Contains(err.Error(), "variables cannot hold unit values") {
+		t.Fatalf("expected unit binding to be rejected, got %v", err)
+	}
+}
+
+func TestRejectsPrintingUnitValue(t *testing.T) {
+	err := checkSource(t, "print(print(1));")
+	if err == nil || !strings.Contains(err.Error(), "print cannot display a unit value") {
+		t.Fatalf("expected unit print argument to be rejected, got %v", err)
+	}
+}
