@@ -13,6 +13,7 @@ import (
 
 const maxStackDepth = 1 << 20
 const maxCallDepth = 4096
+
 // maxActiveLocalSlots bounds the sum of local slots across all live call frames.
 // It is a deterministic allocation budget, not a complete process memory quota.
 const maxActiveLocalSlots = 1 << 18
@@ -29,9 +30,9 @@ type frame struct {
 type VM struct {
 	program          *bytecode.Program
 	stack            []bytecode.Value
-	frames            []frame
+	frames           []frame
 	activeLocalSlots int
-	out               io.Writer
+	out              io.Writer
 }
 
 func Run(program *bytecode.Program, out io.Writer) error {
