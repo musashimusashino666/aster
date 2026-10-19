@@ -42,6 +42,8 @@ Calls and operators are parsed with the following precedence, from low to high:
 
 ## Semantics
 
+The JSON bytecode format is versioned independently of source syntax. Version 2 records function parameter types so the loader can verify call arguments, stack value types, return values, array element types, and local initialization before VM execution. Version 1 bytecode is rejected explicitly rather than being interpreted without the metadata required for typed verification.
+
 - Bindings are immutable by default. Assignment is permitted only to `let mut` variables.
 - A variable without a type annotation uses its initializer's type.
 - Implicit numeric conversions are not performed.
