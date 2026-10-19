@@ -182,3 +182,35 @@ func TestAnnotatedArrayElementOverflowMatchesBackends(t *testing.T) {
 		t.Fatalf("native output should explain overflow, got %q", output)
 	}
 }
+
+func TestEveryExampleCompilesToValidatedBytecode(t *testing.T) {
+	examples, err := filepath.Glob(filepath.Join("..", "examples", "*.ast"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(examples) == 0 {
+		t.Fatal("no example .ast files found")
+	}
+	for _, path := range examples {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			source, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tree, err := parser.Parse(string(source), path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := checker.Check(tree); err != nil {
+				t.Fatal(err)
+			}
+			program, err := bytecode.Compile(tree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := program.Validate(); err != nil {
+				t.Fatalf("compiled bytecode failed validation: %v", err)
+			}
+		})
+	}
+}
