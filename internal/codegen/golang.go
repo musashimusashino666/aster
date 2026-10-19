@@ -278,6 +278,9 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		}
 		return "(" + collection + ")[int(" + index + ")]", nil
 	case *ast.IdentifierExpr:
+		if _, ok := g.scope.find(n.Name); !ok {
+			return "", fmt.Errorf("codegen: unknown identifier %q", n.Name)
+		}
 		return "v_" + n.Name, nil
 	case *ast.UnaryExpr:
 		r, err := g.expression(n.Right)
