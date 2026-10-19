@@ -2,6 +2,7 @@
 package bytecode
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,22 @@ import (
 )
 
 const FormatVersion = 1
+
+// Per-value allocation limits enforced by bytecode validation and the VM.
+// String limits are measured in UTF-8 bytes, not Unicode code points.
+const (
+	MaxStringBytes              = 16 << 20
+	MaxArrayLength              = 1 << 18
+	maxBytecodeFileBytes        = 64 << 20
+	maxConstantPoolEntries      = 1 << 18
+	maxTotalInstructions       = 1 << 20
+	maxFunctionCount           = 100000
+	maxJSONNestingDepth        = 1024
+	maxArrayNestingDepth        = 256
+	maxConstantValueNodes       = 2 << 20
+	maxTotalConstantStringBytes = 32 << 20
+	maxTotalConstantArrayItems  = 1 << 18
+)
 
 type ValueKind string
 
@@ -123,20 +140,18 @@ func (p *Program) Validate() error {
 	if p.Entry < 0 || p.Entry >= len(p.Functions) {
 		return fmt.Errorf("invalid entry function index %d", p.Entry)
 	}
-	if len(p.Functions) == 0 || len(p.Functions) > 100000 {
+	if len(p.Functions) == 0 || len(p.Functions) > maxFunctionCount {
 		return fmt.Errorf("invalid function count %d", len(p.Functions))
 	}
-	if len(p.Constants) > 1000000 {
+	if len(p.Constants) > maxConstantPoolEntries {
 		return fmt.Errorf("constant pool exceeds safety limit")
 	}
+	totalConstantValues := 0
+	totalConstantStringBytes := 0
+	totalConstantArrayItems := 0
 	for i, c := range p.Constants {
-		switch c.Kind {
-		case ValueUnit, ValueI64, ValueF64, ValueBool, ValueString, ValueArray:
-		default:
-			return fmt.Errorf("constant %d has unknown value kind %q", i, c.Kind)
-		}
-		if c.Kind == ValueF64 && (math.IsNaN(c.F64) || math.IsInf(c.F64, 0)) {
-			return fmt.Errorf("constant %d is a non-finite f64", i)
+		if err := validateConstantValueLimits(c, i, &totalConstantValues, &totalConstantStringBytes, &totalConstantArrayItems); err != nil {
+			return err
 		}
 	}
 	if p.Functions[p.Entry].Params != 0 {
@@ -160,7 +175,7 @@ func (p *Program) Validate() error {
 			return fmt.Errorf("function %q has no instructions", f.Name)
 		}
 		totalInstructions += len(f.Code)
-		if totalInstructions > 10000000 {
+		if totalInstructions > maxTotalInstructions {
 			return fmt.Errorf("program exceeds instruction safety limit")
 		}
 		for pc, ins := range f.Code {
@@ -170,7 +185,7 @@ func (p *Program) Validate() error {
 					return fmt.Errorf("function %q instruction %d references missing constant %d", f.Name, pc, ins.A)
 				}
 			case OpBuildArray:
-				if ins.A < 0 || ins.A > (1<<20) {
+				if ins.A < 0 || ins.A > MaxArrayLength {
 					return fmt.Errorf("function %q instruction %d has invalid array element count %d", f.Name, pc, ins.A)
 				}
 			case OpIndex:
@@ -330,6 +345,59 @@ func validateFunctionStack(fn Function) error {
 	return nil
 }
 
+func validateConstantValueLimits(root Value, constantIndex int, totalValues, totalStringBytes, totalArrayItems *int) error {
+	type pendingValue struct {
+		value Value
+		depth int
+	}
+	stack := []pendingValue{{value: root}}
+	for len(stack) > 0 {
+		last := len(stack) - 1
+		current := stack[last]
+		stack = stack[:last]
+
+		*totalValues = *totalValues + 1
+		if *totalValues > maxConstantValueNodes {
+			return fmt.Errorf("constant pool values exceed safety limit")
+		}
+
+		switch current.value.Kind {
+		case ValueUnit, ValueI64, ValueBool:
+		case ValueF64:
+			if math.IsNaN(current.value.F64) || math.IsInf(current.value.F64, 0) {
+				return fmt.Errorf("constant %d contains a non-finite f64", constantIndex)
+			}
+		case ValueString:
+			size := len(current.value.String)
+			if size > MaxStringBytes {
+				return fmt.Errorf("constant %d string exceeds %d-byte limit", constantIndex, MaxStringBytes)
+			}
+			*totalStringBytes = *totalStringBytes + size
+			if *totalStringBytes > maxTotalConstantStringBytes {
+				return fmt.Errorf("constant pool strings exceed total byte limit")
+			}
+		case ValueArray:
+			items := len(current.value.Array)
+			if items > MaxArrayLength {
+				return fmt.Errorf("constant %d array has %d elements; maximum is %d", constantIndex, items, MaxArrayLength)
+			}
+			if items > 0 && current.depth >= maxArrayNestingDepth {
+				return fmt.Errorf("constant %d array nesting exceeds depth limit %d", constantIndex, maxArrayNestingDepth)
+			}
+			*totalArrayItems = *totalArrayItems + items
+			if *totalArrayItems > maxTotalConstantArrayItems {
+				return fmt.Errorf("constant pool arrays exceed total element limit")
+			}
+			for i := len(current.value.Array) - 1; i >= 0; i-- {
+				stack = append(stack, pendingValue{value: current.value.Array[i], depth: current.depth + 1})
+			}
+		default:
+			return fmt.Errorf("constant %d has unknown value kind %q", constantIndex, current.value.Kind)
+		}
+	}
+	return nil
+}
+
 func validTypeName(t string) bool {
 	switch t {
 	case "i64", "f64", "bool", "string", "unit":
@@ -350,8 +418,295 @@ func Write(w io.Writer, p *Program) error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(p)
 }
+// bytecodePreflight tracks allocation-sensitive portions of the JSON before
+// decoding them into slices of Value, Function, and Instruction structs.
+type bytecodePreflight struct {
+	constantEntries  int
+	constantValues   int
+	constantStrings  int
+	arrayItems       int
+	functionEntries  int
+	instructionCount int
+}
+
+const preflightErrorPrefix = "bytecode preflight: "
+
+func preflightBytecodeLimits(raw []byte) error {
+	if err := preflightBytecodeLimits(raw); err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	first, err := dec.Token()
+	if err != nil {
+		return nil // The regular decoder returns the canonical syntax error.
+	}
+	delim, ok := first.(json.Delim)
+	if !ok || delim != '{' {
+		return nil // Let decoding report a wrong top-level type.
+	}
+
+	limits := &bytecodePreflight{}
+	for dec.More() {
+		token, err := dec.Token()
+		if err != nil {
+			return nil
+		}
+		key, ok := token.(string)
+		if !ok {
+			return nil
+		}
+		switch key {
+		case "constants":
+			err = preflightConstants(dec, limits)
+		case "functions":
+			err = preflightFunctions(dec, limits)
+		default:
+			err = skipPreflightJSONValue(dec, 0)
+		}
+		if err != nil {
+			if strings.HasPrefix(err.Error(), preflightErrorPrefix) {
+				return err
+			}
+			return nil // Leave malformed JSON diagnostics to json.Decoder.Decode.
+		}
+	}
+	return nil
+}
+
+func preflightConstants(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		limits.constantEntries++
+		if limits.constantEntries > maxConstantPoolEntries {
+			return fmt.Errorf("%sconstant pool exceeds %d-entry safety limit", preflightErrorPrefix, maxConstantPoolEntries)
+		}
+		if err := preflightConstantValue(dec, 0, limits); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token() // closing ']'
+	return err
+}
+
+func preflightConstantValue(dec *json.Decoder, depth int, limits *bytecodePreflight) error {
+	limits.constantValues++
+	if limits.constantValues > maxConstantValueNodes {
+		return fmt.Errorf("%sconstant pool values exceed safety limit", preflightErrorPrefix)
+	}
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isObject := token.(json.Delim)
+	if !isObject || delim != '{' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		fieldToken, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		field, ok := fieldToken.(string)
+		if !ok {
+			return fmt.Errorf("invalid constant object key")
+		}
+		switch field {
+		case "string":
+			value, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			if text, ok := value.(string); ok {
+				size := len(text)
+				if size > MaxStringBytes {
+					return fmt.Errorf("%sconstant string exceeds %d-byte limit", preflightErrorPrefix, MaxStringBytes)
+				}
+				limits.constantStrings += size
+				if limits.constantStrings > maxTotalConstantStringBytes {
+					return fmt.Errorf("%sconstant pool strings exceed %d-byte total limit", preflightErrorPrefix, maxTotalConstantStringBytes)
+				}
+			} else if err := skipPreflightJSONToken(dec, value, 0); err != nil {
+				return err
+			}
+		case "array":
+			if err := preflightConstantArray(dec, depth, limits); err != nil {
+				return err
+			}
+		default:
+			if err := skipPreflightJSONValue(dec, 0); err != nil {
+				return err
+			}
+		}
+	}
+	_, err = dec.Token() // closing '}'
+	return err
+}
+
+func preflightConstantArray(dec *json.Decoder, parentDepth int, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	items := 0
+	for dec.More() {
+		items++
+		if items > MaxArrayLength {
+			return fmt.Errorf("%sconstant array exceeds %d-element limit", preflightErrorPrefix, MaxArrayLength)
+		}
+		limits.arrayItems++
+		if limits.arrayItems > maxTotalConstantArrayItems {
+			return fmt.Errorf("%sconstant pool arrays exceed %d-element total limit", preflightErrorPrefix, maxTotalConstantArrayItems)
+		}
+		if parentDepth >= maxArrayNestingDepth {
+			return fmt.Errorf("%sconstant array nesting exceeds depth limit %d", preflightErrorPrefix, maxArrayNestingDepth)
+		}
+		if err := preflightConstantValue(dec, parentDepth+1, limits); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token() // closing ']'
+	return err
+}
+
+func preflightFunctions(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		limits.functionEntries++
+		if limits.functionEntries > maxFunctionCount {
+			return fmt.Errorf("%sfunction list exceeds %d-entry safety limit", preflightErrorPrefix, maxFunctionCount)
+		}
+		if err := preflightFunction(dec, limits); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token() // closing ']'
+	return err
+}
+
+func preflightFunction(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isObject := token.(json.Delim)
+	if !isObject || delim != '{' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		fieldToken, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		field, ok := fieldToken.(string)
+		if !ok {
+			return fmt.Errorf("invalid function object key")
+		}
+		if field == "code" {
+			if err := preflightInstructions(dec, limits); err != nil {
+				return err
+			}
+		} else if err := skipPreflightJSONValue(dec, 0); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token() // closing '}'
+	return err
+}
+
+func preflightInstructions(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		limits.instructionCount++
+		if limits.instructionCount > maxTotalInstructions {
+			return fmt.Errorf("%sprogram exceeds %d-instruction safety limit", preflightErrorPrefix, maxTotalInstructions)
+		}
+		if err := skipPreflightJSONValue(dec, 0); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token() // closing ']'
+	return err
+}
+
+func skipPreflightJSONValue(dec *json.Decoder, depth int) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	return skipPreflightJSONToken(dec, token, depth)
+}
+
+func skipPreflightJSONToken(dec *json.Decoder, token any, depth int) error {
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	if depth >= maxJSONNestingDepth {
+		return fmt.Errorf("%sJSON nesting exceeds safety limit %d", preflightErrorPrefix, maxJSONNestingDepth)
+	}
+	switch delim {
+	case '{':
+		for dec.More() {
+			key, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			if _, ok := key.(string); !ok {
+				return fmt.Errorf("invalid JSON object key")
+			}
+			if err := skipPreflightJSONValue(dec, depth+1); err != nil {
+				return err
+			}
+		}
+		_, err := dec.Token()
+		return err
+	case '[':
+		for dec.More() {
+			if err := skipPreflightJSONValue(dec, depth+1); err != nil {
+				return err
+			}
+		}
+		_, err := dec.Token()
+		return err
+	default:
+		return nil
+	}
+}
+
 func Read(r io.Reader) (*Program, error) {
-	dec := json.NewDecoder(r)
+	raw, err := io.ReadAll(io.LimitReader(r, maxBytecodeFileBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read bytecode: %w", err)
+	}
+	if len(raw) > maxBytecodeFileBytes {
+		return nil, fmt.Errorf("bytecode file exceeds %d-byte safety limit", maxBytecodeFileBytes)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var p Program
 	if err := dec.Decode(&p); err != nil {
