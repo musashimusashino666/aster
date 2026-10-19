@@ -213,7 +213,7 @@ func (p *Program) Validate() error {
 			}
 		}
 	}
-	for fi, f := range p.Functions {
+	for _, f := range p.Functions {
 		if err := validateFunctionStack(f); err != nil {
 			return err
 		}
