@@ -109,6 +109,7 @@ func commandCheck(args []string) error {
 	}
 	return err
 }
+
 // flagsBeforePositionals normalizes value-taking options so the CLI accepts
 // common forms such as "aster run file.ast --engine native" as well as placing
 // options before the positional file argument. The standard flag package stops
