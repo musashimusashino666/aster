@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"os"
+	"strings"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -260,6 +261,55 @@ func TestEveryExampleCompilesToValidatedBytecode(t *testing.T) {
 			}
 			if err := program.Validate(); err != nil {
 				t.Fatalf("compiled bytecode failed validation: %v", err)
+			}
+		})
+	}
+}
+
+func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
+	tests := []struct {
+		name       string
+		source     string
+		diagnostic string
+	}{
+		{name: "division_by_zero", source: "print(10 / 0);", diagnostic: "division by zero"},
+		{name: "integer_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum + 1);", diagnostic: "overflow"},
+		{name: "assertion_failure", source: "assert(false);", diagnostic: "assertion failed"},
+		{name: "float_division_by_zero", source: "print(1.0 / 0.0);", diagnostic: "division by zero"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tree, err := parser.Parse(tt.source, tt.name+".ast")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = checker.Check(tree); err != nil {
+				t.Fatal(err)
+			}
+			program, err := bytecode.Compile(tree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var vmOutput bytes.Buffer
+			vmErr := vm.Run(program, &vmOutput)
+			if vmErr == nil || !strings.Contains(vmErr.Error(), tt.diagnostic) {
+				t.Fatalf("VM should report %q, got output=%q error=%v", tt.diagnostic, vmOutput.String(), vmErr)
+			}
+
+			goSource, err := codegen.Generate(tree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(t.TempDir(), "aster-runtime-error")
+			if err = toolchain.BuildNative(goSource, bin); err != nil {
+				t.Fatal(err)
+			}
+			nativeOutput, nativeErr := exec.Command(bin).CombinedOutput()
+			if nativeErr == nil {
+				t.Fatalf("native backend should fail with %q, output=%q", tt.diagnostic, nativeOutput)
+			}
+			if !bytes.Contains(nativeOutput, []byte(tt.diagnostic)) {
+				t.Fatalf("native backend should report %q, got %q", tt.diagnostic, nativeOutput)
 			}
 		})
 	}
