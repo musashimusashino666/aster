@@ -579,3 +579,19 @@ func TestValidateRejectsExcessiveTypedVerifierState(t *testing.T) {
 		t.Fatalf("expected typed verifier state limit rejection, got %v", err)
 	}
 }
+
+func TestPreflightRejectsExcessiveParameterTypeMetadata(t *testing.T) {
+	dec := json.NewDecoder(bytes.NewBufferString(`["i64"]`))
+	limits := &bytecodePreflight{parameterTypes: maxTotalParameterTypes}
+	if err := preflightParameterTypes(dec, limits); err == nil || !strings.Contains(err.Error(), "parameter type metadata") {
+		t.Fatalf("expected parameter type metadata limit error, got %v", err)
+	}
+}
+
+func TestPreflightRejectsOversizedTypeName(t *testing.T) {
+	typ := strings.Repeat("x", maxTypeNameBytes+1)
+	dec := json.NewDecoder(strings.NewReader(`"` + typ + `"`))
+	if err := preflightTypeName(dec); err == nil || !strings.Contains(err.Error(), "type name exceeds") {
+		t.Fatalf("expected oversized type name rejection, got %v", err)
+	}
+}
