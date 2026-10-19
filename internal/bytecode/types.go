@@ -96,6 +96,9 @@ func mergeAbstractState(dst, src *abstractState, fn string, pc int) (bool, error
 	changed := false
 	left, right := dst.stack, src.stack
 	for depth := 0; left != nil && right != nil; depth++ {
+		if left == right {
+			break
+		}
 		if left.typ != right.typ {
 			return false, fmt.Errorf("function %q instruction %d: operand stack type mismatch at depth %d: %s versus %s", fn, pc, dstDepth-depth-1, left.typ, right.typ)
 		}
