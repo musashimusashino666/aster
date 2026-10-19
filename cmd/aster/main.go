@@ -2,6 +2,7 @@
 package main
 
 import (
+	_ "embed"
 	"flag"
 	"fmt"
 	"io"
@@ -18,7 +19,10 @@ import (
 	"github.com/aster-lang/aster/internal/vm"
 )
 
-const version = "0.1.0"
+//go:embed VERSION
+var versionFile string
+
+var version = strings.TrimSpace(versionFile)
 
 func main() {
 	if err := dispatch(os.Args[1:]); err != nil {
@@ -105,6 +109,7 @@ func commandCheck(args []string) error {
 	}
 	return err
 }
+
 // flagsBeforePositionals normalizes value-taking options so the CLI accepts
 // common forms such as "aster run file.ast --engine native" as well as placing
 // options before the positional file argument. The standard flag package stops
@@ -138,7 +143,7 @@ func flagsBeforePositionals(args []string, valueFlags ...string) []string {
 }
 
 func commandRun(args []string) error {
-	args = flagsBeforePositionals(args, "--engine")
+	args = flagsBeforePositionals(args, "--engine", "-engine")
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	engine := fs.String("engine", "vm", "execution engine: vm or native")

@@ -76,3 +76,10 @@ func TestArrayElementAssignmentHasSpecificDiagnostic(t *testing.T) {
 		t.Fatalf("expected array assignment diagnostic, got %v", err)
 	}
 }
+
+func TestPositiveI64MinimumMagnitudeExplainsUnaryMinusRequirement(t *testing.T) {
+	_, err := Parse("let tooLarge = 0 - 9223372036854775808;", "test.ast")
+	if err == nil || !strings.Contains(err.Error(), "only immediately after unary '-'") {
+		t.Fatalf("expected actionable i64 boundary diagnostic, got %v", err)
+	}
+}

@@ -20,9 +20,9 @@ fmt-check:
 	@unformatted="$$(gofmt -l $(GO_FILES))"; \
 	if [ -n "$$unformatted" ]; then \
 		printf 'Go files need formatting:\n%s\n' "$$unformatted"; \
+		gofmt -d $(GO_FILES); \
 		exit 1; \
 	fi
-
 check: fmt-check test vet build
 
 examples: build
