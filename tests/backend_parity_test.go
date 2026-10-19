@@ -30,6 +30,8 @@ print(data[1]);
 print(len(data));
 print(data);
 print(identity(data));
+let minimum: i64 = -9223372036854775808;
+print(minimum % -1);
 let ys: Array<i64> = [1, 2];
 let zs = [ys[0], 2];
 print(zs);
@@ -72,8 +74,56 @@ len(data);
 	if vmOutput.String() != nativeOutput.String() {
 		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), nativeOutput.String())
 	}
-	if vmOutput.String() != "28\nAster\n4\n3\n[2 4 6]\n[2 4 6]\n[1 2]\n" {
+	if vmOutput.String() != "28\nAster\n4\n3\n[2 4 6]\n[2 4 6]\n0\n[1 2]\n" {
 		t.Fatalf("unexpected output: %q", vmOutput.String())
+	}
+}
+
+func TestArrayIndexBoundsMatchBackends(t *testing.T) {
+	tests := []struct {
+		name  string
+		index string
+	}{
+		{name: "negative_index", index: "-1"},
+		{name: "length_index", index: "2"},
+		{name: "large_positive_index", index: "4294967296"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := "let xs: Array<i64> = [7, 9]; print(xs[" + tt.index + "]);"
+			tree, err := parser.Parse(source, "array-index-bounds.ast")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = checker.Check(tree); err != nil {
+				t.Fatal(err)
+			}
+			bc, err := bytecode.Compile(tree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var vmOutput bytes.Buffer
+			vmErr := vm.Run(bc, &vmOutput)
+			if vmErr == nil || !bytes.Contains([]byte(vmErr.Error()), []byte("out of bounds")) {
+				t.Fatalf("VM should reject index %s, got output=%q error=%v", tt.index, vmOutput.String(), vmErr)
+			}
+
+			goSource, err := codegen.Generate(tree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(t.TempDir(), "aster-index-bounds")
+			if err = toolchain.BuildNative(goSource, bin); err != nil {
+				t.Fatal(err)
+			}
+			output, nativeErr := exec.Command(bin).CombinedOutput()
+			if nativeErr == nil {
+				t.Fatalf("native backend should reject index %s, output=%q", tt.index, output)
+			}
+			if !bytes.Contains(output, []byte("out of bounds")) {
+				t.Fatalf("native backend should report index %s out of bounds, got %q", tt.index, output)
+			}
+		})
 	}
 }
 

@@ -40,6 +40,7 @@
 ## Requirements
 
 - Go 1.23 or newer for building the Aster CLI and native backend.
+- Both `go` and `gofmt` must be available on `PATH`; `gofmt` is normally included with the Go distribution.
 - No third-party Go modules are required by the current implementation.
 
 ## Build
@@ -202,4 +203,4 @@ See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The next priorities are
 
 ## License
 
-MIT; see [`LICENSE.txt`](LICENSE.txt).
+MIT; see [`LICENSE`](LICENSE).
