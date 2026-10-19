@@ -254,3 +254,225 @@ func TestPreflightRejectsOversizedInstructionArray(t *testing.T) {
 		t.Fatalf("expected instruction cap error, got %v", err)
 	}
 }
+
+func TestValidateRejectsWrongArithmeticTypes(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{Bool(true), I64(1)},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpConst, A: 1},
+				{Op: OpAdd},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "ADD requires") {
+		t.Fatalf("expected arithmetic type error, got %v", err)
+	}
+}
+
+func TestValidateRejectsUninitializedLocalRead(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{I64(1)},
+		Function{
+			Name:   "main",
+			Locals: 1,
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpLoadLocal, A: 0},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "before initialization") {
+		t.Fatalf("expected uninitialized local rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsLocalInitializedOnOnlyOneBranch(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{Bool(true), I64(1)},
+		Function{
+			Name:   "main",
+			Locals: 1,
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpJumpIfFalse, A: 4},
+				{Op: OpConst, A: 1},
+				{Op: OpStoreLocal, A: 0},
+				{Op: OpJump, A: 5},
+				{Op: OpLoadLocal, A: 0},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "before initialization") {
+		t.Fatalf("expected local definite-initialization rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsOperandStackTypeMismatchAtMerge(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{Bool(true), I64(1), Str("x")},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpJumpIfFalse, A: 4},
+				{Op: OpConst, A: 1},
+				{Op: OpJump, A: 5},
+				{Op: OpConst, A: 2},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "operand stack type mismatch") {
+		t.Fatalf("expected stack type merge rejection, got %v", err)
+	}
+}
+
+func TestValidateAcceptsTypedFunctionCall(t *testing.T) {
+	p := stackVerifierProgram(1, []Value{I64(7)},
+		Function{
+			Name:       "identity",
+			Params:     1,
+			ParamTypes: []string{"i64"},
+			Locals:     1,
+			Return:     "i64",
+			Code: []Instruction{
+				{Op: OpLoadLocal, A: 0},
+				{Op: OpReturn},
+			},
+		},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpCall, A: 0, B: 1},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err != nil {
+		t.Fatalf("expected typed function call to pass, got %v", err)
+	}
+}
+
+func TestValidateRejectsTypedFunctionCallMismatch(t *testing.T) {
+	p := stackVerifierProgram(1, []Value{Bool(true)},
+		Function{
+			Name:       "identity",
+			Params:     1,
+			ParamTypes: []string{"i64"},
+			Locals:     1,
+			Return:     "i64",
+			Code: []Instruction{
+				{Op: OpLoadLocal, A: 0},
+				{Op: OpReturn},
+			},
+		},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpCall, A: 0, B: 1},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "expected i64") {
+		t.Fatalf("expected function argument type rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsReturnTypeMismatch(t *testing.T) {
+	p := stackVerifierProgram(1, []Value{Bool(true)},
+		Function{
+			Name:   "value",
+			Return: "i64",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpReturn},
+			},
+		},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code:   []Instruction{{Op: OpHalt}},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "RETURN type mismatch") {
+		t.Fatalf("expected return type rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsNonBoolConditional(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{I64(1)},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpJumpIfFalse, A: 2},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "requires bool") {
+		t.Fatalf("expected conditional type rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsHeterogeneousArray(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{I64(1), Str("x")},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpConst, A: 1},
+				{Op: OpBuildArray, A: 2},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "array elements have inconsistent types") {
+		t.Fatalf("expected heterogeneous array rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsMissingParameterTypeMetadata(t *testing.T) {
+	p := stackVerifierProgram(1, []Value{I64(7)},
+		Function{
+			Name:   "identity",
+			Params: 1,
+			Locals: 1,
+			Return: "i64",
+			Code: []Instruction{
+				{Op: OpLoadLocal, A: 0},
+				{Op: OpReturn},
+			},
+		},
+		Function{Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}}},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "parameter types") {
+		t.Fatalf("expected missing parameter metadata rejection, got %v", err)
+	}
+}
+
+func TestReadRejectsLegacyBytecodeVersion(t *testing.T) {
+	input := `{"format":"aster-bytecode","version":1,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`
+	if _, err := Read(strings.NewReader(input)); err == nil || !strings.Contains(err.Error(), "unsupported bytecode version") {
+		t.Fatalf("expected legacy format rejection, got %v", err)
+	}
+}
