@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	"github.com/aster-lang/aster/internal/ast"
-	"github.com/aster-lang/aster/internal/lexer"
 	"github.com/aster-lang/aster/internal/langtypes"
+	"github.com/aster-lang/aster/internal/lexer"
 	"github.com/aster-lang/aster/internal/token"
 )
 
