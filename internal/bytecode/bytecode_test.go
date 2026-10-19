@@ -1,6 +1,7 @@
 package bytecode
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -158,4 +159,47 @@ func TestValidateRejectsFallthroughPastFunctionEnd(t *testing.T) {
 	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "control flow falls past the end") {
 		t.Fatalf("expected fallthrough error, got %v", err)
 	}
+}
+
+func FuzzReadBytecodeNeverPanics(f *testing.F) {
+	f.Add(`{"format":"aster-bytecode","version":1,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
+	f.Add("")
+	f.Add("{}")
+	f.Add(`{"format":"aster-bytecode","version":1,"constants":[{"kind":"array","array":[]}],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
+	f.Fuzz(func(t *testing.T, input string) {
+		_, _ = Read(bytes.NewReader([]byte(input)))
+	})
+}
+
+func FuzzValidateInstructionOperandsNeverPanics(f *testing.F) {
+	f.Add(uint8(0), int16(0), int16(0))
+	f.Add(uint8(1), int16(-1), int16(3))
+	f.Add(uint8(255), int16(32767), int16(-32768))
+	ops := []Op{
+		OpConst, OpLoadLocal, OpBuildArray, OpIndex, OpStoreLocal, OpPop,
+		OpNeg, OpNot, OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual,
+		OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
+		OpJump, OpJumpIfFalse, OpJumpIfTrue, OpCall, OpBuiltin, OpReturn,
+		OpHalt, "UNKNOWN",
+	}
+	f.Fuzz(func(t *testing.T, opByte uint8, a, b int16) {
+		op := ops[int(opByte)%len(ops)]
+		program := &Program{
+			Format:    "aster-bytecode",
+			Version:   FormatVersion,
+			Constants: []Value{Unit(), I64(1), Bool(true), Str("seed")},
+			Functions: []Function{{
+				Name:   "main",
+				Params: 0,
+				Locals: 2,
+				Return: "unit",
+				Code: []Instruction{
+					{Op: op, A: int(a), B: int(b)},
+					{Op: OpHalt},
+				},
+			}},
+			Entry: 0,
+		}
+		_ = program.Validate()
+	})
 }
