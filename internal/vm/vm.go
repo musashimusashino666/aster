@@ -27,11 +27,11 @@ type frame struct {
 	stackBase int
 }
 type VM struct {
-	program *bytecode.Program
-	stack   []bytecode.Value
-	frames           []frame
+	program          *bytecode.Program
+	stack            []bytecode.Value
+	frames            []frame
 	activeLocalSlots int
-	out              io.Writer
+	out               io.Writer
 }
 
 func Run(program *bytecode.Program, out io.Writer) error {
