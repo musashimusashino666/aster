@@ -168,4 +168,4 @@ GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）でも
 - [`bench/README.md`](bench/README.md): ベンチマーク方法
 - [`CHANGELOG.md`](CHANGELOG.md): 変更履歴
 
-MITライセンス。詳細は [`LICENSE.txt`](LICENSE.txt) を参照してください。
+MITライセンス。詳細は [`LICENSE`](LICENSE) を参照してください。
