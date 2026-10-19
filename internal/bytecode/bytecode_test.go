@@ -526,3 +526,21 @@ func TestValidateRejectsLocalTypeChange(t *testing.T) {
 		t.Fatalf("expected local type change rejection, got %v", err)
 	}
 }
+
+func TestValidateRejectsExcessivelyNestedParameterType(t *testing.T) {
+	nested := strings.Repeat("Array<", maxTypeNestingDepth+1) + "i64" + strings.Repeat(">", maxTypeNestingDepth+1)
+	p := stackVerifierProgram(1, nil,
+		Function{
+			Name:       "takesNestedArray",
+			Params:     1,
+			ParamTypes: []string{nested},
+			Locals:     1,
+			Return:     "unit",
+			Code:       []Instruction{{Op: OpReturn}},
+		},
+		Function{Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}}},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "invalid type") {
+		t.Fatalf("expected type nesting limit rejection, got %v", err)
+	}
+}
