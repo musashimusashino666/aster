@@ -50,6 +50,9 @@ func (p *Parser) function(start token.Token) (ast.Decl, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(name.Lexeme) >= 2 && name.Lexeme[0] == '_' && name.Lexeme[1] == '_' {
+		return nil, p.errorAt(name, "function names beginning with '__' are reserved for compiler internals")
+	}
 	if name.Lexeme == "main" {
 		return nil, p.errorAt(name, "'main' is reserved for the top-level program")
 	}
@@ -127,6 +130,9 @@ func (p *Parser) statement() (ast.Stmt, error) {
 	if p.match(token.Return) {
 		return p.returnStatement(p.previous())
 	}
+	if p.indexedAssignmentAhead() {
+		return nil, p.errorAt(p.peek(), "array element assignment is not supported in Aster 0.1")
+	}
 	if p.check(token.Ident) && p.checkNext(token.Assign) {
 		id := p.advance()
 		p.advance()
@@ -148,6 +154,27 @@ func (p *Parser) statement() (ast.Stmt, error) {
 	}
 	return &ast.ExprStmt{At: expr.Pos(), Expr: expr}, nil
 }
+// indexedAssignmentAhead recognizes the unsupported target form `name[index] = value`
+// to return a direct, actionable diagnostic instead of a generic missing-semicolon error.
+func (p *Parser) indexedAssignmentAhead() bool {
+	if !p.check(token.Ident) || !p.checkNext(token.LBracket) {
+		return false
+	}
+	depth := 0
+	for i := p.current + 1; i < len(p.tokens); i++ {
+		switch p.tokens[i].Kind {
+		case token.LBracket:
+			depth++
+		case token.RBracket:
+			depth--
+			if depth == 0 {
+				return i+1 < len(p.tokens) && p.tokens[i+1].Kind == token.Assign
+			}
+		}
+	}
+	return false
+}
+
 func (p *Parser) letStatement(start token.Token) (ast.Stmt, error) {
 	mutable := p.match(token.Mut)
 	name, err := p.consume(token.Ident, "expected variable name after 'let'")
@@ -318,7 +345,21 @@ func (p *Parser) expression(min int) (ast.Expr, error) {
 			return nil, err
 		}
 		left = &ast.ArrayExpr{At: t.Pos, Elements: elements}
-	case token.Minus, token.Bang:
+	case token.Minus:
+		// The positive magnitude 2^63 is only valid as part of the i64 minimum
+		// literal. The lexer permits this one magnitude so the unary parser can
+		// recognize it without accepting it as a positive i64 value.
+		if p.check(token.Int) && p.peek().Lexeme == "9223372036854775808" {
+			p.advance()
+			left = &ast.LiteralExpr{At: t.Pos, Kind: "i64", Text: "-9223372036854775808", Int: -1 << 63}
+		} else {
+			right, err := p.expression(precUnary)
+			if err != nil {
+				return nil, err
+			}
+			left = &ast.UnaryExpr{At: t.Pos, Op: string(t.Kind), Right: right}
+		}
+	case token.Bang:
 		right, err := p.expression(precUnary)
 		if err != nil {
 			return nil, err

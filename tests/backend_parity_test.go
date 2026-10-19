@@ -30,6 +30,13 @@ print(data[1]);
 print(len(data));
 print(data);
 print(identity(data));
+let ys: Array<i64> = [1, 2];
+let zs = [ys[0], 2];
+print(zs);
+let unused = 1;
+unused;
+1 + 2;
+len(data);
 `
 	tree, err := parser.Parse(source, "parity.ast")
 	if err != nil {
@@ -65,7 +72,7 @@ print(identity(data));
 	if vmOutput.String() != nativeOutput.String() {
 		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), nativeOutput.String())
 	}
-	if vmOutput.String() != "28\nAster\n4\n3\n[2 4 6]\n[2 4 6]\n" {
+	if vmOutput.String() != "28\nAster\n4\n3\n[2 4 6]\n[2 4 6]\n[1 2]\n" {
 		t.Fatalf("unexpected output: %q", vmOutput.String())
 	}
 }
@@ -136,5 +143,42 @@ func TestNativeBackendChecksIntegerOverflow(t *testing.T) {
 	}
 	if !bytes.Contains(output, []byte("overflow")) {
 		t.Fatalf("expected overflow diagnostic, got %q", output)
+	}
+}
+
+func TestAnnotatedArrayElementOverflowMatchesBackends(t *testing.T) {
+	source := `let xs: Array<i64> = [9223372036854775807, 1]; print(xs[0] + xs[1]);`
+	tree, err := parser.Parse(source, "annotated-array-overflow.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checker.Check(tree); err != nil {
+		t.Fatal(err)
+	}
+
+	bc, err := bytecode.Compile(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	vmErr := vm.Run(bc, &vmOutput)
+	if vmErr == nil || !bytes.Contains([]byte(vmErr.Error()), []byte("overflow")) {
+		t.Fatalf("VM should reject annotated-array arithmetic overflow, got output=%q error=%v", vmOutput.String(), vmErr)
+	}
+
+	goSource, err := codegen.Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-array-overflow")
+	if err = toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	output, nativeErr := exec.Command(bin).CombinedOutput()
+	if nativeErr == nil {
+		t.Fatalf("native backend should reject overflow, output=%q", output)
+	}
+	if !bytes.Contains(output, []byte("overflow")) {
+		t.Fatalf("native output should explain overflow, got %q", output)
 	}
 }

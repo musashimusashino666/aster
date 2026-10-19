@@ -105,7 +105,40 @@ func commandCheck(args []string) error {
 	}
 	return err
 }
+// flagsBeforePositionals normalizes value-taking options so the CLI accepts
+// common forms such as "aster run file.ast --engine native" as well as placing
+// options before the positional file argument. The standard flag package stops
+// parsing options at the first positional argument.
+func flagsBeforePositionals(args []string, valueFlags ...string) []string {
+	var options, positionals []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		matched := false
+		for _, name := range valueFlags {
+			if arg == name {
+				options = append(options, arg)
+				if i+1 < len(args) {
+					options = append(options, args[i+1])
+					i++
+				}
+				matched = true
+				break
+			}
+			if strings.HasPrefix(arg, name+"=") {
+				options = append(options, arg)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			positionals = append(positionals, arg)
+		}
+	}
+	return append(options, positionals...)
+}
+
 func commandRun(args []string) error {
+	args = flagsBeforePositionals(args, "--engine")
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	engine := fs.String("engine", "vm", "execution engine: vm or native")
@@ -137,6 +170,7 @@ func commandRun(args []string) error {
 	}
 }
 func commandCompile(args []string) error {
+	args = flagsBeforePositionals(args, "-o")
 	fs := flag.NewFlagSet("compile", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	out := fs.String("o", "", "output bytecode path")
@@ -146,8 +180,7 @@ func commandCompile(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: aster compile [-o file.abc.json] <file.ast>")
 	}
-	src, tree, err := readSource(fs.Arg(0))
-	_ = src
+	_, tree, err := readSource(fs.Arg(0))
 	if err != nil {
 		return err
 	}
@@ -199,6 +232,7 @@ func commandExec(args []string) error {
 	return vm.Run(bc, os.Stdout)
 }
 func commandBuild(args []string) error {
+	args = flagsBeforePositionals(args, "-o", "--target")
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	out := fs.String("o", "", "output executable path")

@@ -13,7 +13,7 @@
 - Runtime checks for integer overflow and invalid arithmetic.
 - A portable bytecode format and a reference virtual machine.
 - A separate native-build path, initially implemented by translating checked Aster programs to Go and invoking the Go toolchain.
-- A common behavior contract tested across the VM and native backend.
+- Behavior parity for the supported semantic subset, covered by shared regression tests; backend-specific resource limits and host-runtime constraints are documented separately.
 - Clear boundaries between the language core and future domain libraries.
 
 ## Current implementation status
@@ -87,7 +87,7 @@ Build a native executable:
 ./fibonacci
 ```
 
-The native build currently uses a generated Go source file and the installed Go compiler. Aster users do not need to edit generated source, but Go is a build-time dependency. The VM and native backend are distinct execution paths; they are not two independent language implementations.
+The native build currently uses a generated Go source file and the installed Go compiler. Aster users do not need to edit generated source, but Go is a build-time dependency. The VM and native backend are distinct execution paths; they are not two independent language implementations. VM instruction/call-depth limits do not currently apply to generated native executables; native programs run with the host process's privileges.
 
 ## Language tour
 

@@ -43,3 +43,36 @@ func TestParserReportsEndOfInputAfterOperator(t *testing.T) {
 		t.Fatalf("expected EOF diagnostic, got %v", err)
 	}
 }
+
+func TestRejectsCompilerInternalFunctionName(t *testing.T) {
+	_, err := Parse("fn __aster_main() -> i64 { return 42; }", "test.ast")
+	if err == nil || !strings.Contains(err.Error(), "reserved for compiler internals") {
+		t.Fatalf("expected compiler-internal function name to be rejected, got %v", err)
+	}
+}
+
+func TestParsesI64MinimumLiteral(t *testing.T) {
+	tree, err := Parse("let minimum: i64 = -9223372036854775808;", "test.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt := tree.Decls[0].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	literal, ok := stmt.Value.(*ast.LiteralExpr)
+	if !ok || literal.Int != -1<<63 {
+		t.Fatalf("minimum literal = %#v, want i64 minimum", stmt.Value)
+	}
+}
+
+func TestRejectsPositiveI64MinimumMagnitude(t *testing.T) {
+	_, err := Parse("let tooLarge = 9223372036854775808;", "test.ast")
+	if err == nil || !strings.Contains(err.Error(), "integer literal out of range") {
+		t.Fatalf("expected out-of-range integer diagnostic, got %v", err)
+	}
+}
+
+func TestArrayElementAssignmentHasSpecificDiagnostic(t *testing.T) {
+	_, err := Parse("let values = [1]; values[0] = 2;", "test.ast")
+	if err == nil || !strings.Contains(err.Error(), "array element assignment is not supported") {
+		t.Fatalf("expected array assignment diagnostic, got %v", err)
+	}
+}
