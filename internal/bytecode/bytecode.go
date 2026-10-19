@@ -681,7 +681,6 @@ func preflightFunction(dec *json.Decoder, limits *bytecodePreflight) error {
 	return err
 }
 
-
 func preflightParameterTypes(dec *json.Decoder, limits *bytecodePreflight) error {
 	token, err := dec.Token()
 	if err != nil {
