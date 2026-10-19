@@ -1,0 +1,140 @@
+package tests
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/aster-lang/aster/internal/bytecode"
+	"github.com/aster-lang/aster/internal/checker"
+	"github.com/aster-lang/aster/internal/codegen"
+	"github.com/aster-lang/aster/internal/parser"
+	"github.com/aster-lang/aster/internal/toolchain"
+	"github.com/aster-lang/aster/internal/vm"
+)
+
+func TestVMAndNativeBackendParity(t *testing.T) {
+	source := `fn identity(values: Array<i64>) -> Array<i64> { return values; }
+fn triangular(n: i64) -> i64 {
+    let mut i: i64 = 0;
+    let mut total: i64 = 0;
+    while i <= n { total = total + i; i = i + 1; }
+    return total;
+}
+print(triangular(7));
+print("Aster");
+let data: Array<i64> = [2, 4, 6];
+print(data[1]);
+print(len(data));
+print(data);
+print(identity(data));
+`
+	tree, err := parser.Parse(source, "parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checker.Check(tree); err != nil {
+		t.Fatal(err)
+	}
+	bc, err := bytecode.Compile(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err = vm.Run(bc, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+
+	goSource, err := codegen.Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-native")
+	if err = toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin)
+	var nativeOutput bytes.Buffer
+	cmd.Stdout = &nativeOutput
+	cmd.Stderr = &bytes.Buffer{}
+	if err = cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if vmOutput.String() != nativeOutput.String() {
+		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), nativeOutput.String())
+	}
+	if vmOutput.String() != "28\nAster\n4\n3\n[2 4 6]\n[2 4 6]\n" {
+		t.Fatalf("unexpected output: %q", vmOutput.String())
+	}
+}
+
+func TestCompiledBytecodeRoundTrip(t *testing.T) {
+	tree, err := parser.Parse("print(42);", "roundtrip.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checker.Check(tree); err != nil {
+		t.Fatal(err)
+	}
+	bc, err := bytecode.Compile(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "roundtrip.abc.json")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = bytecode.Write(f, bc); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f, err = os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := bytecode.Read(f)
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err = vm.Run(loaded, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "42\n" {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+func TestNativeBackendChecksIntegerOverflow(t *testing.T) {
+	source := `let maximum: i64 = 9223372036854775807; print(maximum + 1);`
+	tree, err := parser.Parse(source, "overflow.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checker.Check(tree); err != nil {
+		t.Fatal(err)
+	}
+	goSource, err := codegen.Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-overflow")
+	if err = toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected native runtime to reject signed integer overflow")
+	}
+	if !bytes.Contains(output, []byte("overflow")) {
+		t.Fatalf("expected overflow diagnostic, got %q", output)
+	}
+}

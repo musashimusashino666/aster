@@ -1,0 +1,15 @@
+// Aster's first native/VM parity example.
+fn greet(name: string) {
+    print("Hello, " + name + "!");
+}
+
+greet("Aster");
+
+let mut count: i64 = 0;
+let mut total: i64 = 0;
+while count < 5 {
+    total = total + count;
+    count = count + 1;
+}
+print("sum(0..4) = " + "computed");
+print(total);

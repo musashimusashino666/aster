@@ -1,0 +1,10 @@
+// Logical operators short-circuit. fail() must not be evaluated below.
+fn fail() -> bool {
+    assert(false);
+    return true;
+}
+
+let ready: bool = true;
+assert(ready && (1 + 1 == 2));
+assert(ready || fail());
+print("guard checks passed");

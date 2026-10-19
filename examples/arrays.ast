@@ -1,0 +1,18 @@
+// Arrays have a homogeneous element type and checked indexing.
+fn sum(values: Array<i64>) -> i64 {
+    let mut index: i64 = 0;
+    let mut total: i64 = 0;
+    while index < len(values) {
+        total = total + values[index];
+        index = index + 1;
+    }
+    return total;
+}
+
+let values: Array<i64> = [3, 5, 8, 13, 21];
+print("values:");
+print(values);
+print("count:");
+print(len(values));
+print("sum:");
+print(sum(values));

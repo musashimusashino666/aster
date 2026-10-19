@@ -1,0 +1,7 @@
+// Integer and floating-point operations use explicit numeric types.
+fn area(radius: f64) -> f64 {
+    return 3.141592653589793 * radius * radius;
+}
+
+let r: f64 = 2.5;
+print(area(r));

@@ -1,0 +1,81 @@
+package vm
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"github.com/aster-lang/aster/internal/bytecode"
+	"github.com/aster-lang/aster/internal/checker"
+	"github.com/aster-lang/aster/internal/parser"
+)
+
+func runSource(t *testing.T, src string) (string, error) {
+	t.Helper()
+	p, err := parser.Parse(src, "test.ast")
+	if err != nil {
+		return "", err
+	}
+	if err = checker.Check(p); err != nil {
+		return "", err
+	}
+	bc, err := bytecode.Compile(p)
+	if err != nil {
+		return "", err
+	}
+	var out bytes.Buffer
+	err = Run(bc, &out)
+	return out.String(), err
+}
+func TestVMRecursionAndLoops(t *testing.T) {
+	out, err := runSource(t, `fn fib(n: i64) -> i64 { if n <= 1 { return n; } else { return fib(n - 1) + fib(n - 2); } } let mut i: i64 = 0; let mut s: i64 = 0; while i < 6 { s = s + fib(i); i = i + 1; } print(s);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "12\n" {
+		t.Fatalf("output = %q", out)
+	}
+}
+func TestVMShortCircuit(t *testing.T) {
+	out, err := runSource(t, `fn fail() -> bool { assert(false); return true; } let ok = true || fail(); print(ok);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "true\n" {
+		t.Fatalf("output = %q", out)
+	}
+}
+func TestVMRejectsIntegerOverflow(t *testing.T) {
+	_, err := runSource(t, `let x: i64 = 9223372036854775807; print(x + 1);`)
+	if err == nil || !strings.Contains(err.Error(), "overflow") {
+		t.Fatalf("expected overflow error, got %v", err)
+	}
+}
+func TestVMRejectsDivisionByZero(t *testing.T) {
+	_, err := runSource(t, `print(10 / 0);`)
+	if err == nil || !strings.Contains(err.Error(), "division by zero") {
+		t.Fatalf("expected division error, got %v", err)
+	}
+}
+func TestVMRejectsMalformedProgram(t *testing.T) {
+	p := &bytecode.Program{Format: "aster-bytecode", Version: bytecode.FormatVersion, Constants: []bytecode.Value{}, Entry: 0, Functions: []bytecode.Function{{Name: "main", Return: "unit", Code: []bytecode.Instruction{{Op: bytecode.OpConst, A: 99}, {Op: bytecode.OpHalt}}}}}
+	if err := Run(p, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected malformed program rejection")
+	}
+}
+
+func TestVMArrayLiteralIndexAndLength(t *testing.T) {
+	out, err := runSource(t, `let values: Array<i64> = [2, 4, 6]; print(values[1]); print(len(values)); print(values);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "4\n3\n[2 4 6]\n" {
+		t.Fatalf("output = %q", out)
+	}
+}
+func TestVMArrayBoundsCheck(t *testing.T) {
+	_, err := runSource(t, `let values = [10, 20]; print(values[2]);`)
+	if err == nil || !strings.Contains(err.Error(), "out of bounds") {
+		t.Fatalf("expected bounds error, got %v", err)
+	}
+}

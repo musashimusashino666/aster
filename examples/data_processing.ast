@@ -1,0 +1,21 @@
+// A small, deterministic data-processing example.
+fn clamp(value: i64, low: i64, high: i64) -> i64 {
+    if value < low {
+        return low;
+    } else {
+        if value > high {
+            return high;
+        } else {
+            return value;
+        }
+    }
+}
+
+let mut index: i64 = 0;
+let mut total: i64 = 0;
+while index < 8 {
+    total = total + clamp(index * 3 - 2, 0, 10);
+    index = index + 1;
+}
+print("bounded aggregate:");
+print(total);
