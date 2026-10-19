@@ -214,7 +214,7 @@ func (p *Program) Validate() error {
 		}
 	}
 	for fi, f := range p.Functions {
-		if err := validateFunctionStack(fi, f); err != nil {
+		if err := validateFunctionStack(f); err != nil {
 			return err
 		}
 	}
@@ -227,8 +227,7 @@ const maxVerifiedStackDepth = 1 << 20
 // validateFunctionStack performs a control-flow dataflow analysis over operand
 // stack heights. Orphaned (unreachable) code regions are checked as independent
 // blocks with an empty entry stack so malformed dead code cannot hide underflow.
-func validateFunctionStack(functionIndex int, fn Function) error {
-	_ = functionIndex
+func validateFunctionStack(fn Function) error {
 	depths := make([]int, len(fn.Code))
 	for i := range depths {
 		depths[i] = -1
