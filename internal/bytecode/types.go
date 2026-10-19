@@ -222,6 +222,9 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		if err != nil {
 			return false, err
 		}
+		if got == "unit" {
+			return false, fmt.Errorf("function %q instruction %d: locals cannot hold unit values", fn.Name, pc)
+		}
 		local := &s.locals[ins.A]
 		if local.typ != "" && local.typ != got {
 			return false, fmt.Errorf("function %q instruction %d: cannot store %s in local %d of type %s", fn.Name, pc, got, ins.A, local.typ)
