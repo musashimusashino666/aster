@@ -109,7 +109,7 @@ func (p *Parser) typeRefDepth(depth int) (ast.TypeRef, error) {
 	ref := ast.TypeRef{Name: t.Lexeme, At: t.Pos}
 	if p.match(token.Less) {
 		if depth >= langtypes.MaxNestingDepth {
-			return ast.TypeRef{}, p.errorAt(t, "type nesting exceeds limit %d", langtypes.MaxNestingDepth)
+			return ast.TypeRef{}, p.errorAt(t, fmt.Sprintf("type nesting exceeds limit %d", langtypes.MaxNestingDepth))
 		}
 		element, e := p.typeRefDepth(depth + 1)
 		if e != nil {
