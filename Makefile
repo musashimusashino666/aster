@@ -1,6 +1,7 @@
-.PHONY: test build vet fmt check examples clean
+.PHONY: test build vet fmt fmt-check check examples clean
 
 BIN ?= bin/aster
+GO_FILES = $(shell find . -type f -name '*.go' -not -path './.git/*')
 
 test:
 	go test ./...
@@ -13,9 +14,16 @@ vet:
 	go vet ./...
 
 fmt:
-	gofmt -w $$(find . -name '*.go' -type f)
+	gofmt -w $(GO_FILES)
 
-check: fmt test vet build
+fmt-check:
+	@unformatted="$$(gofmt -l $(GO_FILES))"; \
+	if [ -n "$$unformatted" ]; then \
+		printf 'Go files need formatting:\n%s\n' "$$unformatted"; \
+		exit 1; \
+	fi
+
+check: fmt-check test vet build
 
 examples: build
 	./$(BIN) run examples/hello.ast
