@@ -50,6 +50,9 @@ func (p *Parser) function(start token.Token) (ast.Decl, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(name.Lexeme) >= 2 && name.Lexeme[0] == '_' && name.Lexeme[1] == '_' {
+		return nil, p.errorAt(name, "function names beginning with '__' are reserved for compiler internals")
+	}
 	if name.Lexeme == "main" {
 		return nil, p.errorAt(name, "'main' is reserved for the top-level program")
 	}
