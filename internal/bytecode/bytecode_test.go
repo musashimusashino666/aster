@@ -562,3 +562,20 @@ func TestValidateRejectsUnitLocalStorage(t *testing.T) {
 		t.Fatalf("expected unit local storage rejection, got %v", err)
 	}
 }
+
+func TestValidateRejectsExcessiveTypedVerifierState(t *testing.T) {
+	p := stackVerifierProgram(0, nil,
+		Function{
+			Name:   "main",
+			Locals: maxTypedVerifierStateCells/2 + 1,
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpHalt},
+				{Op: OpHalt},
+			},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "typed verifier state safety limit") {
+		t.Fatalf("expected typed verifier state limit rejection, got %v", err)
+	}
+}
