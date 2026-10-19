@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const FormatVersion = 1
+const FormatVersion = 2
 
 // Per-value allocation limits enforced by bytecode validation and the VM.
 // String limits are measured in UTF-8 bytes, not Unicode code points.
@@ -23,10 +23,15 @@ const (
 	maxFunctionCount            = 100000
 	maxJSONNestingDepth         = 1024
 	maxArrayNestingDepth        = 256
+	maxTypeNestingDepth         = 256
 	maxConstantValueNodes       = 2 << 20
 	maxTotalConstantStringBytes = 32 << 20
 	maxTotalConstantArrayItems  = 1 << 18
+	maxTypedVerifierStateCells  = 1 << 20
+	maxTotalParameterTypes      = 1 << 20
 )
+
+const maxTypeNameBytes = maxTypeNestingDepth*7 + len("string")
 
 type ValueKind string
 
@@ -115,11 +120,12 @@ type Instruction struct {
 	Column int `json:"column,omitempty"`
 }
 type Function struct {
-	Name   string        `json:"name"`
-	Params int           `json:"params"`
-	Locals int           `json:"locals"`
-	Return string        `json:"return"`
-	Code   []Instruction `json:"code"`
+	Name       string        `json:"name"`
+	Params     int           `json:"params"`
+	ParamTypes []string      `json:"param_types,omitempty"`
+	Locals     int           `json:"locals"`
+	Return     string        `json:"return"`
+	Code       []Instruction `json:"code"`
 }
 type Program struct {
 	Format    string     `json:"format"`
@@ -149,10 +155,16 @@ func (p *Program) Validate() error {
 	totalConstantValues := 0
 	totalConstantStringBytes := 0
 	totalConstantArrayItems := 0
+	constantTypes := make([]string, len(p.Constants))
 	for i, c := range p.Constants {
 		if err := validateConstantValueLimits(c, i, &totalConstantValues, &totalConstantStringBytes, &totalConstantArrayItems); err != nil {
 			return err
 		}
+		typ, err := abstractTypeForValue(c)
+		if err != nil {
+			return fmt.Errorf("constant %d has invalid static type: %w", i, err)
+		}
+		constantTypes[i] = typ
 	}
 	if p.Functions[p.Entry].Params != 0 {
 		return fmt.Errorf("entry function must not require parameters")
@@ -167,6 +179,14 @@ func (p *Program) Validate() error {
 		}
 		if f.Params < 0 || f.Locals < f.Params || f.Locals > (1<<20) {
 			return fmt.Errorf("function %q has invalid local count", f.Name)
+		}
+		if len(f.ParamTypes) != f.Params {
+			return fmt.Errorf("function %q has %d parameters but %d parameter types", f.Name, f.Params, len(f.ParamTypes))
+		}
+		for pi, typ := range f.ParamTypes {
+			if !validTypeName(typ) || typ == "unit" {
+				return fmt.Errorf("function %q parameter %d has invalid type %q", f.Name, pi, typ)
+			}
 		}
 		if !validTypeName(f.Return) {
 			return fmt.Errorf("function %q has invalid return type %q", f.Name, f.Return)
@@ -230,6 +250,18 @@ func (p *Program) Validate() error {
 	}
 	for _, f := range p.Functions {
 		if err := validateFunctionStack(f); err != nil {
+			return err
+		}
+	}
+	typedStateCells := 0
+	for _, f := range p.Functions {
+		if f.Locals > 0 && len(f.Code) > (maxTypedVerifierStateCells-typedStateCells)/f.Locals {
+			return fmt.Errorf("program exceeds typed verifier state safety limit")
+		}
+		typedStateCells += len(f.Code) * f.Locals
+	}
+	for fi := range p.Functions {
+		if err := validateFunctionTypes(p, fi, constantTypes); err != nil {
 			return err
 		}
 	}
@@ -399,15 +431,23 @@ func validateConstantValueLimits(root Value, constantIndex int, totalValues, tot
 }
 
 func validTypeName(t string) bool {
+	depth := 0
+	for strings.HasPrefix(t, "Array<") && strings.HasSuffix(t, ">") {
+		depth++
+		if depth > maxTypeNestingDepth {
+			return false
+		}
+		t = t[len("Array<") : len(t)-1]
+	}
+	if depth > 0 && t == "unit" {
+		return false
+	}
 	switch t {
 	case "i64", "f64", "bool", "string", "unit":
 		return true
+	default:
+		return false
 	}
-	if strings.HasPrefix(t, "Array<") && strings.HasSuffix(t, ">") {
-		elem := t[len("Array<") : len(t)-1]
-		return elem != "unit" && validTypeName(elem)
-	}
-	return false
 }
 
 func Write(w io.Writer, p *Program) error {
@@ -428,6 +468,7 @@ type bytecodePreflight struct {
 	arrayItems       int
 	functionEntries  int
 	instructionCount int
+	parameterTypes   int
 }
 
 const preflightErrorPrefix = "bytecode preflight: "
@@ -617,16 +658,68 @@ func preflightFunction(dec *json.Decoder, limits *bytecodePreflight) error {
 		if !ok {
 			return fmt.Errorf("invalid function object key")
 		}
-		if field == "code" {
+		switch field {
+		case "code":
 			if err := preflightInstructions(dec, limits); err != nil {
 				return err
 			}
-		} else if err := skipPreflightJSONValue(dec, 0); err != nil {
-			return err
+		case "param_types":
+			if err := preflightParameterTypes(dec, limits); err != nil {
+				return err
+			}
+		case "return":
+			if err := preflightTypeName(dec); err != nil {
+				return err
+			}
+		default:
+			if err := skipPreflightJSONValue(dec, 0); err != nil {
+				return err
+			}
 		}
 	}
 	_, err = dec.Token() // closing '}'
 	return err
+}
+
+func preflightParameterTypes(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		limits.parameterTypes++
+		if limits.parameterTypes > maxTotalParameterTypes {
+			return fmt.Errorf("%sparameter type metadata exceeds %d-entry safety limit", preflightErrorPrefix, maxTotalParameterTypes)
+		}
+		value, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		if typ, ok := value.(string); ok {
+			if len(typ) > maxTypeNameBytes {
+				return fmt.Errorf("%sparameter type name exceeds %d-byte safety limit", preflightErrorPrefix, maxTypeNameBytes)
+			}
+		} else if err := skipPreflightJSONToken(dec, value, 0); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token() // closing ']'
+	return err
+}
+
+func preflightTypeName(dec *json.Decoder) error {
+	value, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if typ, ok := value.(string); ok && len(typ) > maxTypeNameBytes {
+		return fmt.Errorf("%stype name exceeds %d-byte safety limit", preflightErrorPrefix, maxTypeNameBytes)
+	}
+	return skipPreflightJSONToken(dec, value, 0)
 }
 
 func preflightInstructions(dec *json.Decoder, limits *bytecodePreflight) error {

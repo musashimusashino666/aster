@@ -9,14 +9,14 @@ Aster 0.1 is a prototype. It has not undergone an independent security audit and
 - Runtime type checks in the bytecode VM even after static checking.
 - Checked signed-integer arithmetic and explicit division-by-zero errors.
 - Recursion, operand-stack depth, bytecode-size, and instruction-budget limits in the VM.
-- Per-value allocation bounds in the VM: strings are limited to 16 MiB of UTF-8 bytes, arrays to 262,144 elements, rendered output to 16 MiB, and loaded bytecode JSON to 64 MiB. The loader preflights constant-pool, function, instruction, string-byte, and array limits while streaming JSON tokens, before expanding the full program into Go structs.
-- Bytecode version and structural validation, including bounded pool/code sizes, plus control-flow/operand-stack height verification.
+- Per-value allocation bounds in the VM: strings are limited to 16 MiB of UTF-8 bytes, arrays to 262,144 elements, rendered output to 16 MiB, and loaded bytecode JSON to 64 MiB. The loader preflights constant-pool, function, instruction, parameter-type metadata, type-name length, string-byte, and array limits while streaming JSON tokens, before expanding the full program into Go structs.
+- Version 2 bytecode metadata includes function parameter types. Validation checks structure and resource bounds, then performs control-flow dataflow over operand-stack types and local initialization; stack nodes are shared across states and total local-state cells are capped to keep verification work bounded. Operand-stack heights and types must agree at merge points.
 - Native code generation uses mangled identifiers and checked arithmetic helpers; regression tests cover checked arithmetic for annotated array elements.
 - Temporary build directories are removed after native compilation.
 
 ## Current gaps
 
-- The bytecode verifier checks control flow and stack heights, but does not perform full abstract type verification or prove all semantic invariants.
+- The bytecode verifier now checks abstract value types, call signatures, return types, array element consistency, and definite local initialization. It still does not prove all semantic invariants or provide a sandbox.
 - No sandbox for file, network, or process access; those libraries are not present yet.
 - Native code is a normal host executable and has the same process privileges as its caller. VM instruction, call-depth, operand-stack, string, array, and printed-output limits do not currently apply to generated native executables.
 - The VM has per-value and decoded-constant bounds, but no comprehensive process-wide allocation quota. Repeated temporary allocations can still consume CPU and memory, and the VM is not a sandbox.

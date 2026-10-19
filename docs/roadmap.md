@@ -13,9 +13,9 @@ This roadmap is a planning document, not a commitment that work is already in pr
 
 ## Phase 0.2 — correctness and developer experience
 
-- [ ] Full bytecode control-flow and operand-stack verifier, including abstract type and local-initialization analysis
-- [x] Control-flow and operand-stack height verifier (stack underflow, merge consistency, and termination stack state)
-- [ ] Property-based and fuzz testing for lexer, parser, bytecode loader
+- [x] Bytecode control-flow, operand-stack, abstract-type, call-signature, and local-initialization verifier
+- [x] Control-flow and operand-stack-height verifier (stack underflow, merge consistency, and termination stack state)
+- [x] Fuzz targets for lexer, parser, bytecode loader, and bytecode instruction validation (broader sustained fuzz campaigns remain future work)
 - [ ] Differential testing between VM and native executable
 - [ ] Formatter and stable diagnostic codes
 - [ ] More exact return-flow analysis and error spans
