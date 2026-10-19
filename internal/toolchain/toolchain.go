@@ -10,6 +10,14 @@ import (
 )
 
 func BuildNative(goSource, output string) error {
+	goPath, err := exec.LookPath("go")
+	if err != nil {
+		return fmt.Errorf("native backend requires Go 1.23 or newer; executable %q was not found in PATH", "go")
+	}
+	gofmtPath, err := exec.LookPath("gofmt")
+	if err != nil {
+		return fmt.Errorf("native backend requires gofmt (normally installed with Go 1.23 or newer)")
+	}
 	abs, err := filepath.Abs(output)
 	if err != nil {
 		return err
@@ -28,12 +36,12 @@ func BuildNative(goSource, output string) error {
 	if err = os.WriteFile(filepath.Join(dir, "main.go"), []byte(goSource), 0o644); err != nil {
 		return err
 	}
-	fmtcmd := exec.Command("gofmt", "-w", "main.go")
+	fmtcmd := exec.Command(gofmtPath, "-w", "main.go")
 	fmtcmd.Dir = dir
 	if out, err := fmtcmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("format generated code: %w\n%s", err, strings.TrimSpace(string(out)))
 	}
-	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", abs, ".")
+	cmd := exec.Command(goPath, "build", "-trimpath", "-ldflags=-s -w", "-o", abs, ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOPROXY=off", "GOSUMDB=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
