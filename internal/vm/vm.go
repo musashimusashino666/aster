@@ -219,8 +219,12 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			if len(args) != 1 {
 				return v.fault(i, "print expects one argument")
 			}
-			if _, err := fmt.Fprintln(v.out, display(args[0])); err != nil {
-				return v.fault(i, "write output: %v", err)
+			text, err := display(args[0])
+			if err != nil {
+				return v.fault(i, "%v", err)
+			}
+			if _, writeErr := fmt.Fprintln(v.out, text); writeErr != nil {
+				return v.fault(i, "write output: %v", writeErr)
 			}
 			push(bytecode.Unit())
 		case 1:
@@ -267,11 +271,50 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 	_ = fnName
 	return nil
 }
-func display(v bytecode.Value) string {
-	if v.Kind == bytecode.ValueString {
-		return v.String
+func display(v bytecode.Value) (string, error) {
+	var out strings.Builder
+	if err := appendDisplay(&out, v, 0); err != nil {
+		return "", err
 	}
-	return v.StringValue()
+	return out.String(), nil
+}
+
+// appendDisplay caps rendered output as well as runtime string values. An array
+// can repeat the same string value many times, so a per-string limit alone does
+// not bound the size of its printable representation.
+func appendDisplay(out *strings.Builder, value bytecode.Value, depth int) error {
+	write := func(s string) error {
+		if len(s) > bytecode.MaxStringBytes-out.Len() {
+			return fmt.Errorf("printed value exceeds %d-byte output limit", bytecode.MaxStringBytes)
+		}
+		out.WriteString(s)
+		return nil
+	}
+
+	if value.Kind == bytecode.ValueArray {
+		if depth >= 256 && len(value.Array) > 0 {
+			return fmt.Errorf("printed array nesting exceeds depth limit")
+		}
+		if err := write("["); err != nil {
+			return err
+		}
+		for i, item := range value.Array {
+			if i > 0 {
+				if err := write(" "); err != nil {
+					return err
+				}
+			}
+			if err := appendDisplay(out, item, depth+1); err != nil {
+				return err
+			}
+		}
+		return write("]")
+	}
+
+	if value.Kind == bytecode.ValueString {
+		return write(value.String)
+	}
+	return write(value.StringValue())
 }
 func applyBinary(op bytecode.Op, a, b bytecode.Value) (bytecode.Value, error) {
 	if op == bytecode.OpEqual || op == bytecode.OpNotEqual {
@@ -288,6 +331,9 @@ func applyBinary(op bytecode.Op, a, b bytecode.Value) (bytecode.Value, error) {
 		cmp := strings.Compare(a.String, b.String)
 		switch op {
 		case bytecode.OpAdd:
+			if len(b.String) > bytecode.MaxStringBytes || len(a.String) > bytecode.MaxStringBytes-len(b.String) {
+				return bytecode.Value{}, fmt.Errorf("string length limit exceeded (maximum %d UTF-8 bytes)", bytecode.MaxStringBytes)
+			}
 			return bytecode.Str(a.String + b.String), nil
 		case bytecode.OpLess:
 			return bytecode.Bool(cmp < 0), nil

@@ -79,3 +79,57 @@ func TestVMArrayBoundsCheck(t *testing.T) {
 		t.Fatalf("expected bounds error, got %v", err)
 	}
 }
+
+func TestVMRejectsStringGrowthBeyondLimit(t *testing.T) {
+	_, err := runSource(t, `let mut s: string = "a"; while true { s = s + s; }`)
+	if err == nil || !strings.Contains(err.Error(), "string length limit exceeded") {
+		t.Fatalf("expected string length limit error, got %v", err)
+	}
+}
+
+func TestVMPrintOutputLimitProtectsRepeatedArrayStrings(t *testing.T) {
+	large := strings.Repeat("x", bytecode.MaxStringBytes/2)
+	p := &bytecode.Program{
+		Format:    "aster-bytecode",
+		Version:   bytecode.FormatVersion,
+		Constants: []bytecode.Value{bytecode.Array([]bytecode.Value{bytecode.Str(large), bytecode.Str(large)})},
+		Functions: []bytecode.Function{{
+			Name:   "main",
+			Params: 0,
+			Locals: 0,
+			Return: "unit",
+			Code: []bytecode.Instruction{
+				{Op: bytecode.OpConst, A: 0},
+				{Op: bytecode.OpBuiltin, A: 0, B: 1},
+				{Op: bytecode.OpPop},
+				{Op: bytecode.OpHalt},
+			},
+		}},
+		Entry: 0,
+	}
+	err := Run(p, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "printed value exceeds") {
+		t.Fatalf("expected bounded array display error, got %v", err)
+	}
+}
+
+func TestVMRejectsOversizedArrayBuildInstruction(t *testing.T) {
+	p := &bytecode.Program{
+		Format:    "aster-bytecode",
+		Version:   bytecode.FormatVersion,
+		Constants: []bytecode.Value{},
+		Functions: []bytecode.Function{{
+			Name:   "main",
+			Return: "unit",
+			Code: []bytecode.Instruction{
+				{Op: bytecode.OpBuildArray, A: bytecode.MaxArrayLength + 1},
+				{Op: bytecode.OpHalt},
+			},
+		}},
+		Entry: 0,
+	}
+	err := Run(p, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "invalid array element count") {
+		t.Fatalf("expected oversized array instruction rejection, got %v", err)
+	}
+}

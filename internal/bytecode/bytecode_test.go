@@ -2,6 +2,7 @@ package bytecode
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -202,4 +203,54 @@ func FuzzValidateInstructionOperandsNeverPanics(f *testing.F) {
 		}
 		_ = program.Validate()
 	})
+}
+
+func TestValidateRejectsOversizedStringConstant(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{Str(strings.Repeat("x", MaxStringBytes+1))},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code:   []Instruction{{Op: OpHalt}},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "string exceeds") {
+		t.Fatalf("expected string size limit error, got %v", err)
+	}
+}
+
+func TestValidateRejectsOversizedArrayConstant(t *testing.T) {
+	oversized := Value{Kind: ValueArray, Array: make([]Value, MaxArrayLength+1)}
+	p := stackVerifierProgram(0, []Value{oversized},
+		Function{
+			Name:   "main",
+			Return: "unit",
+			Code:   []Instruction{{Op: OpHalt}},
+		},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "maximum is") {
+		t.Fatalf("expected array size limit error, got %v", err)
+	}
+}
+
+func TestReadPreflightsOversizedConstantArrayBeforeDecode(t *testing.T) {
+	items := strings.Repeat("null,", MaxArrayLength)
+	input := "{\"format\":\"aster-bytecode\",\"version\":1,\"constants\":[{\"kind\":\"array\",\"array\":[" + items + "null]}],\"functions\":[{\"name\":\"main\",\"params\":0,\"locals\":0,\"return\":\"unit\",\"code\":[{\"op\":\"HALT\"}]}],\"entry\":0}"
+	_, err := Read(strings.NewReader(input))
+	if err == nil || !strings.Contains(err.Error(), "bytecode preflight: constant array exceeds") {
+		t.Fatalf("expected pre-decode array limit error, got %v", err)
+	}
+}
+
+func TestPreflightRejectsOversizedInstructionArray(t *testing.T) {
+	raw := []byte("{\"functions\":[{\"code\":[{},{}]}]}")
+	limits := &bytecodePreflight{instructionCount: maxTotalInstructions}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	_, _ = dec.Token() // root object
+	_, _ = dec.Token() // "functions"
+	_, _ = dec.Token() // functions array
+	_, _ = dec.Token() // function object
+	_, _ = dec.Token() // "code"
+	if err := preflightInstructions(dec, limits); err == nil || !strings.Contains(err.Error(), "instruction safety limit") {
+		t.Fatalf("expected instruction cap error, got %v", err)
+	}
 }
