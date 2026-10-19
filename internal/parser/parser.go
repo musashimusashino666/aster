@@ -310,6 +310,9 @@ func (p *Parser) expression(min int) (ast.Expr, error) {
 	case token.Int:
 		n, err := strconv.ParseInt(t.Lexeme, 10, 64)
 		if err != nil {
+			if t.Lexeme == "9223372036854775808" {
+				return nil, p.errorAt(t, "integer literal out of range; this magnitude is valid only immediately after unary '-' (write -9223372036854775808)")
+			}
 			return nil, p.errorAt(t, "integer literal out of range")
 		}
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "i64", Text: t.Lexeme, Int: n}
