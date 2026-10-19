@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/langtypes"
 )
 
 type typeScope struct {
@@ -42,10 +43,20 @@ func Generate(tree *ast.Program) (string, error) {
 	g := &generator{tree: tree, returns: map[string]string{}}
 	for _, d := range tree.Decls {
 		if f, ok := d.(*ast.Function); ok {
-			g.returns[f.Name] = "unit"
+			ret := "unit"
 			if f.ReturnType != nil {
-				g.returns[f.Name] = sourceTypeName(*f.ReturnType)
+				ret = sourceTypeName(*f.ReturnType)
 			}
+			if !langtypes.ValidName(ret) {
+				return "", fmt.Errorf("codegen: invalid return type %q for function %q", ret, f.Name)
+			}
+			for _, param := range f.Params {
+				paramType := sourceTypeName(param.Type)
+				if !langtypes.ValidName(paramType) || paramType == "unit" {
+					return "", fmt.Errorf("codegen: invalid parameter type %q for function %q", paramType, f.Name)
+				}
+			}
+			g.returns[f.Name] = ret
 		}
 	}
 	g.writePreamble()
@@ -160,6 +171,9 @@ func (g *generator) statement(s ast.Stmt) error {
 		}
 		if n.Annotation != nil {
 			t = sourceTypeName(*n.Annotation)
+		}
+		if !langtypes.ValidName(t) || t == "unit" {
+			return fmt.Errorf("codegen: invalid variable type %q for %q", t, n.Name)
 		}
 		g.line(fmt.Sprintf("v_%s := %s", n.Name, expr))
 		g.line("_ = v_" + n.Name)
@@ -389,7 +403,11 @@ func (g *generator) exprType(e ast.Expr) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("infer array element type: %w", err)
 		}
-		return "Array<" + elementType + ">", nil
+		arrayType := "Array<" + elementType + ">"
+		if !langtypes.ValidName(arrayType) {
+			return "", fmt.Errorf("type nesting exceeds limit %d", langtypes.MaxNestingDepth)
+		}
+		return arrayType, nil
 	case *ast.IndexExpr:
 		collectionType, err := g.exprType(n.Collection)
 		if err != nil {
