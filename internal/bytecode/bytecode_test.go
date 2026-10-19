@@ -234,7 +234,7 @@ func TestValidateRejectsOversizedArrayConstant(t *testing.T) {
 
 func TestReadPreflightsOversizedConstantArrayBeforeDecode(t *testing.T) {
 	items := strings.Repeat("null,", MaxArrayLength)
-	input := "{\"format\":\"aster-bytecode\",\"version\":1,\"constants\":[{\"kind\":\"array\",\"array\":[" + items + "null]}],\"functions\":[{\"name\":\"main\",\"params\":0,\"locals\":0,\"return\":\"unit\",\"code\":[{\"op\":\"HALT\"}]}],\"entry\":0}"
+	input := "{\"format\":\"aster-bytecode\",\"version\":2,\"constants\":[{\"kind\":\"array\",\"array\":[" + items + "null]}],\"functions\":[{\"name\":\"main\",\"params\":0,\"locals\":0,\"return\":\"unit\",\"code\":[{\"op\":\"HALT\"}]}],\"entry\":0}"
 	_, err := Read(strings.NewReader(input))
 	if err == nil || !strings.Contains(err.Error(), "bytecode preflight: constant array exceeds") {
 		t.Fatalf("expected pre-decode array limit error, got %v", err)
