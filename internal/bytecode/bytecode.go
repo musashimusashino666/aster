@@ -221,7 +221,6 @@ func (p *Program) Validate() error {
 	return nil
 }
 
-
 const maxVerifiedStackDepth = 1 << 20
 
 // validateFunctionStack performs a control-flow dataflow analysis over operand
