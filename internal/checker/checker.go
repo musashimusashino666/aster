@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/token"
 )
 
@@ -153,11 +154,18 @@ func typeFromName(s string) (Type, error) {
 	}
 }
 func typeFromRef(r ast.TypeRef) (Type, error) {
+	return typeFromRefDepth(r, 0)
+}
+
+func typeFromRefDepth(r ast.TypeRef, depth int) (Type, error) {
 	if r.Name == "Array" {
 		if r.Element == nil {
 			return "", fmt.Errorf("type Array requires an element type, e.g. Array<i64>")
 		}
-		elem, err := typeFromRef(*r.Element)
+		if depth >= langtypes.MaxNestingDepth {
+			return "", fmt.Errorf("type nesting exceeds limit %d", langtypes.MaxNestingDepth)
+		}
+		elem, err := typeFromRefDepth(*r.Element, depth+1)
 		if err != nil {
 			return "", err
 		}
