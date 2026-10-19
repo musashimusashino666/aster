@@ -203,4 +203,4 @@ See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The next priorities are
 
 ## License
 
-MIT; see [`LICENSE.txt`](LICENSE.txt).
+MIT; see [`LICENSE`](LICENSE).
