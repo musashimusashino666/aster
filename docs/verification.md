@@ -1,5 +1,7 @@
 # Verification record for Aster 0.1.0
 
+> **Historical baseline, not a current-main verification.** This record describes an earlier source archive. Checker, parser, code-generation, bytecode validation, and CI changes have landed since that archive was tested. The commands below have not been rerun against the current `main` by this record. Refresh this document after running the checks against a specific commit; do not use this baseline as evidence that the current branch passed them.
+
 The source archive was checked in a Linux amd64 environment with Go 1.23.x.
 
 Verified commands:
