@@ -154,7 +154,7 @@ func (g *generator) statement(s ast.Stmt) error {
 		}
 		t := g.exprType(n.Value)
 		if n.Annotation != nil {
-			t = n.Annotation.Name
+			t = sourceTypeName(*n.Annotation)
 		}
 		g.line(fmt.Sprintf("v_%s := %s", n.Name, expr))
 		g.line("_ = v_" + n.Name)
@@ -172,7 +172,10 @@ func (g *generator) statement(s ast.Stmt) error {
 		if err != nil {
 			return err
 		}
-		g.line(expr)
+		// Go only permits certain call expressions as statements. Assigning the
+		// value to the blank identifier preserves evaluation for all Aster
+		// expression statements (including pure expressions and unit calls).
+		g.line("_ = " + expr)
 		return nil
 	case *ast.IfStmt:
 		cond, err := g.expression(n.Condition)
