@@ -418,6 +418,7 @@ func Write(w io.Writer, p *Program) error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(p)
 }
+
 // bytecodePreflight tracks allocation-sensitive portions of the JSON before
 // decoding them into slices of Value, Function, and Instruction structs.
 type bytecodePreflight struct {
