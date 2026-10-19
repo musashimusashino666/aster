@@ -19,9 +19,9 @@ const (
 	MaxArrayLength              = 1 << 18
 	maxBytecodeFileBytes        = 64 << 20
 	maxConstantPoolEntries      = 1 << 18
-	maxTotalInstructions       = 1 << 20
-	maxFunctionCount           = 100000
-	maxJSONNestingDepth        = 1024
+	maxTotalInstructions        = 1 << 20
+	maxFunctionCount            = 100000
+	maxJSONNestingDepth         = 1024
 	maxArrayNestingDepth        = 256
 	maxConstantValueNodes       = 2 << 20
 	maxTotalConstantStringBytes = 32 << 20
@@ -432,9 +432,6 @@ type bytecodePreflight struct {
 const preflightErrorPrefix = "bytecode preflight: "
 
 func preflightBytecodeLimits(raw []byte) error {
-	if err := preflightBytecodeLimits(raw); err != nil {
-		return nil, err
-	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	first, err := dec.Token()
 	if err != nil {
@@ -705,6 +702,9 @@ func Read(r io.Reader) (*Program, error) {
 	}
 	if len(raw) > maxBytecodeFileBytes {
 		return nil, fmt.Errorf("bytecode file exceeds %d-byte safety limit", maxBytecodeFileBytes)
+	}
+	if err := preflightBytecodeLimits(raw); err != nil {
+		return nil, err
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
