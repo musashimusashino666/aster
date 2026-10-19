@@ -595,3 +595,17 @@ func TestPreflightRejectsOversizedTypeName(t *testing.T) {
 		t.Fatalf("expected oversized type name rejection, got %v", err)
 	}
 }
+
+func TestValidateRejectsExcessivelyNestedBuiltArrayType(t *testing.T) {
+	code := []Instruction{{Op: OpConst, A: 0}}
+	for i := 0; i <= maxTypeNestingDepth; i++ {
+		code = append(code, Instruction{Op: OpBuildArray, A: 1})
+	}
+	code = append(code, Instruction{Op: OpPop}, Instruction{Op: OpHalt})
+	p := stackVerifierProgram(0, []Value{I64(1)},
+		Function{Name: "main", Return: "unit", Code: code},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "array type nesting exceeds") {
+		t.Fatalf("expected array type nesting limit rejection, got %v", err)
+	}
+}
