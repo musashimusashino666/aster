@@ -146,6 +146,18 @@ go test ./internal/vm -run '^$' -bench '^BenchmarkVM' -benchmem -count=5
 
 テストには、構文解析・型エラー・配列境界チェック・整数オーバーフロー・再帰・論理演算の短絡評価・バイトコードの保存と読込・VMとネイティブ実行の出力一致が含まれます。ベンチマークは測定用の入口であり、現在のREADMEは他言語との速度優位性を主張していません。
 
+## 品質検証とCI
+
+ローカルで以下を実行すると、書式チェック、テスト、静的解析、ビルドをまとめて確認できます。
+
+```bash
+make check
+make examples
+go test -race ./...
+```
+
+GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）でも、Go 1.23と最新安定版Goについて、書式チェック、テスト、race detector、静的解析、ビルド、サンプル実行を検証します。
+
 ## 詳細ドキュメント
 
 - [`docs/language-spec.md`](docs/language-spec.md): 現在実装されている文法と意味
@@ -156,4 +168,4 @@ go test ./internal/vm -run '^$' -bench '^BenchmarkVM' -benchmem -count=5
 - [`bench/README.md`](bench/README.md): ベンチマーク方法
 - [`CHANGELOG.md`](CHANGELOG.md): 変更履歴
 
-MITライセンス。詳細は [`LICENSE`](LICENSE) を参照してください。
+MITライセンス。詳細は [`LICENSE.txt`](LICENSE.txt) を参照してください。
