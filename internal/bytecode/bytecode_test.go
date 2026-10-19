@@ -2,6 +2,7 @@ package bytecode
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -203,7 +204,6 @@ func FuzzValidateInstructionOperandsNeverPanics(f *testing.F) {
 		_ = program.Validate()
 	})
 }
-
 
 func TestValidateRejectsOversizedStringConstant(t *testing.T) {
 	p := stackVerifierProgram(0, []Value{Str(strings.Repeat("x", MaxStringBytes+1))},
