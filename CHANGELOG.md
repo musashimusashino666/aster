@@ -6,16 +6,7 @@
 - Rejected invalid `unit` bindings and print arguments, reserved compiler-internal function names, and improved integer-boundary and unsupported array-assignment diagnostics.
 - Normalized CLI value flags after positional arguments, with support for both single- and double-dash `engine` spelling.
 - Added bytecode control-flow and operand-stack-height verification, including stack underflow and malformed termination-state checks.
-- Expanded regression coverage for VM/native parity and malformed bytecode; updated implementation and security documentation.
-- Restored generated-artifact ignore rules and pinned GitHub Actions dependencies to immutable commit SHAs.
-
-## Unreleased
-
-- Fixed native code generation for annotated array types and non-call expression statements.
-- Rejected invalid `unit` bindings and print arguments, reserved compiler-internal function names, and improved integer-boundary and unsupported array-assignment diagnostics.
-- Normalized CLI value flags after positional arguments, with support for both single- and double-dash `engine` spelling.
-- Added bytecode control-flow and operand-stack-height verification, including stack underflow and malformed termination-state checks.
-- Expanded regression coverage for VM/native parity and malformed bytecode; updated implementation and security documentation.
+- Expanded regression coverage for VM/native parity and malformed bytecode; added fuzz targets for bytecode loading and validation and an example-to-bytecode verification test.
 - Restored generated-artifact ignore rules and pinned GitHub Actions dependencies to immutable commit SHAs.
 
 ## 0.1.0 — initial prototype
