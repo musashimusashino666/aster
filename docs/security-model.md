@@ -9,7 +9,7 @@ Aster 0.1 is a prototype. It has not undergone an independent security audit and
 - Runtime type checks in the bytecode VM even after static checking.
 - Checked signed-integer arithmetic and explicit division-by-zero errors.
 - Recursion, operand-stack depth, bytecode-size, and instruction-budget limits in the VM.
-- Per-value allocation bounds in the VM: strings are limited to 16 MiB of UTF-8 bytes, arrays to 262,144 elements, rendered output to 16 MiB, and loaded bytecode JSON to 64 MiB. The loader preflights constant-pool, function, instruction, string-byte, and array limits while streaming JSON tokens, before expanding the full program into Go structs.
+- Per-value allocation bounds in the VM: strings are limited to 16 MiB of UTF-8 bytes, arrays to 262,144 elements, rendered output to 16 MiB, and loaded bytecode JSON to 64 MiB. The loader preflights constant-pool, function, instruction, parameter-type metadata, type-name length, string-byte, and array limits while streaming JSON tokens, before expanding the full program into Go structs.
 - Version 2 bytecode metadata includes function parameter types. Validation checks structure and resource bounds, then performs control-flow dataflow over operand-stack types and local initialization; stack nodes are shared across states and total local-state cells are capped to keep verification work bounded. Operand-stack heights and types must agree at merge points.
 - Native code generation uses mangled identifiers and checked arithmetic helpers; regression tests cover checked arithmetic for annotated array elements.
 - Temporary build directories are removed after native compilation.
