@@ -60,7 +60,7 @@ func Generate(tree *ast.Program) (string, error) {
 	}
 	g.line("func main() {")
 	g.indent++
-	g.line("defer func() { if r := recover(); r != nil { fmt.Fprintln(os.Stderr, \"Aster runtime error:\", r); os.Exit(1) } }()")
+	g.line("defer func() { if r := recover(); r != nil { msg := strings.TrimPrefix(fmt.Sprint(r), \"runtime error: \"); fmt.Fprintln(os.Stderr, \"Aster runtime error:\", msg); os.Exit(1) } }()")
 	g.scope = newTypeScope(nil)
 	for _, d := range tree.Decls {
 		sd, ok := d.(*ast.StmtDecl)
@@ -84,6 +84,7 @@ func (g *generator) writePreamble() {
 	g.line("\"fmt\"")
 	g.line("\"math\"")
 	g.line("\"os\"")
+	g.line("\"strings\"")
 	g.line("\"unicode/utf8\"")
 	g.indent--
 	g.line(")")
@@ -91,6 +92,7 @@ func (g *generator) writePreamble() {
 	g.line("func asterPrint(v any) struct{} { fmt.Println(v); return struct{}{} }")
 	g.line("func asterLenString(s string) int64 { return int64(utf8.RuneCountInString(s)) }")
 	g.line("func asterAssert(ok bool) struct{} { if !ok { panic(\"assertion failed\") }; return struct{}{} }")
+	g.line("func asterIndexI64[T any](s []T, i int64) T { if i < 0 || i >= int64(len(s)) { panic(fmt.Sprintf(\"array index %d out of bounds for length %d\", i, len(s))) }; return s[int(i)] }")
 	g.line("const asterMaxI64 int64 = 1<<63 - 1")
 	g.line("const asterMinI64 int64 = -1 << 63")
 	g.line("func asterAddI64(a,b int64) int64 { if (b>0 && a>asterMaxI64-b)||(b<0 && a<asterMinI64-b) { panic(\"i64 overflow in addition\") }; return a+b }")
@@ -276,7 +278,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "(" + collection + ")[int(" + index + ")]", nil
+		return "asterIndexI64(" + collection + ", " + index + ")", nil
 	case *ast.IdentifierExpr:
 		if _, ok := g.scope.find(n.Name); !ok {
 			return "", fmt.Errorf("codegen: unknown identifier %q", n.Name)
