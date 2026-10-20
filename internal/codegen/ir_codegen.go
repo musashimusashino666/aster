@@ -365,28 +365,27 @@ func (g *generator) irMatchExpression(n *ir.MatchExpr) (string, error) {
 		if len(arm.VariantIndexes) == 0 {
 			return "", fmt.Errorf("codegen: empty match arm target list")
 		}
-		variantIndex := -1
-		if len(arm.VariantIndexes) == 1 {
-			variantIndex = arm.VariantIndexes[0]
+		targets := make([]string, len(arm.VariantIndexes))
+		for i, target := range arm.VariantIndexes {
+			targets[i] = strconv.Itoa(target)
 		}
-		for _, target := range arm.VariantIndexes {
-			parts = append(parts, fmt.Sprintf("case %d:", target))
-			if len(arm.Bindings) > 0 && variantIndex != target {
-				return "", fmt.Errorf("codegen: payload bindings must belong to a single enum variant")
-			}
-			for payloadIndex, binding := range arm.Bindings {
-				value := fmt.Sprintf("%s.v_%d.p_%d", subjectName, target, payloadIndex)
-				if isAggregateType(string(binding.Type)) {
-					value = "asterShareValue(" + value + ")"
-				}
-				parts = append(parts, irLocalName(binding.ID)+" := "+value)
-			}
-			value, err := g.irExpression(arm.Expr)
-			if err != nil {
-				return "", err
-			}
-			parts = append(parts, "return "+value)
+		parts = append(parts, "case "+strings.Join(targets, ", ")+":")
+		if len(arm.Bindings) > 0 && len(arm.VariantIndexes) != 1 {
+			return "", fmt.Errorf("codegen: payload bindings must belong to a single enum variant")
 		}
+		variantIndex := arm.VariantIndexes[0]
+		for payloadIndex, binding := range arm.Bindings {
+			value := fmt.Sprintf("%s.v_%d.p_%d", subjectName, variantIndex, payloadIndex)
+			if isAggregateType(string(binding.Type)) {
+				value = "asterShareValue(" + value + ")"
+			}
+			parts = append(parts, irLocalName(binding.ID)+" := "+value)
+		}
+		value, err := g.irExpression(arm.Expr)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, "return "+value)
 	}
 	parts = append(parts, "}; panic("+strconv.Quote("invalid enum match dispatch")+") }()")
 	return strings.Join(parts, "\n"), nil
