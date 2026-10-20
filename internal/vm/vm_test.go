@@ -197,7 +197,7 @@ func TestIndexedArrayAssignmentChecksBounds(t *testing.T) {
 		t.Fatalf("expected out-of-bounds runtime error, got %v", err)
 	}
 }
- 
+
 func TestArraySlicesAreIndependentValues(t *testing.T) {
 	source := `let original = [1, 2, 3, 4];
 let mut part = original[1:3];
