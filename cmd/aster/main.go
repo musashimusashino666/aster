@@ -237,6 +237,9 @@ func writeBytecodeAtomically(path string, program *bytecode.Program) error {
 func writeOutputAtomically(path string, write func(io.Writer) error) error {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create output directory %s: %w", dir, err)
+	}
 	mode := os.FileMode(0)
 	preserveMode := false
 	if info, err := os.Stat(path); err == nil {
