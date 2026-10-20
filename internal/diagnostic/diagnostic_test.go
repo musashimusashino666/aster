@@ -233,7 +233,6 @@ func TestWrapToolchainPreservesCancellation(t *testing.T) {
 	}
 }
 
-
 func TestNewSpanRetainsExclusiveEndWithoutChangingErrorFormat(t *testing.T) {
 	start := token.Position{Offset: 2, Line: 1, Column: 3}
 	end := token.Position{Offset: 5, Line: 1, Column: 6}
