@@ -37,7 +37,7 @@ Use `hyperfine` or another controlled harness to compare repeated executions of 
 
 ## Array element assignment
 
-Use the repository script to capture the array benchmark together with its environment metadata and repeated-run summary:
+Run from a Git checkout with Go and Python 3 available. The repository script captures the array benchmark together with its environment metadata and repeated-run summary:
 
 ```bash
 bash scripts/bench-array-assignment.sh
