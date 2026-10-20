@@ -102,4 +102,5 @@ const (
 	TypeFunctionArity          = "TYP044"
 	TypeArgumentMismatch       = "TYP045"
 	TypeUnsupportedExpression  = "TYP046"
+	TypeIndexAssignmentMismatch = "TYP047"
 )
