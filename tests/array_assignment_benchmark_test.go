@@ -15,12 +15,20 @@ import (
 	"github.com/aster-lang/aster/internal/vm"
 )
 
-var arrayAssignmentBenchmarkSizes = []int{16, 64, 256}
+var arrayAssignmentBenchmarkWorkloads = []struct {
+	size   int
+	rounds int
+}{
+	{size: 16, rounds: 2048},
+	{size: 64, rounds: 512},
+	{size: 256, rounds: 256},
+}
 
 func BenchmarkArrayElementAssignmentVM(b *testing.B) {
-	for _, size := range arrayAssignmentBenchmarkSizes {
-		b.Run(fmt.Sprintf("n=%d", size), func(b *testing.B) {
-			tree, err := parser.Parse(arrayAssignmentWorkloadSource(size), "array-assignment-benchmark.ast")
+	for _, workload := range arrayAssignmentBenchmarkWorkloads {
+		size, rounds := workload.size, workload.rounds
+		b.Run(fmt.Sprintf("n=%d/rounds=%d", size, rounds), func(b *testing.B) {
+			tree, err := parser.Parse(arrayAssignmentWorkloadSourceWithRounds(size, rounds), "array-assignment-benchmark.ast")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -40,14 +48,17 @@ func BenchmarkArrayElementAssignmentVM(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
+			assignments := float64(b.N) * float64(size) * float64(rounds)
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/assignments, "ns/assignment")
 		})
 	}
 }
 
 func BenchmarkArrayElementAssignmentNative(b *testing.B) {
-	for _, size := range arrayAssignmentBenchmarkSizes {
-		b.Run(fmt.Sprintf("n=%d", size), func(b *testing.B) {
-			tree, err := parser.Parse(arrayAssignmentWorkloadSource(size), "array-assignment-benchmark.ast")
+	for _, workload := range arrayAssignmentBenchmarkWorkloads {
+		size, rounds := workload.size, workload.rounds
+		b.Run(fmt.Sprintf("n=%d/rounds=%d", size, rounds), func(b *testing.B) {
+			tree, err := parser.Parse(arrayAssignmentWorkloadSourceWithRounds(size, rounds), "array-assignment-benchmark.ast")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -64,8 +75,8 @@ func BenchmarkArrayElementAssignmentNative(b *testing.B) {
 				b.Fatal(err)
 			}
 
-			// Compilation is excluded from the timed section. Each benchmark
-			// operation includes native process startup and program execution.
+			// Compilation is excluded. Each timed operation still launches a
+			// process; size-specific rounds reduce the startup-time share.
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				cmd := exec.Command(bin)
@@ -75,6 +86,8 @@ func BenchmarkArrayElementAssignmentNative(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
+			assignments := float64(b.N) * float64(size) * float64(rounds)
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/assignments, "ns/assignment")
 		})
 	}
 }

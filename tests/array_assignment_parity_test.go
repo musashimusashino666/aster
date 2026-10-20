@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -76,10 +77,9 @@ print(matrixSnapshot);`
 	}
 }
 
-// arrayAssignmentWorkloadSource creates a workload that fills an existing
-// array by indexed assignment and then consumes every value so the work remains
-// observable to the native compiler.
-func arrayAssignmentWorkloadSource(size int) string {
+// arrayAssignmentWorkloadSourceWithRounds repeatedly assigns every array element
+// and consumes the final values so that the work remains observable to both backends.
+func arrayAssignmentWorkloadSourceWithRounds(size, rounds int) string {
 	var source strings.Builder
 	source.WriteString("let mut values: Array<i64> = [")
 	for i := 0; i < size; i++ {
@@ -88,7 +88,9 @@ func arrayAssignmentWorkloadSource(size int) string {
 		}
 		source.WriteByte('0')
 	}
-	source.WriteString("]; let mut i: i64 = 0; while i < len(values) { values[i] = i; i = i + 1; } ")
+	source.WriteString("]; let mut round: i64 = 0; while round < ")
+	source.WriteString(strconv.Itoa(rounds))
+	source.WriteString(" { let mut i: i64 = 0; while i < len(values) { values[i] = i; i = i + 1; } round = round + 1; } ")
 	source.WriteString("let mut checksum: i64 = 0; let mut j: i64 = 0; while j < len(values) { checksum = checksum + values[j]; j = j + 1; } print(checksum);")
 	return source.String()
 }
