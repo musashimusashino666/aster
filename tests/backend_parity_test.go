@@ -739,3 +739,61 @@ func TestConstantConditionFlowBackendParity(t *testing.T) {
 		t.Fatalf("execution output = %q, want %q", got, want)
 	}
 }
+
+func TestIndexedArrayAssignmentBackendParityAndValueSemantics(t *testing.T) {
+	source := \`fn replaceFirst(values: Array<i64>) -> Array<i64> {
+    let mut copy: Array<i64> = values;
+    copy[0] = 9;
+    return copy;
+}
+let mut matrix: Array<Array<i64>> = [[1, 2], [3, 4]];
+let mut alias: Array<Array<i64>> = matrix;
+alias[0][1] = 9;
+print(alias);
+print(matrix);
+let mut row: Array<i64> = [7, 8];
+alias[1] = row;
+alias[1][0] = 6;
+print(alias);
+print(row);
+print(replaceFirst([4, 5]));\`
+	tree, err := parser.Parse(source, "indexed-assignment-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-indexed-assignment")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin)
+	var nativeOutput bytes.Buffer
+	cmd.Stdout = &nativeOutput
+	cmd.Stderr = &bytes.Buffer{}
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if vmOutput.String() != nativeOutput.String() {
+		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), nativeOutput.String())
+	}
+	want := "[[1 9] [3 4]]\\n[[1 2] [3 4]]\\n[[1 9] [6 8]]\\n[7 8]\\n[9 5]\\n"
+	if got := vmOutput.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
