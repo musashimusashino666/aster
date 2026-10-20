@@ -28,15 +28,17 @@
 | Functions, recursion, conditionals, loops, return | Implemented |
 | Immutable bindings by default; `let mut` for assignment | Implemented |
 | Arrays (`Array<T>`), homogeneous literals, `len`, checked indexing and slicing | Implemented; `let mut` supports nested indexed assignment with value semantics and slices return independent array values |
-| `Option`, `Result`, enums, structs, user generics | Planned; not implemented |
+| Structs, enums, and flat exhaustive `match` | Implemented subset; struct fields are read-only, and structs/enums cannot be printed or compared for equality |
+| User-defined generic functions, structs, and enums (including ordinary `Option<T>` / `Result<T, E>` definitions) | Implemented with monomorphization limits; traits/bounds, generic methods, and generic operator constraints are unsupported |
 | Bytecode compiler and JSON bytecode file | Implemented |
 | Bytecode structural, stack-height, abstract type, and local-initialization verification | Implemented |
 | Bytecode VM with runtime checks and resource limits | Implemented |
 | Native executable build | Implemented via Aster-to-Go code generation and host Go compiler |
 | Cross-platform executable | Depends on the Go toolchain and its target support |
 | WebAssembly target | Planned; not implemented |
-| Standard library beyond `print`, `len`, `assert` | Not implemented |
-| Imports, modules, package registry, async/await, closures | Planned; not implemented |
+| Standard library beyond the core built-ins (`print`, `len`, `assert`) | Not implemented; paths, files, JSON, time, and CLI-argument parsing are not yet provided |
+| Imports, modules, dependency lockfile, and package registry | Planned; not implemented |
+| `async/await`, closures, macros, ownership/borrowing analysis | Planned; not implemented |
 | Production security audit and benchmark suite | Not yet completed |
 
 ## Requirements
@@ -214,7 +216,7 @@ The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci
 
 ## Roadmap
 
-See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, and stable lexer/parser/type-checker diagnostic codes are implemented. Near-term work is focused on end-to-end source spans, continued fuzzing and differential testing, runtime/toolchain diagnostic codes, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
+See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, stable lexer/parser/type-checker/runtime/bytecode/toolchain diagnostic codes, structs, enums with flat exhaustive `match`, and user-defined generics are implemented. `Option<T>` and `Result<T, E>` are ordinary user-defined generic enums, not built-in error-handling facilities. Near-term work is focused on complete end-to-end source spans, broader fuzzing and VM/Native differential testing, end-to-end build and process-memory benchmarks, and a specified Native resource policy. Modules/imports and standard-library support for paths, files, JSON, time, and CLI arguments follow; LSP work should follow stable source spans and module resolution. WebAssembly, an independent LLVM/Cranelift backend, AI runtime integration, and embedded profiles remain longer-term work.
 
 ## License
 

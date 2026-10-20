@@ -1,6 +1,6 @@
 # Aster roadmap
 
-This roadmap is a planning document, not a commitment that work is already in progress.
+This roadmap is a planning document, not a commitment that work is already in progress. Checkboxes describe the implementation and verification status in the current source tree; the language specification defines the exact supported subset, while the READMEs provide summaries.
 
 ## Phase 0.1 — core language prototype (current)
 

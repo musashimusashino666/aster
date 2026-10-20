@@ -2,11 +2,11 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-20
-- **Relationship:** Refines the third stage in [ADR 0006: Nominal data types and pattern-matching rollout](0006-nominal-data-types-and-pattern-matching.md). This record defines implementation requirements; it does not claim generics are already implemented.
+- **Relationship:** Refines the generic rollout stage in [ADR 0006: Nominal data types and pattern-matching rollout](0006-nominal-data-types-and-pattern-matching.md). The generic function, struct, and enum subset described here is implemented on the current main branch; this ADR specifies its semantics, resource limits, and acceptance criteria, not support for excluded extensions.
 
 ## Context
 
-Aster supports concrete nominal structs and enums plus the built-in `Array<T>`. User-defined generics are needed for reusable nominal types and ordinary `Option<T>` / `Result<T, E>` enums. They affect parsing, substitution, recursive-layout checks, compile-time resource use, typed IR, bytecode verification, and Native Go generation.
+Aster supports generic functions, nominal structs and enums, the built-in `Array<T>`, and ordinary user-defined generic enums such as `Option<T>` and `Result<T, E>`. Generic declarations are monomorphized and affect parsing, substitution, recursive-layout checks, compile-time resource use, typed IR, bytecode verification, and Native Go generation.
 
 The VM and Native backends already consume shared, type-resolved IR. Generic semantics should therefore be resolved once, before either backend emits code, rather than re-inferred independently by the VM compiler and Native code generator.
 
@@ -60,7 +60,7 @@ let n = identity::<i64>(7);
 - Type parameters may appear in function parameters and returns, local annotations, struct fields, enum payloads, and nested type applications. Substitution recursively visits every occurrence.
 - The first slice has no traits or bounds, `where` clauses, associated types, higher-kinded parameters, const generics, generic methods, or specialization/overload system. A type parameter cannot be used with an operator or built-in that requires a capability not established by the checker. Such code receives a type diagnostic.
 - Generic functions may bind, pass, return, and forward values of parameter types. Operations requiring a particular primitive or aggregate capability must still be supported by the existing concrete type rules.
-- Generic structs and enums preserve nominal identity, arity checks, exhaustive matching, and array copy-on-write (COW) behavior. `Option<T>` and `Result<T, E>` are ordinary generic enums, not magic checker cases or dedicated VM opcodes; they land only after generic enum parity is proven.
+- Generic structs and enums preserve nominal identity, arity checks, exhaustive matching, and array copy-on-write (COW) behavior. `Option<T>` and `Result<T, E>` are ordinary generic enums, not magic checker cases or dedicated VM opcodes. The language does not provide them as predeclared built-ins or as a standard error-handling library.
 
 ### 4. Substitution, recursion, and caching
 
@@ -86,9 +86,9 @@ Limit failures must be source-positioned where a source declaration or instantia
 - Native generation consumes the same concrete IR as the VM compiler. Specialized functions and nominal types use collision-free compiler-generated identifiers; user-provided generic names are never trusted as raw Go source.
 - COW boundaries must remain correct through generic parameter passing, returns, fields, enum payloads, and extraction.
 
-### 7. Required implementation sequence and acceptance criteria
+### 7. Implemented rollout and ongoing acceptance criteria
 
-Implement small vertical slices in this order:
+The implementation landed in these small vertical slices, in this order:
 
 1. Type-parameter syntax and structural substitution for generic functions.
 2. Generic function inference and canonical monomorphization.
@@ -98,7 +98,7 @@ Implement small vertical slices in this order:
 
 Each slice needs parser acceptance/rejection tests, negative type-checking tests with stable diagnostic codes, recursive-expansion boundary tests, malformed-bytecode tests, and VM/Native differential fixtures. Fixtures must cover one and multiple type parameters, nested `Array<T>`, recursive generic functions, enum payload bindings, and COW boundaries. Run the full CI matrix on Go stable and Go 1.23.x, including race detection, static analysis, examples, and 32-bit safety checks.
 
-The language specification must describe only the exact features landed; the roadmap stays unchecked until both backends and all applicable negative tests are complete.
+The language specification and roadmap must describe only the exact implemented subset. These generic capabilities are marked implemented in the roadmap; future extensions must not be marked complete until both backends and all applicable negative tests are complete.
 
 ## Consequences
 
