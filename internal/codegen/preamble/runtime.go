@@ -185,9 +185,10 @@ func asterIndexI64[T any](s asterArray[T], i int64, line, column int) T {
 	if i < 0 || i >= int64(len(s.Items)) {
 		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", i, len(s.Items)))
 	}
-	value := s.Items[int(i)]
-	asterMarkArrayShared(value)
-	return value
+	// Indexing is a read, not a semantic copy. The code generator marks
+	// array-valued index results shared only when they cross a value-copy
+	// boundary (binding, rebinding, argument, or return).
+	return s.Items[int(i)]
 }
 
 func asterSlice[T any](s asterArray[T], start, end int64, line, column int) asterArray[T] {
