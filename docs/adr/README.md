@@ -10,6 +10,7 @@ This directory is the canonical home for Aster Architecture Decision Records (AD
 | [ADR 0002: Checked arithmetic in the prototype](0002-arithmetic.md) | Checked arithmetic semantics | Accepted | 2026-10-19 |
 | [ADR 0003: Array value semantics](0003-array-value-semantics.md) | Arrays have independent value semantics | Accepted | 2026-10-20 |
 | [ADR 0004: Copy-on-write array storage](0004-array-copy-on-write.md) | Copy-on-write implementation for array mutation | Accepted | 2026-10-20 |
+| [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md) | Current VM/Native resource guarantees and enforcement boundaries | Accepted | 2026-10-20 |
 
 ## Numbering and file names
 
