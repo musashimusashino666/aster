@@ -127,3 +127,24 @@ func TestNativeRuntimePreambleLimitsMatchSharedDefinitions(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateTypedZeroArgumentUserCallHasValidArguments(t *testing.T) {
+	tree, err := parser.Parse(`fn value() -> i64 { return 1; } print(value());`, "zero-arg-call.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(source, "asterFn_0(,") {
+		t.Fatalf("generated zero-argument call has an empty argument before the location metadata:\n%s", source)
+	}
+	if !strings.Contains(source, "asterFn_0(1, ") {
+		t.Fatalf("generated zero-argument call is missing location metadata:\n%s", source)
+	}
+}

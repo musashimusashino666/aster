@@ -190,3 +190,67 @@ func TestAnalyzeBuildsTypedIRWithResolvedSymbolsAndCheckedOperations(t *testing.
 		t.Fatalf("assignment target did not resolve to outer symbol: %#v", typed.IR.Body[2])
 	}
 }
+
+func TestConstantBooleanConditionsImproveReturnFlow(t *testing.T) {
+	valid := []struct {
+		name   string
+		source string
+	}{
+		{
+			name:   "literal true if without else",
+			source: "fn f() -> i64 { if true { return 1; } }",
+		},
+		{
+			name:   "literal false if selects else",
+			source: "fn f() -> i64 { if false { return 1; } else { return 2; } }",
+		},
+		{
+			name:   "literal true while never falls through",
+			source: "fn f() -> i64 { while true { } }",
+		},
+		{
+			name:   "literal false while falls through to return",
+			source: "fn f() -> i64 { while false { return 1; } return 2; }",
+		},
+	}
+	for _, tt := range valid {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := checkSource(t, tt.source); err != nil {
+				t.Fatalf("expected source to type-check: %v", err)
+			}
+		})
+	}
+
+	invalid := []struct {
+		name   string
+		source string
+	}{
+		{
+			name:   "literal false if without else",
+			source: "fn f() -> i64 { if false { return 1; } }",
+		},
+		{
+			name:   "nonconstant while may execute zero times",
+			source: "fn f(condition: bool) -> i64 { while condition { return 1; } }",
+		},
+		{
+			name:   "literal true branch that falls through",
+			source: "fn f() -> i64 { if true { print(1); } }",
+		},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkSource(t, tt.source)
+			if err == nil || !strings.Contains(err.Error(), "must return i64") {
+				t.Fatalf("expected missing-return diagnostic, got %v", err)
+			}
+		})
+	}
+}
+
+func TestRejectsStatementsAfterNonFallthroughWhile(t *testing.T) {
+	err := checkSource(t, "fn f() { while true { } print(1); }")
+	if err == nil || !strings.Contains(err.Error(), "unreachable statement") {
+		t.Fatalf("expected unreachable-statement diagnostic, got %v", err)
+	}
+}

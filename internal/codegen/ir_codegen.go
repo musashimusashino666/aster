@@ -101,6 +101,15 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		g.line("_ = " + expr)
 		return nil
 	case *ir.IfStmt:
+		if condition, constant := ir.BoolLiteral(n.Condition); constant {
+			if condition {
+				return g.irBlockContents(n.Then)
+			}
+			if n.Else != nil {
+				return g.irStatement(n.Else)
+			}
+			return nil
+		}
 		condition, err := g.irExpression(n.Condition)
 		if err != nil {
 			return err
@@ -126,6 +135,17 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		}
 		return nil
 	case *ir.WhileStmt:
+		if condition, constant := ir.BoolLiteral(n.Condition); constant {
+			if !condition {
+				return nil
+			}
+			g.line("for {")
+			g.indent++
+			err := g.irBlockContents(n.Body)
+			g.indent--
+			g.line("}")
+			return err
+		}
 		condition, err := g.irExpression(n.Condition)
 		if err != nil {
 			return err
@@ -281,7 +301,11 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		case ir.CallAssert:
 			return "asterAssert(" + joined + ", " + irPositionArgs(n) + ")", nil
 		case ir.CallUserFunction:
-			return irFunctionName(n.Function) + "(" + joined + ", " + irPositionArgs(n) + ")", nil
+			callArgs := joined
+			if callArgs != "" {
+				callArgs += ", "
+			}
+			return irFunctionName(n.Function) + "(" + callArgs + irPositionArgs(n) + ")", nil
 		default:
 			return "", fmt.Errorf("codegen: unsupported IR call target %q", n.Target)
 		}

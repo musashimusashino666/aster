@@ -651,21 +651,38 @@ func binaryOperation(op string, operand Type) (RuntimeOp, bool) {
 	return "", false
 }
 
-// AlwaysReturns reports whether the checked control-flow shape guarantees a
-// return on all paths represented by stmt. Loops remain conservative because
-// the language does not assume that a loop executes at least once.
-func AlwaysReturns(stmt Stmt) bool {
+// BoolLiteral reports the value of a boolean literal expression.
+func BoolLiteral(expr Expr) (bool, bool) {
+	literal, ok := expr.(*LiteralExpr)
+	if !ok || literal.Kind != "bool" {
+		return false, false
+	}
+	return literal.Bool, true
+}
+
+// CannotFallThrough reports whether a statement has no reachable continuation.
+// A literal-true while loop cannot fall through because Aster has no break.
+func CannotFallThrough(stmt Stmt) bool {
 	switch n := stmt.(type) {
 	case *ReturnStmt:
 		return true
 	case *BlockStmt:
 		for _, child := range n.Statements {
-			if AlwaysReturns(child) {
+			if CannotFallThrough(child) {
 				return true
 			}
 		}
 	case *IfStmt:
-		return n.Else != nil && AlwaysReturns(n.Then) && AlwaysReturns(n.Else)
+		if condition, constant := BoolLiteral(n.Condition); constant {
+			if condition {
+				return CannotFallThrough(n.Then)
+			}
+			return n.Else != nil && CannotFallThrough(n.Else)
+		}
+		return n.Else != nil && CannotFallThrough(n.Then) && CannotFallThrough(n.Else)
+	case *WhileStmt:
+		condition, constant := BoolLiteral(n.Condition)
+		return constant && condition
 	}
 	return false
 }
