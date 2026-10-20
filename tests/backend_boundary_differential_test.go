@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -82,20 +81,15 @@ print((false && (1 / 0 == 0)) || (true && (score(2) == 0)));
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			first := tc.source
-			second := tc.source
-			if first != second {
-				t.Fatal("fixed boundary program changed between executions")
-			}
-			result := runSeededProgramOnBothBackends(t, first, fmt.Sprintf("boundary-%s.ast", tc.name))
+			result := runSeededProgramOnBothBackends(t, tc.source, "boundary-"+tc.name+".ast")
 			if result.vmErr != nil {
-				t.Fatalf("VM failed: %v\noutput: %q\nsource:\n%s", result.vmErr, result.vmOutput, first)
+				t.Fatalf("VM failed: %v\noutput: %q\nsource:\n%s", result.vmErr, result.vmOutput, tc.source)
 			}
 			if result.nativeErr != nil || result.nativeExitCode != 0 {
-				t.Fatalf("Native failed: error=%v exit=%d\noutput:\n%s\nsource:\n%s", result.nativeErr, result.nativeExitCode, result.nativeOutput, first)
+				t.Fatalf("Native failed: error=%v exit=%d\noutput:\n%s\nsource:\n%s", result.nativeErr, result.nativeExitCode, result.nativeOutput, tc.source)
 			}
 			if result.vmOutput != result.nativeOutput {
-				t.Fatalf("backend output differs\nVM:\n%s\nNative:\n%s\nsource:\n%s", result.vmOutput, result.nativeOutput, first)
+				t.Fatalf("backend output differs\nVM:\n%s\nNative:\n%s\nsource:\n%s", result.vmOutput, result.nativeOutput, tc.source)
 			}
 		})
 	}
