@@ -375,6 +375,24 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 			return false, err
 		}
 		push("bool")
+	case OpToI64:
+		got, err := pop()
+		if err != nil {
+			return false, err
+		}
+		if err := requireAbstractType(fn.Name, pc, ins.Op, got, "f64"); err != nil {
+			return false, err
+		}
+		push("i64")
+	case OpToF64:
+		got, err := pop()
+		if err != nil {
+			return false, err
+		}
+		if err := requireAbstractType(fn.Name, pc, ins.Op, got, "i64"); err != nil {
+			return false, err
+		}
+		push("f64")
 	case OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
 		right, err := pop()
 		if err != nil {
