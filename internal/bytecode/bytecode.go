@@ -9,6 +9,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/limits"
 )
@@ -902,7 +903,8 @@ func skipPreflightJSONToken(dec *json.Decoder, token any, depth int) error {
 	}
 }
 
-func Read(r io.Reader) (*Program, error) {
+func Read(r io.Reader) (program *Program, resultErr error) {
+	defer func() { resultErr = diagnostic.WrapBytecode(resultErr, "") }()
 	raw, err := io.ReadAll(io.LimitReader(r, maxBytecodeFileBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read bytecode: %w", err)
