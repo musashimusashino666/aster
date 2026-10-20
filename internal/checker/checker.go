@@ -302,6 +302,7 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 func builtinName(n string) bool {
 	return n == "print" || n == "len" || n == "assert" || n == "i64" || n == "f64"
 }
+
 // typeFromRef preserves the package-level helper used by primitive/Array
 // type-depth tests. Named types require a Checker with its declaration table.
 func typeFromRef(r ast.TypeRef) (Type, error) {
