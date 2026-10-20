@@ -145,6 +145,8 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 			kind = token.Colon
 		case ';':
 			kind = token.Semicolon
+		case '.':
+			kind = token.Dot
 		case '+':
 			kind = token.Plus
 		case '-':
@@ -208,6 +210,8 @@ func keywordKind(s string) token.Kind {
 	switch s {
 	case "fn":
 		return token.Fn
+	case "struct":
+		return token.Struct
 	case "let":
 		return token.Let
 	case "mut":
