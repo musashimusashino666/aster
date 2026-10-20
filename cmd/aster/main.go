@@ -13,6 +13,7 @@ import (
 	"github.com/aster-lang/aster/internal/bytecode"
 	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/codegen"
+	"github.com/aster-lang/aster/internal/formatter"
 	"github.com/aster-lang/aster/internal/parser"
 	"github.com/aster-lang/aster/internal/toolchain"
 	"github.com/aster-lang/aster/internal/vm"
@@ -47,6 +48,8 @@ func dispatch(args []string) error {
 		return commandRun(args[1:])
 	case "compile":
 		return commandCompile(args[1:])
+	case "fmt":
+		return commandFmt(args[1:])
 	case "exec":
 		return commandExec(args[1:])
 	case "build":
@@ -64,6 +67,7 @@ Usage:
   aster run [--engine vm|native] <file>  Execute source (VM by default)
   aster compile [-o file] <file.ast>     Compile to versioned Aster bytecode JSON
   aster exec <file.abc.json>             Execute compiled bytecode
+  aster fmt [--check] <file.ast>          Format source or check its formatting
   aster build [--target native] [-o output] <file.ast>  Build a native executable
   aster version                          Print version
 
@@ -273,6 +277,50 @@ func writeOutputAtomically(path string, write func(io.Writer) error) error {
 	}
 	if err := os.Rename(tempPath, path); err != nil {
 		return fmt.Errorf("replace output %s: %w", path, err)
+	}
+	return nil
+}
+
+// commandFmt formats one source file in place, or checks it without writing
+// when --check is supplied. Symlink paths are resolved so formatting updates
+// the target file rather than replacing the symlink itself.
+func commandFmt(args []string) error {
+	fs := flag.NewFlagSet("fmt", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	check := fs.Bool("check", false, "check formatting without changing the file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: aster fmt [--check] <file.ast>")
+	}
+	path := fs.Arg(0)
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	formatted, err := formatter.Format(string(source))
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if *check {
+		if string(source) != formatted {
+			return fmt.Errorf("%s: source is not formatted (run aster fmt %s)", path, path)
+		}
+		return nil
+	}
+	if string(source) == formatted {
+		return nil
+	}
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return fmt.Errorf("resolve source %s: %w", path, err)
+	}
+	if err := writeOutputAtomically(target, func(w io.Writer) error {
+		_, err := io.WriteString(w, formatted)
+		return err
+	}); err != nil {
+		return err
 	}
 	return nil
 }

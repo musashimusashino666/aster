@@ -21,6 +21,7 @@
 | Capability | Aster 0.1 status |
 |---|---|
 | Lexer and recursive-descent / Pratt parser | Implemented |
+| Source formatter | Implemented; preserves comments and raw literal spellings |
 | Static types (`i64`, `f64`, `bool`, `string`, `unit`) | Implemented |
 | Type inference for local variables | Implemented |
 | Functions, recursion, conditionals, loops, return | Implemented |
@@ -74,6 +75,15 @@ Check a file without running it:
 ```bash
 ./bin/aster check examples/fibonacci.ast
 ```
+
+Format a source file in place, or check formatting without writing:
+
+```bash
+./bin/aster fmt examples/hello.ast
+./bin/aster fmt --check examples/hello.ast
+```
+
+The formatter validates syntax before writing, preserves comments and original string-literal escapes, and uses four spaces for indentation.
 
 Compile source to a versioned Aster bytecode JSON file and execute it:
 
@@ -144,6 +154,7 @@ Numeric operands must have matching types; there is no implicit `i64`/`f64` conv
 
 ```text
 aster check <file.ast>
+aster fmt [--check] <file.ast>
 aster run [--engine vm|native] <file.ast>
 aster compile [-o file.abc.json] <file.ast>
 aster exec <file.abc.json>
@@ -202,7 +213,7 @@ The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci
 
 ## Roadmap
 
-See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier and shared typed-IR backend boundary are implemented. Near-term work is focused on a formatter and stable diagnostic codes, more exact return-flow analysis and source spans, stronger sustained fuzzing and differential testing, mutable array indexing and slices, explicit numeric conversions, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
+See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, and stable lexer/parser/type-checker diagnostic codes are implemented. Near-term work is focused on more exact return-flow analysis and source spans, continued fuzzing and differential testing, mutable array indexing and slices, explicit numeric conversions, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
 
 ## License
 

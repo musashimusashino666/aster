@@ -17,7 +17,9 @@ This roadmap is a planning document, not a commitment that work is already in pr
 - [x] Control-flow and operand-stack-height verifier (stack underflow, merge consistency, and termination stack state)
 - [x] Fuzz targets for lexer, parser, bytecode loader, and bytecode instruction validation (broader sustained fuzz campaigns remain future work)
 - [x] Expand differential testing between VM and native executable (fixed-seed generated-program coverage compares 64 typed expressions across arithmetic, booleans, strings, and arrays; broader property-based and fuzz campaigns remain future work)
-- [ ] Source-preserving formatter and complete diagnostic-code coverage (stable lexer, parser, and type-checker codes are now available; runtime/toolchain diagnostics and full source spans remain future work)
+- [x] Source-preserving formatter (aster fmt and aster fmt --check; original comments and string-literal spellings are retained)
+- [x] Stable diagnostic codes for lexer, parser, and type-checker errors
+- [ ] Runtime/toolchain diagnostic codes and full source spans
 - [ ] More exact return-flow analysis and error spans
 - [x] Benchmark harness with pinned VM workloads and reproducible methodology (numeric loops, recursion, function calls, array traversal, string/Unicode operations, and array formatting; end-to-end parse/build and process-memory harnesses remain future work)
 
