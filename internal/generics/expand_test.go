@@ -1,11 +1,14 @@
 package generics
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/limits"
 	"github.com/aster-lang/aster/internal/parser"
+	"github.com/aster-lang/aster/internal/token"
 )
 
 func parse(t *testing.T, src string) *ast.Program {
@@ -310,5 +313,36 @@ fn consume(value: Nest<i64>) { }`)
 	_, err := Expand(program)
 	if err == nil || !strings.Contains(err.Error(), "TYP089") {
 		t.Fatalf("expected TYP089 expanding-instantiation diagnostic, got %v", err)
+	}
+}
+
+func TestGenericEnumInstantiationLimitAndCacheHit(t *testing.T) {
+	e := &expander{
+		enumInstances:    make(map[string]*ast.EnumDecl, limits.MaxGenericEnumInstantiations),
+		enumInstanceInfo: make(map[string]structInstanceInfo),
+		enumDecls:        make(map[string]*ast.EnumDecl),
+		knownTypes:       map[string]bool{"i64": true},
+	}
+	for i := 0; i < limits.MaxGenericEnumInstantiations-1; i++ {
+		key := fmt.Sprintf("dummy<%d>", i)
+		e.enumInstances[key] = &ast.EnumDecl{Name: key}
+	}
+	e.enumInstances["Option<i64>"] = &ast.EnumDecl{Name: "__cached_option"}
+	template := &ast.EnumDecl{
+		Name: "Option", TypeParams: []string{"T"},
+		Variants: []ast.EnumVariant{{Name: "None"}},
+	}
+	name, err := e.instantiateEnum(template, []ast.TypeRef{{Name: "i64"}}, token.Position{}, nil, 0)
+	if err != nil || name != "__cached_option" {
+		t.Fatalf("cache hit at the instance limit = (%q, %v), want cached instance", name, err)
+	}
+	delete(e.enumInstances, "Option<i64>")
+	e.enumInstances["at-limit"] = &ast.EnumDecl{Name: "at-limit"}
+	if len(e.enumInstances) != limits.MaxGenericEnumInstantiations {
+		t.Fatalf("test setup has %d instances, want limit %d", len(e.enumInstances), limits.MaxGenericEnumInstantiations)
+	}
+	_, err = e.instantiateEnum(template, []ast.TypeRef{{Name: "i64"}}, token.Position{}, nil, 0)
+	if err == nil || !strings.Contains(err.Error(), "TYP089") {
+		t.Fatalf("expected TYP089 at the exact generic enum instance limit, got %v", err)
 	}
 }
