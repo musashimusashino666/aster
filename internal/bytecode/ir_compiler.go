@@ -29,10 +29,10 @@ func compileIR(tree *ir.Program) (*Program, error) {
 			paramTypes[j] = string(param.Type)
 		}
 		p.Functions = append(p.Functions, Function{
-			Name:      fn.Name,
-			Params:    len(fn.Params),
+			Name:       fn.Name,
+			Params:     len(fn.Params),
 			ParamTypes: paramTypes,
-			Return:    string(fn.ReturnType),
+			Return:     string(fn.ReturnType),
 		})
 	}
 	p.Functions = append(p.Functions, Function{Name: "__aster_main", Return: "unit"})
