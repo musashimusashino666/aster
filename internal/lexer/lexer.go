@@ -20,7 +20,15 @@ type Lexer struct {
 	column int
 }
 
-func New(source string) *Lexer { return &Lexer{source: source, line: 1, column: 1} }
+func New(source string) *Lexer {
+	l := &Lexer{source: source, line: 1, column: 1}
+	// A UTF-8 BOM is metadata at the start of a file, not source syntax.
+	// Keep the source byte offsets intact while beginning lexing after it.
+	if strings.HasPrefix(source, "\uFEFF") {
+		l.offset = len("\uFEFF")
+	}
+	return l
+}
 
 func (l *Lexer) Lex() ([]token.Token, error) {
 	if !utf8.ValidString(l.source) {
@@ -185,7 +193,12 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 			}
 		}
 		if kind == token.Illegal {
-			return nil, l.errorAt(pos, diagnostic.LexerUnexpectedCharacter, fmt.Sprintf("unexpected character %q", ch))
+			message := fmt.Sprintf("unexpected character %q", ch)
+			if ch >= utf8.RuneSelf {
+				r, _ := utf8.DecodeRuneInString(l.source[start:])
+				message = fmt.Sprintf("unexpected character U+%04X %q", r, r)
+			}
+			return nil, l.errorAt(pos, diagnostic.LexerUnexpectedCharacter, message)
 		}
 		out = append(out, token.Token{Kind: kind, Lexeme: l.source[start:l.offset], Pos: pos, Raw: l.source[start:l.offset], LeadingTrivia: leadingTrivia})
 	}
@@ -257,11 +270,16 @@ func (l *Lexer) errorAt(p token.Position, code, message string) error {
 }
 func (l *Lexer) skipTrivia() error {
 	for !l.atEnd() {
-		c := l.peek()
-		if unicode.IsSpace(rune(c)) {
-			l.advance()
+		r, size := utf8.DecodeRuneInString(l.source[l.offset:])
+		if unicode.IsSpace(r) {
+			// Consume the full UTF-8 encoding while preserving normal
+			// line accounting for ASCII newline characters.
+			for i := 0; i < size; i++ {
+				l.advance()
+			}
 			continue
 		}
+		c := l.peek()
 		if c == '/' && l.peekNext() == '/' {
 			for !l.atEnd() && l.peek() != '\n' {
 				l.advance()

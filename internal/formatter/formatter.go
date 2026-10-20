@@ -55,8 +55,10 @@ func Format(source string) (string, error) {
 			continue
 		}
 
+		arrayTypeContext := i >= 2 &&
+			(tokens[i-2].Kind == token.Colon || tokens[i-2].Kind == token.Arrow)
 		genericOpen := current.Kind == token.Less &&
-			(f.genericDepth > 0 || (f.hasPrev && f.prev.Raw == "Array"))
+			(f.genericDepth > 0 || (f.hasPrev && f.prev.Raw == "Array" && arrayTypeContext))
 		genericClose := current.Kind == token.Greater && f.genericDepth > 0
 
 		if current.Kind == token.LBrace {
@@ -127,6 +129,11 @@ func (f *state) needsSpaceBefore(current token.Token, genericOpen, genericClose 
 		return false
 	}
 	if f.prev.Kind == token.LParen || f.prev.Kind == token.LBracket {
+		return false
+	}
+	// Inside a type argument list, the less-than token is a delimiter rather
+	// than a comparison operator; do not insert a space after the opener.
+	if f.prev.Kind == token.Less && f.genericDepth > 0 {
 		return false
 	}
 	switch current.Kind {

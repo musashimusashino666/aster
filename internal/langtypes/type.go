@@ -4,9 +4,11 @@ package langtypes
 
 import "strings"
 
-// MaxNestingDepth limits nested generic types such as Array<Array<i64>>.
-// Keeping this in a dependency-light package avoids different acceptance rules
-// in the source frontend and bytecode verifier.
+// MaxNestingDepth limits syntactic nesting of type names such as
+// Array<Array<i64>>. It is distinct from limits.MaxArrayNestingDepth, which
+// bounds runtime array-value traversal and display. Keeping this in a
+// dependency-light package avoids different acceptance rules in the source
+// frontend and bytecode verifier.
 const MaxNestingDepth = 256
 
 // MaxTypeNameBytes is the longest valid spelling of a maximally nested type.

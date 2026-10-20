@@ -2,5 +2,5 @@ package codegen
 
 import _ "embed"
 
-//go:embed preamble/runtime.go
+//go:embed preamble/runtime.go.tmpl
 var nativePreamble string

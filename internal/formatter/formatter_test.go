@@ -16,7 +16,6 @@ func TestFormatCanonicalizesWhitespaceAndPreservesStringEscapes(t *testing.T) {
 		t.Fatalf("Format() = %q, want %q", got, want)
 	}
 }
-
 func TestFormatPreservesLineAndNestedBlockComments(t *testing.T) {
 	input := "// file header\nfn  f(){let x=1; // trailing note\n /* outer /* nested */ tail */ return x;}"
 	got, err := Format(input)
@@ -50,5 +49,31 @@ func TestFormatEmptySource(t *testing.T) {
 	}
 	if got != "" {
 		t.Fatalf("Format empty source = %q, want empty string", got)
+	}
+}
+
+func TestFormatDistinguishesArrayTypeArgumentsFromComparisons(t *testing.T) {
+	input := "fn identity(values:Array<i64>)->Array<i64>{return values;}\n" +
+		"let Array: i64 = 4; let n: i64 = 5; print(Array<n && n>Array);"
+	want := "fn identity(values: Array<i64>) -> Array<i64> {\n" +
+		"    return values;\n" +
+		"}\n" +
+		"let Array: i64 = 4;\n" +
+		"let n: i64 = 5;\n" +
+		"print(Array < n && n > Array);\n"
+
+	got, err := Format(input)
+	if err != nil {
+		t.Fatalf("Format() failed: %v", err)
+	}
+	if got != want {
+		t.Fatalf("Format() = %q, want %q", got, want)
+	}
+	again, err := Format(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again != got {
+		t.Fatalf("format is not idempotent:\nfirst:  %q\nsecond: %q", got, again)
 	}
 }
