@@ -175,15 +175,29 @@ func seededArrayProgram(seed int64) string {
 	return source.String()
 }
 
-// seededBoundsFailureProgram produces a valid program whose final indexed
-// read is guaranteed to fail. The seed controls array contents and the invalid
-// index while preserving the failure class, making failures reproducible.
-func seededBoundsFailureProgram(seed int64) string {
+// seededRuntimeFailureProgram generates one valid program that fails at
+// runtime. The requested failure class is held constant, while the seed varies
+// values so a regression remains reproducible without hardcoding every source.
+func seededRuntimeFailureProgram(seed int64, kind string) (string, string) {
 	rng := rand.New(rand.NewSource(seed))
-	length := 1 + rng.Intn(5)
-	values := seededI64Row(rng, length)
-	invalidIndex := length + 1 + rng.Intn(17)
-	return fmt.Sprintf("let values: Array<i64> = %s;\nprint(values[%d]);\n", values, invalidIndex)
+	switch kind {
+	case "integer_overflow":
+		increment := 1 + rng.Intn(9)
+		return fmt.Sprintf("let maximum: i64 = 9223372036854775807;\nprint(maximum + %d);\n", increment), "overflow"
+	case "division_by_zero":
+		numerator := 1 + rng.Intn(19)
+		return fmt.Sprintf("print(%d / 0);\n", numerator), "division by zero"
+	case "assertion_failure":
+		witness := rng.Intn(31) - 15
+		return fmt.Sprintf("let witness: i64 = %d;\nassert(false);\n", witness), "assertion failed"
+	case "out_of_bounds":
+		length := 1 + rng.Intn(5)
+		values := seededI64Row(rng, length)
+		invalidIndex := length + 1 + rng.Intn(17)
+		return fmt.Sprintf("let values: Array<i64> = %s;\nprint(values[%d]);\n", values, invalidIndex), "out of bounds"
+	default:
+		panic("unknown seeded runtime failure kind: " + kind)
+	}
 }
 
 func TestSeededArrayProgramsMatchBackends(t *testing.T) {
@@ -211,27 +225,36 @@ func TestSeededArrayProgramsMatchBackends(t *testing.T) {
 }
 
 func TestSeededRuntimeFailureClassAndExitStatusMatch(t *testing.T) {
-	seeds := []int64{0xBAD5EED, 0xB0A0D5}
-	for _, seed := range seeds {
-		seed := seed
-		t.Run(fmt.Sprintf("seed_%x", seed), func(t *testing.T) {
-			source := seededBoundsFailureProgram(seed)
-			if repeated := seededBoundsFailureProgram(seed); repeated != source {
-				t.Fatalf("failure generator is not deterministic for seed %#x", seed)
+	cases := []struct {
+		name string
+		seed int64
+	}{
+		{name: "integer_overflow", seed: 0xBAD5EED},
+		{name: "division_by_zero", seed: 0xB0A0D5},
+		{name: "assertion_failure", seed: 0xA55E47},
+		{name: "out_of_bounds", seed: 0x0B0A75},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			source, wantDiagnostic := seededRuntimeFailureProgram(tc.seed, tc.name)
+			repeated, repeatedDiagnostic := seededRuntimeFailureProgram(tc.seed, tc.name)
+			if repeated != source || repeatedDiagnostic != wantDiagnostic {
+				t.Fatalf("generator is not deterministic for seed %#x and kind %s", tc.seed, tc.name)
 			}
 
-			result := runSeededProgramOnBothBackends(t, source, "seeded-bounds-failure.ast")
-			if result.vmErr == nil || !strings.Contains(result.vmErr.Error(), "out of bounds") {
-				t.Fatalf("VM should report an out-of-bounds failure for seed %#x, got error=%v output=%q\nsource:\n%s", seed, result.vmErr, result.vmOutput, source)
+			result := runSeededProgramOnBothBackends(t, source, "seeded-runtime-failure.ast")
+			if result.vmErr == nil || !strings.Contains(result.vmErr.Error(), wantDiagnostic) {
+				t.Fatalf("VM should report %q for seed %#x, got error=%v output=%q\nsource:\n%s", wantDiagnostic, tc.seed, result.vmErr, result.vmOutput, source)
 			}
 			if result.vmOutput != "" {
-				t.Fatalf("failed VM print should not emit a partial value, got %q", result.vmOutput)
+				t.Fatalf("failed VM program should not emit a partial value, got %q", result.vmOutput)
 			}
 			if result.nativeErr == nil || result.nativeExitCode == 0 {
-				t.Fatalf("Native should exit unsuccessfully for seed %#x, got error=%v exit=%d output=%q\nsource:\n%s", seed, result.nativeErr, result.nativeExitCode, result.nativeOutput, source)
+				t.Fatalf("Native should exit unsuccessfully for seed %#x, got error=%v exit=%d output=%q\nsource:\n%s", tc.seed, result.nativeErr, result.nativeExitCode, result.nativeOutput, source)
 			}
 			if got := strings.TrimSpace(result.nativeOutput); got != result.vmErr.Error() {
-				t.Fatalf("backend failure diagnostics differ for seed %#x: VM=%q Native=%q\nsource:\n%s", seed, result.vmErr.Error(), got, source)
+				t.Fatalf("backend failure diagnostics differ for seed %#x: VM=%q Native=%q\nsource:\n%s", tc.seed, result.vmErr.Error(), got, source)
 			}
 		})
 	}
