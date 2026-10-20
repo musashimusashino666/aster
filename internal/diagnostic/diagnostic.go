@@ -12,14 +12,14 @@ import (
 // Diagnostic is a source-front-end error with a stable code and source position.
 // Error preserves the traditional message prefix and appends the code in brackets.
 type Diagnostic struct {
-	Code     string
-	Phase    string
-	Message  string
-	Position        token.Position
-	EndPosition     token.Position
-	HasEndPosition  bool
-	Source          string
-	Cause           error
+	Code           string
+	Phase          string
+	Message        string
+	Position       token.Position
+	EndPosition    token.Position
+	HasEndPosition bool
+	Source         string
+	Cause          error
 }
 
 // New constructs a diagnostic with a stable code, phase, position, and message.
