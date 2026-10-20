@@ -4,8 +4,10 @@ package parser
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/lexer"
 	"github.com/aster-lang/aster/internal/token"
@@ -558,5 +560,28 @@ func (p *Parser) advance() token.Token {
 func (p *Parser) peek() token.Token     { return p.tokens[p.current] }
 func (p *Parser) previous() token.Token { return p.tokens[p.current-1] }
 func (p *Parser) errorAt(t token.Token, msg string) error {
-	return fmt.Errorf("%d:%d: parser error: %s", t.Pos.Line, t.Pos.Column, msg)
+	code := diagnostic.ParserGeneric
+	switch {
+	case strings.HasPrefix(msg, "syntax nesting exceeds limit"):
+		code = diagnostic.ParserSyntaxNesting
+	case strings.HasPrefix(msg, "expression nesting exceeds limit"):
+		code = diagnostic.ParserExpressionNesting
+	case msg == "parser made no progress" || msg == "parser made no progress in block":
+		code = diagnostic.ParserNoProgress
+	case strings.HasPrefix(msg, "function names beginning with '__' are reserved"):
+		code = diagnostic.ParserReservedInternalName
+	case msg == "'main' is reserved for the top-level program":
+		code = diagnostic.ParserReservedMainName
+	case strings.HasPrefix(msg, "type nesting exceeds limit"):
+		code = diagnostic.ParserTypeNesting
+	case msg == "array element assignment is not supported in Aster 0.1":
+		code = diagnostic.ParserArrayAssignmentUnsupported
+	case strings.HasPrefix(msg, "integer literal out of range"):
+		code = diagnostic.ParserIntegerOutOfRange
+	case msg == "invalid float":
+		code = diagnostic.ParserInvalidFloat
+	case strings.HasPrefix(msg, "expected expression"):
+		code = diagnostic.ParserExpectedExpression
+	}
+	return diagnostic.New(code, "parser", t.Pos, msg)
 }
