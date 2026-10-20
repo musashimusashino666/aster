@@ -285,6 +285,45 @@ func sourceMarkerPosition(t *testing.T, source, marker string, offset int) (int,
 	return line, column
 }
 
+func TestStringGrowthLimitMatchesBackends(t *testing.T) {
+	source := `let mut s: string = "x"; while len(s) < 16777216 { s=s+s; } s = s + s;`
+	line, column := sourceMarkerPosition(t, source, "s = s + s;", len("s = s "))
+	expected := fmt.Sprintf("%d:%d: runtime error: string length limit exceeded (maximum 16777216 UTF-8 bytes)", line, column)
+
+	tree, err := parser.Parse(source, "string-growth-limit.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checker.Check(tree); err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.Compile(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	vmErr := vm.Run(program, &vmOutput)
+	if vmErr == nil || vmErr.Error() != expected {
+		t.Fatalf("VM error = %v, want %q", vmErr, expected)
+	}
+
+	goSource, err := codegen.Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-string-growth-limit")
+	if err = toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, nativeErr := exec.Command(bin).CombinedOutput()
+	if nativeErr == nil {
+		t.Fatalf("native backend should reject oversized concatenation, output=%q", nativeOutput)
+	}
+	if got := strings.TrimSpace(string(nativeOutput)); got != expected {
+		t.Fatalf("native error = %q, want %q", got, expected)
+	}
+}
+
 func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 	tests := []struct {
 		name       string
