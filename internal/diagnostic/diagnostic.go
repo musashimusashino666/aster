@@ -15,8 +15,10 @@ type Diagnostic struct {
 	Code           string
 	Phase          string
 	Message        string
-	Position       token.Position
-	EndPosition    token.Position
+	Position token.Position
+	// EndPosition is exclusive when HasEndPosition is true.
+	EndPosition token.Position
+	// HasEndPosition distinguishes unavailable span metadata from a zero value.
 	HasEndPosition bool
 	Source         string
 	Cause          error
@@ -55,8 +57,8 @@ func (d *Diagnostic) Error() string {
 // adds a stable diagnostic code around an operating-system or context failure.
 func (d *Diagnostic) Unwrap() error { return d.Cause }
 
-// NewAtSource constructs a diagnostic with a source path and start position.
-// End positions are not currently retained by every compiler/runtime node.
+// NewAtSource constructs a diagnostic with a source path and start position
+// when an end position is unavailable.
 func NewAtSource(code, phase, source string, position token.Position, message string) *Diagnostic {
 	return &Diagnostic{Code: code, Phase: phase, Source: source, Position: position, Message: message}
 }
