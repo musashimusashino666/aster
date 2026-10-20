@@ -2,7 +2,9 @@
 package diagnostic
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aster-lang/aster/internal/token"
 )
@@ -14,6 +16,8 @@ type Diagnostic struct {
 	Phase    string
 	Message  string
 	Position token.Position
+	Source   string
+	Cause    error
 }
 
 // New constructs a diagnostic with a stable code, phase, position, and message.
@@ -23,13 +27,162 @@ func New(code, phase string, position token.Position, message string) *Diagnosti
 
 func (d *Diagnostic) Error() string {
 	prefix := fmt.Sprintf("%s error: %s", d.Phase, d.Message)
-	if d.Position.Line > 0 && d.Position.Column > 0 {
+	if d.Source != "" && d.Position.Line > 0 && d.Position.Column > 0 {
+		prefix = fmt.Sprintf("%s:%d:%d: %s", d.Source, d.Position.Line, d.Position.Column, prefix)
+	} else if d.Position.Line > 0 && d.Position.Column > 0 {
 		prefix = fmt.Sprintf("%d:%d: %s", d.Position.Line, d.Position.Column, prefix)
+	} else if d.Source != "" {
+		prefix = fmt.Sprintf("%s: %s", d.Source, prefix)
 	}
 	if d.Code == "" {
 		return prefix
 	}
 	return fmt.Sprintf("%s [%s]", prefix, d.Code)
+}
+
+// Unwrap preserves the original error for errors.Is/errors.As when a subsystem
+// adds a stable diagnostic code around an operating-system or context failure.
+func (d *Diagnostic) Unwrap() error { return d.Cause }
+
+// NewAtSource constructs a diagnostic with a source path and start position.
+// End positions are not currently retained by every compiler/runtime node.
+func NewAtSource(code, phase, source string, position token.Position, message string) *Diagnostic {
+	return &Diagnostic{Code: code, Phase: phase, Source: source, Position: position, Message: message}
+}
+
+// WrapBytecode assigns a stable code to a bytecode reader/verifier error.
+func WrapBytecode(err error, source string) error {
+	if err == nil {
+		return nil
+	}
+	var existing *Diagnostic
+	if errors.As(err, &existing) {
+		return err
+	}
+	return &Diagnostic{
+		Code:    BytecodeCode(err.Error()),
+		Phase:   "bytecode",
+		Source:  source,
+		Message: err.Error(),
+		Cause:   err,
+	}
+}
+
+// WrapToolchain assigns a stable code while preserving the underlying error.
+func WrapToolchain(err error) error {
+	if err == nil {
+		return nil
+	}
+	var existing *Diagnostic
+	if errors.As(err, &existing) {
+		return err
+	}
+	return &Diagnostic{
+		Code:    ToolchainCode(err.Error()),
+		Phase:   "toolchain",
+		Message: err.Error(),
+		Cause:   err,
+	}
+}
+
+// RuntimeCode maps runtime failure classes to stable public identifiers.
+// The messages are shared by the VM and generated native runtime; changes to
+// message wording must update this classifier and the generated counterpart.
+func RuntimeCode(message string) string {
+	switch {
+	case strings.Contains(message, "assertion failed"):
+		return RuntimeAssertionFailed
+	case strings.Contains(message, "division by zero"):
+		return RuntimeDivisionByZero
+	case strings.Contains(message, "remainder by zero"):
+		return RuntimeRemainderByZero
+	case strings.Contains(message, "overflow"):
+		return RuntimeArithmeticOverflow
+	case strings.Contains(message, "non-finite floating-point result"):
+		return RuntimeNonFiniteFloat
+	case strings.Contains(message, "array index") && strings.Contains(message, "out of bounds"):
+		return RuntimeArrayIndexBounds
+	case strings.Contains(message, "slice bounds"):
+		return RuntimeSliceBounds
+	case strings.Contains(message, "out of range for i64 conversion"):
+		return RuntimeNumericConversionRange
+	case strings.Contains(message, "string length limit exceeded"):
+		return RuntimeStringLimit
+	case strings.Contains(message, "printed value exceeds"), strings.Contains(message, "printed array nesting"):
+		return RuntimeRenderedOutputLimit
+	case strings.Contains(message, "stdout byte limit exceeded"):
+		return RuntimeStdoutLimit
+	case strings.Contains(message, "call depth limit exceeded"):
+		return RuntimeCallDepthLimit
+	case strings.Contains(message, "instruction budget exceeded"):
+		return RuntimeInstructionBudget
+	case strings.Contains(message, "operand stack limit exceeded"):
+		return RuntimeOperandStackLimit
+	case strings.Contains(message, "active local slot limit exceeded"):
+		return RuntimeLocalSlotLimit
+	case strings.HasPrefix(message, "write output:"):
+		return RuntimeOutputWrite
+	case strings.Contains(message, "invalid array element count"), strings.Contains(message, "array length limit exceeded"):
+		return RuntimeArrayLimit
+	default:
+		return RuntimeGeneric
+	}
+}
+
+// BytecodeCode classifies reader and verifier failures independently of their
+// human-readable wording, which is retained in the returned diagnostic.
+func BytecodeCode(message string) string {
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "unsupported bytecode version"):
+		return BytecodeVersion
+	case strings.Contains(lower, "not an aster bytecode"), strings.Contains(lower, "invalid bytecode format"):
+		return BytecodeFormat
+	case strings.Contains(lower, "invalid json"), strings.Contains(lower, "unexpected end of json"),
+		strings.Contains(lower, "trailing json"), strings.Contains(lower, "decode"):
+		return BytecodeDecode
+	case strings.Contains(lower, "safety limit"), strings.Contains(lower, "exceeds limit"),
+		strings.Contains(lower, "exceeds safety"), strings.Contains(lower, "too large"):
+		return BytecodeResourceLimit
+	case strings.Contains(lower, "abstract"), strings.Contains(lower, "operand stack"),
+		strings.Contains(lower, "type mismatch"), strings.Contains(lower, "type "),
+		strings.Contains(lower, "local "), strings.Contains(lower, "return type"):
+		return BytecodeTypeValidation
+	case strings.Contains(lower, "function"), strings.Contains(lower, "instruction"),
+		strings.Contains(lower, "entry"), strings.Contains(lower, "opcode"),
+		strings.Contains(lower, "constant"), strings.Contains(lower, "jump"),
+		strings.Contains(lower, "invalid"):
+		return BytecodeStructure
+	default:
+		return BytecodeGeneric
+	}
+}
+
+// ToolchainCode classifies external Go toolchain invocation and filesystem
+// failures. Compiler output remains in the message for actionable debugging.
+func ToolchainCode(message string) string {
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "canceled"), strings.Contains(lower, "cancelled"):
+		return ToolchainCanceled
+	case strings.Contains(lower, "timed out"), strings.Contains(lower, "deadline exceeded"):
+		return ToolchainTimeout
+	case strings.Contains(lower, "not found in path"), strings.Contains(lower, "requires go 1.23"),
+		strings.Contains(lower, "requires gofmt"), strings.Contains(lower, "executable \"go\""):
+		return ToolchainUnavailable
+	case strings.Contains(lower, "format generated code"):
+		return ToolchainFormat
+	case strings.Contains(lower, "native build"), strings.Contains(lower, "go build"):
+		return ToolchainBuild
+	case strings.Contains(lower, "native program"), strings.Contains(lower, "executable run"):
+		return ToolchainRun
+	case strings.Contains(lower, "directory"), strings.Contains(lower, "temporary"),
+		strings.Contains(lower, "output"), strings.Contains(lower, "write "),
+		strings.Contains(lower, "replace "):
+		return ToolchainFilesystem
+	default:
+		return ToolchainGeneric
+	}
 }
 
 const (
@@ -107,4 +260,43 @@ const (
 	TypeSliceBoundType          = "TYP049"
 	TypeNumericCastArity        = "TYP050"
 	TypeNumericCastOperand      = "TYP051"
+)
+
+
+const (
+	RuntimeGeneric             = "RUN000"
+	RuntimeAssertionFailed     = "RUN001"
+	RuntimeArithmeticOverflow = "RUN002"
+	RuntimeDivisionByZero      = "RUN003"
+	RuntimeRemainderByZero     = "RUN004"
+	RuntimeNonFiniteFloat      = "RUN005"
+	RuntimeArrayIndexBounds    = "RUN006"
+	RuntimeSliceBounds         = "RUN007"
+	RuntimeNumericConversionRange = "RUN008"
+	RuntimeStringLimit         = "RUN009"
+	RuntimeRenderedOutputLimit = "RUN010"
+	RuntimeStdoutLimit         = "RUN011"
+	RuntimeCallDepthLimit      = "RUN012"
+	RuntimeInstructionBudget   = "RUN013"
+	RuntimeOperandStackLimit   = "RUN014"
+	RuntimeLocalSlotLimit      = "RUN015"
+	RuntimeOutputWrite         = "RUN016"
+	RuntimeArrayLimit          = "RUN017"
+
+	BytecodeGeneric       = "BC000"
+	BytecodeFormat        = "BC001"
+	BytecodeVersion       = "BC002"
+	BytecodeResourceLimit = "BC003"
+	BytecodeDecode        = "BC004"
+	BytecodeStructure     = "BC005"
+	BytecodeTypeValidation = "BC006"
+
+	ToolchainGeneric    = "TOOL000"
+	ToolchainCanceled   = "TOOL001"
+	ToolchainTimeout    = "TOOL002"
+	ToolchainUnavailable = "TOOL003"
+	ToolchainFormat     = "TOOL004"
+	ToolchainBuild      = "TOOL005"
+	ToolchainRun        = "TOOL006"
+	ToolchainFilesystem = "TOOL007"
 )
