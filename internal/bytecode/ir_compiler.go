@@ -344,7 +344,7 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 			targets[i] = -1
 		}
 		c.program.Functions[c.fnID].MatchTables = append(c.program.Functions[c.fnID].MatchTables, MatchTable{EnumTypeID: n.EnumID, Targets: targets})
-		c.emit(OpMatchEnum, subjectSlot, tableIndex, 0, pos.Line, pos.Column)
+		c.emit(OpMatchEnum, subjectSlot, tableIndex, pos.Line, pos.Column)
 		var endJumps []int
 		for _, arm := range n.Arms {
 			armStart := len(c.code)
