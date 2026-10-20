@@ -108,16 +108,16 @@ func Format(source string) (string, error) {
 }
 
 type state struct {
-	out            strings.Builder
-	indent         int
-	atLineStart    bool
-	hasPrev        bool
-	prev           token.Token
+	out                 strings.Builder
+	indent              int
+	atLineStart         bool
+	hasPrev             bool
+	prev                token.Token
 	prevWasPrefix       bool
 	prevWasGenericClose bool
 	pendingNewline      bool
-	genericDepth   int
-	lastByte       byte
+	genericDepth        int
+	lastByte            byte
 }
 
 func (f *state) setPrev(current token.Token, prefix bool) {
