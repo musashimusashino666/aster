@@ -595,6 +595,21 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			return "", typeError(n.Pos(), diagnostic.TypeNestingLimit, "type nesting exceeds limit %d", langtypes.MaxNestingDepth)
 		}
 		return arrayType, nil
+	case *ast.FieldExpr:
+		objectType, err := c.checkExpr(n.Object)
+		if err != nil {
+			return "", err
+		}
+		info, ok := c.structs[string(objectType)]
+		if !ok {
+			return "", typeError(n.Pos(), diagnostic.TypeFieldOnNonStruct, "field selection requires a struct value, got %s", objectType)
+		}
+		for _, field := range info.Fields {
+			if field.Name == n.Name {
+				return field.Type, nil
+			}
+		}
+		return "", typeError(n.Pos(), diagnostic.TypeUnknownStructField, "struct '%s' has no field '%s'", info.Name, n.Name)
 	case *ast.IndexExpr:
 		collectionType, err := c.checkExpr(n.Collection)
 		if err != nil {
@@ -733,6 +748,9 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			if argType == Unit {
 				return "", typeError(args[0].Pos(), diagnostic.TypePrintUnit, "print cannot display a unit value")
 			}
+			if !printableType(argType) {
+				return "", typeError(args[0].Pos(), diagnostic.TypePrintStructUnsupported, "print does not yet support values of type %s", argType)
+			}
 			return Unit, nil
 		}
 		if id.Name == "len" {
@@ -762,6 +780,22 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 				return "", typeError(n.Pos(), diagnostic.TypeAssertArgument, "assert expects bool, got %s", t)
 			}
 			return Unit, nil
+		}
+		if structInfo, isStruct := c.structs[id.Name]; isStruct {
+			if len(args) != len(structInfo.Fields) {
+				return "", typeError(n.Pos(), diagnostic.TypeStructConstructorArity, "struct '%s' expects %d fields, got %d", id.Name, len(structInfo.Fields), len(args))
+			}
+			for i, arg := range args {
+				got, err := c.checkExpr(arg)
+				if err != nil {
+					return "", err
+				}
+				want := structInfo.Fields[i].Type
+				if got != want {
+					return "", typeError(arg.Pos(), diagnostic.TypeStructFieldMismatch, "field '%s' of struct '%s' expects %s, got %s", structInfo.Fields[i].Name, id.Name, want, got)
+				}
+			}
+			return Type(id.Name), nil
 		}
 		fn, ok := c.functions[id.Name]
 		if !ok {
