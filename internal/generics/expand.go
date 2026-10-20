@@ -1218,10 +1218,12 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 			enumDecl = e.enumDecls[enumName]
 		}
 		var payloadTypes []ast.TypeRef
-		for _, variant := range enumDeclVariants(enumDecl) {
-			if variant.Name == n.VariantName {
-				payloadTypes = variant.Payload
-				break
+		if enumDecl != nil {
+			for _, variant := range enumDecl.Variants {
+				if variant.Name == n.VariantName {
+					payloadTypes = variant.Payload
+					break
+				}
 			}
 		}
 		args := make([]ast.Expr, len(n.Args))
