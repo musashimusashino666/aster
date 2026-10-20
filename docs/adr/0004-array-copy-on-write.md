@@ -27,6 +27,12 @@ Use **copy-on-write (COW) array storage** for indexed assignment. Implement the 
 - Do not add reference counting or finalizers in the first implementation. The shared marker is conservative and sticky on existing storage; it is not cleared when other values become unreachable. A subsequent write may therefore make an unnecessary copy after an alias has died, but it must never mutate storage that is still shared. A newly detached storage starts unshared.
 - Keep the bytecode JSON representation compatible with the existing `Value`/array encoding. Runtime storage metadata must not leak into serialized bytecode or require a format-version change. Add explicit serialization coverage if the runtime representation requires custom encoding.
 
+### Native prototype notes (2026-10-20)
+
+The VM COW prototype was merged in PR #44. The separate Native prototype represents generated `Array<T>` values with a typed `asterArray[T]` wrapper containing an element slice and a pointer to conservative, sticky shared-state metadata. Indexed mutation detaches shared storage at each array container along the path and updates unique storage in place. Value-copy boundaries in generated code include local aliasing, function arguments and returns; array-valued indexing, nested-array construction, replacement and slices preserve nested sharing.
+
+The Native comparison in [`bench/results/native-array-assignment-cow-2026-10-20.md`](../../bench/results/native-array-assignment-cow-2026-10-20.md) measured reductions at every tested size on the same GitHub Actions runner: 41.89% at length 16, 57.05% at 64, 81.24% at 256 and 91.17% at 1024. These are workload-specific microbenchmark results, not general performance guarantees. Native adoption remains gated on its own current-head CI and the cross-backend value-semantics suite.
+
 ### Slices and language compatibility
 
 The first COW implementation keeps the current slice strategy: `values[start:end]` eagerly creates a fresh outer array and copies the selected range. Do not introduce user-visible views, identity, or changed slice bounds. If a copied element is itself an array, its child storage must be marked shared. Optimizing slice creation with internal views is outside this decision and requires separate measurements and tests.
