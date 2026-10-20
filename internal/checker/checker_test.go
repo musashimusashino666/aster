@@ -638,9 +638,9 @@ print(match empty { Option::Some(item) => item, Option::None => 0, });`
 
 func TestGenericEnumReportsStableInferenceAndArityDiagnostics(t *testing.T) {
 	for _, tc := range []struct {
-		name string
+		name   string
 		source string
-		code string
+		code   string
 	}{
 		{name: "unresolved payload-free variant", source: `enum Option<T> { None, Some(T) } let value = Option::None;`, code: "TYP088"},
 		{name: "wrong explicit type argument count", source: `enum Result<T, E> { Ok(T), Err(E) } let value = Result::<i64>::Ok(1);`, code: "TYP087"},
