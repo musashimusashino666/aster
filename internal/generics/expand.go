@@ -2,6 +2,7 @@
 package generics
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -478,10 +479,15 @@ func (e *expander) inferEnumTypeArgumentsWithContext(template *ast.EnumDecl, var
 			continue
 		}
 		actual, ok := e.inferExprType(args[i])
-		if !ok && callerSub != nil {
-			// Resolve explicit inner generic calls against the enclosing concrete
-			// substitution before deciding that this payload is ambiguous.
-			if normalized, err := e.rewriteExprExpected(args[i], callerSub, depth+1, nil); err == nil {
+		if !ok {
+			// Normalize nested calls so bad arity and unknown variants retain
+			// their own stable diagnostics instead of being masked as TYP088.
+			normalized, normalizeErr := e.rewriteExprExpected(args[i], callerSub, depth+1, nil)
+			if normalizeErr != nil {
+				if !isDeferredTypeInferenceDiagnostic(normalizeErr) {
+					return nil, normalizeErr
+				}
+			} else {
 				actual, ok = e.inferExprType(normalized)
 			}
 		}
@@ -536,6 +542,15 @@ func (e *expander) inferEnumTypeArgumentsWithContext(template *ast.EnumDecl, var
 		out[i] = typ
 	}
 	return out, nil
+}
+
+func isDeferredTypeInferenceDiagnostic(err error) bool {
+	var diagnosticError *diagnostic.Diagnostic
+	if !errors.As(err, &diagnosticError) {
+		return false
+	}
+	return diagnosticError.Code == diagnostic.TypeGenericEnumInference ||
+		diagnosticError.Code == diagnostic.TypeGenericStructInference
 }
 
 func typePatternResolved(pattern ast.TypeRef, parameters map[string]bool, inferred map[string]ast.TypeRef) bool {
