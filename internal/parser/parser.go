@@ -55,6 +55,9 @@ func (p *Parser) declaration() (ast.Decl, error) {
 	if p.match(token.Struct) {
 		return p.structDeclaration(p.previous())
 	}
+	if p.match(token.Enum) {
+		return p.enumDeclaration(p.previous())
+	}
 	s, err := p.statement()
 	if err != nil {
 		return nil, err
@@ -112,6 +115,42 @@ func (p *Parser) function(start token.Token) (ast.Decl, error) {
 	}
 	return &ast.Function{At: start.Pos, Name: name.Lexeme, Params: params, ReturnType: ret, Body: body}, nil
 }
+func (p *Parser) enumDeclaration(start token.Token) (*ast.EnumDecl, error) {
+	name, err := p.consume(token.Ident, "expected enum name after 'enum'")
+	if err != nil { return nil, err }
+	open, err := p.consume(token.LBrace, "expected '{' after enum name")
+	if err != nil { return nil, err }
+	leave, err := p.enterNesting(open, "enum declaration")
+	if err != nil { return nil, err }
+	defer leave()
+
+	variants := []ast.EnumVariant{}
+	for !p.check(token.RBrace) && !p.check(token.EOF) {
+		variant, e := p.consume(token.Ident, "expected enum variant name")
+		if e != nil { return nil, e }
+		payload := []ast.TypeRef{}
+		if p.match(token.LParen) {
+			if !p.check(token.RParen) {
+				for {
+					typ, typeErr := p.typeRef()
+					if typeErr != nil { return nil, typeErr }
+					payload = append(payload, typ)
+					if !p.match(token.Comma) { break }
+					if p.check(token.RParen) { break }
+				}
+			}
+			if _, e = p.consume(token.RParen, "expected ')' after enum payload types"); e != nil { return nil, e }
+		}
+		variants = append(variants, ast.EnumVariant{At: variant.Pos, Name: variant.Lexeme, Payload: payload})
+		if !p.match(token.Comma) { break }
+	}
+	if len(variants) == 0 {
+		return nil, p.errorAt(start, "enum must declare at least one variant")
+	}
+	if _, err = p.consume(token.RBrace, "expected '}' after enum variants"); err != nil { return nil, err }
+	return &ast.EnumDecl{At: start.Pos, Name: name.Lexeme, Variants: variants}, nil
+}
+
 func (p *Parser) structDeclaration(start token.Token) (*ast.StructDecl, error) {
 	name, err := p.consume(token.Ident, "expected struct name after 'struct'")
 	if err != nil {
@@ -447,8 +486,36 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "bool", Text: "false", Bool: false}
 		leftDepth = 1
 	case token.Ident:
-		left = &ast.IdentifierExpr{At: t.Pos, Name: t.Lexeme}
-		leftDepth = 1
+		if p.match(token.DoubleColon) {
+			variant, err := p.consume(token.Ident, "expected variant name after '::'")
+			if err != nil { return nil, 0, err }
+			args := []ast.Expr{}
+			hasPayload := p.match(token.LParen)
+			maxArgDepth := 1
+			if hasPayload {
+				if !p.check(token.RParen) {
+					for {
+						arg, argDepth, argErr := p.parseExpression(0)
+						if argErr != nil { return nil, 0, argErr }
+						args = append(args, arg)
+						if argDepth > maxArgDepth { maxArgDepth = argDepth }
+						if !p.match(token.Comma) { break }
+						if p.check(token.RParen) { break }
+					}
+				}
+				if _, err := p.consume(token.RParen, "expected ')' after enum variant arguments"); err != nil {
+					return nil, 0, err
+				}
+			}
+			left = &ast.EnumVariantExpr{At: t.Pos, EnumName: t.Lexeme, VariantName: variant.Lexeme, Args: args, HasPayload: hasPayload}
+			leftDepth = maxArgDepth + 1
+		} else {
+			left = &ast.IdentifierExpr{At: t.Pos, Name: t.Lexeme}
+			leftDepth = 1
+		}
+	case token.Match:
+		left, leftDepth, err = p.matchExpression(t)
+		if err != nil { return nil, 0, err }
 	case token.LBracket:
 		elements := []ast.Expr{}
 		maxElementDepth := 0
@@ -561,6 +628,84 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		left = &ast.BinaryExpr{At: op.Pos, Left: left, Op: string(op.Kind), Right: right}
 	}
 	return left, leftDepth, nil
+}
+
+func (p *Parser) matchExpression(start token.Token) (ast.Expr, int, error) {
+	subject, subjectDepth, err := p.parseExpression(0)
+	if err != nil { return nil, 0, err }
+	open, err := p.consume(token.LBrace, "expected '{' after match subject")
+	if err != nil { return nil, 0, err }
+	leave, err := p.enterNesting(open, "match expression")
+	if err != nil { return nil, 0, err }
+	defer leave()
+
+	arms := []ast.MatchArm{}
+	if !p.check(token.RBrace) {
+		for {
+			pattern, patternErr := p.matchPattern()
+			if patternErr != nil { return nil, 0, patternErr }
+			if _, err = p.consume(token.FatArrow, "expected '=>' after match pattern"); err != nil {
+				return nil, 0, err
+			}
+			value, _, valueErr := p.parseExpression(0)
+			if valueErr != nil { return nil, 0, valueErr }
+			arms = append(arms, ast.MatchArm{At: pattern.At, Pattern: pattern, Expr: value})
+			if !p.match(token.Comma) { break }
+			if p.check(token.RBrace) { break }
+		}
+	}
+	if len(arms) == 0 { return nil, 0, p.errorAt(start, "match expression requires at least one arm") }
+	if _, err = p.consume(token.RBrace, "expected '}' after match arms"); err != nil { return nil, 0, err }
+	depth := subjectDepth + 1
+	if depth > maxSyntaxNestingDepth {
+		return nil, 0, p.errorAtCode(start, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+	}
+	for _, arm := range arms {
+		// Bound traversal depth conservatively; later stages recursively visit arm expressions.
+		if arm.Expr != nil { depth++ }
+		if depth > maxSyntaxNestingDepth {
+			return nil, 0, p.errorAtCode(start, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+		}
+	}
+	return &ast.MatchExpr{At: start.Pos, Subject: subject, Arms: arms}, depth, nil
+}
+
+func (p *Parser) matchPattern() (ast.MatchPattern, error) {
+	name, err := p.consume(token.Ident, "expected enum variant pattern or '_'")
+	if err != nil { return ast.MatchPattern{}, err }
+	if name.Lexeme == "_" {
+		return ast.MatchPattern{At: name.Pos, Wildcard: true}, nil
+	}
+	if _, err = p.consume(token.DoubleColon, "expected '::' in enum variant pattern"); err != nil {
+		return ast.MatchPattern{}, err
+	}
+	variant, err := p.consume(token.Ident, "expected variant name in pattern")
+	if err != nil { return ast.MatchPattern{}, err }
+	pattern := ast.MatchPattern{At: name.Pos, EnumName: name.Lexeme, VariantName: variant.Lexeme}
+	if p.match(token.LParen) {
+		pattern.HasPayload = true
+		if !p.check(token.RParen) {
+			seen := make(map[string]struct{})
+			for {
+				binding, bindingErr := p.consume(token.Ident, "expected payload binding name")
+				if bindingErr != nil { return ast.MatchPattern{}, bindingErr }
+				if binding.Lexeme == "_" {
+					return ast.MatchPattern{}, p.errorAt(binding, "use a wildcard arm for an ignored payload")
+				}
+				if _, duplicate := seen[binding.Lexeme]; duplicate {
+					return ast.MatchPattern{}, p.errorAt(binding, "duplicate payload binding")
+				}
+				seen[binding.Lexeme] = struct{}{}
+				pattern.Bindings = append(pattern.Bindings, binding.Lexeme)
+				if !p.match(token.Comma) { break }
+				if p.check(token.RParen) { break }
+			}
+		}
+		if _, err = p.consume(token.RParen, "expected ')' after pattern bindings"); err != nil {
+			return ast.MatchPattern{}, err
+		}
+	}
+	return pattern, nil
 }
 
 func (p *Parser) finishIndex(collection ast.Expr, collectionDepth int) (ast.Expr, int, error) {
