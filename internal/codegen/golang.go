@@ -11,6 +11,7 @@ import (
 
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/checker"
+	"github.com/aster-lang/aster/internal/ir"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/limits"
 )
@@ -43,6 +44,9 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	}
 	tree := typed.Tree
 	g := &generator{typed: typed, tree: tree}
+	if typed.IR == nil {
+		return "", fmt.Errorf("codegen: typed program has no normalized IR")
+	}
 	for _, d := range tree.Decls {
 		f, ok := d.(*ast.Function)
 		if !ok {
@@ -67,24 +71,16 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 		}
 	}
 	g.writePreamble()
-	for _, d := range tree.Decls {
-		f, ok := d.(*ast.Function)
-		if !ok {
-			continue
-		}
-		if err := g.function(f); err != nil {
+	for _, f := range typed.IR.Functions {
+		if err := g.irFunction(f); err != nil {
 			return "", err
 		}
 	}
 	g.line("func main() {")
 	g.indent++
 	g.line("defer func() { if r := recover(); r != nil { msg := fmt.Sprint(r); if !strings.Contains(msg, \"runtime error:\") { msg = \"runtime error: \" + msg }; fmt.Fprintln(os.Stderr, msg); os.Exit(1) } }()")
-	for _, d := range tree.Decls {
-		sd, ok := d.(*ast.StmtDecl)
-		if !ok {
-			continue
-		}
-		if err := g.statement(sd.Statement); err != nil {
+	for _, stmt := range typed.IR.Body {
+		if err := g.irStatement(stmt); err != nil {
 			return "", err
 		}
 	}
