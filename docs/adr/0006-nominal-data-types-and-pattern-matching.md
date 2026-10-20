@@ -17,7 +17,7 @@ The accepted implementation sequence was split into separate, reviewable vertica
 1. **Non-generic structs** — nominal declarations, field type validation, construction, read-only field selection, value passing, and VM/Native parity.
 2. **Enums with payloads and exhaustive `match` expressions** — named variants, payload construction/deconstruction, arm-local bindings, result-type agreement, unreachable/duplicate-arm checks, and exhaustiveness checks.
 3. **User-defined generics** — generic type and function parameters, type-argument substitution, constraints/instantiation policy, recursion/resource limits, and bytecode metadata.
-4. **Core `Option<T>` and `Result<T, E>`** — model these as ordinary generic enums using the enum and generic machinery, with documented standard variants and pattern matching.
+4. **Generic `Option<T>` and `Result<T, E>` declarations** — model them as ordinary user-defined generic enums using the enum and generic machinery; they are not predeclared built-ins or a standard error-handling library.
 
 Each slice must have its own syntax/semantics tests, negative type-checking tests, bytecode malformed-input/verifier tests, VM/Native differential tests, and release documentation. Do not mark a feature complete merely because the parser accepts its syntax.
 
@@ -48,9 +48,9 @@ print(p.y);
 
 Using a call-shaped constructor avoids making `Type { ... }` ambiguous with the existing `if condition { ... }` block syntax. The syntax can be reconsidered if a future parser design adds an unambiguous record-literal form.
 
-### Enum and match source model (implementation contract)
+### Initial non-generic enum and match source model
 
-Enums are closed nominal sum types. The initial slice supports non-generic enums with one or more variants; each variant has zero or more positional payload types:
+Enums are closed nominal sum types. The initial non-generic slice supported one or more variants, each with zero or more positional payload types. Generic enum declarations were added in the later rollout described in [ADR 0007](0007-user-defined-generics-and-monomorphization.md):
 
 ```aster
 enum Message {
