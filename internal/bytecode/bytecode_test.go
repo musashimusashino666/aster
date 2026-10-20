@@ -724,13 +724,12 @@ func TestValidateRejectsNumericCastOperands(t *testing.T) {
 	}
 }
 
-
 func TestValidateTypedStructBytecode(t *testing.T) {
 	program := &Program{
 		Format:  "aster-bytecode",
 		Version: FormatVersion,
 		StructTypes: []StructType{{
-			Name: "Point",
+			Name:   "Point",
 			Fields: []StructField{{Name: "x", Type: "i64"}},
 		}},
 		Constants: []Value{I64(42)},
