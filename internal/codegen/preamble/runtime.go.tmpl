@@ -97,11 +97,19 @@ func asterAddString(a, b string, line, column int) string {
 	return a + b
 }
 
+type asterRuntimeFailure struct {
+	message string
+}
+
+func (failure asterRuntimeFailure) Error() string {
+	return failure.message
+}
+
 func asterRuntimeError(line, column int, message string) {
 	if line > 0 && column > 0 {
-		panic(fmt.Sprintf("%d:%d: runtime error: %s", line, column, message))
+		panic(asterRuntimeFailure{message: fmt.Sprintf("%d:%d: runtime error: %s", line, column, message)})
 	}
-	panic("runtime error: " + message)
+	panic(asterRuntimeFailure{message: "runtime error: " + message})
 }
 
 func asterAssert(ok bool, line, column int) struct{} {
