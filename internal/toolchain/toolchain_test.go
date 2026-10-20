@@ -90,7 +90,7 @@ func TestBuildNativeContextHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	output := filepath.Join(t.TempDir(), "aster-canceled")
-	err := BuildNativeContext(ctx, "package main\\nfunc main() {}\\n", output)
+	err := BuildNativeContext(ctx, "package main\nfunc main() {}\n", output)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("BuildNativeContext() error = %v, want context.Canceled", err)
 	}
@@ -103,7 +103,7 @@ func TestRunNativeContextStopsLongRunningProgram(t *testing.T) {
 	requireNativeToolchain(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	err := RunNativeContext(ctx, "package main\\nfunc main() { for {} }\\n")
+	err := RunNativeContext(ctx, "package main\nfunc main() { for {} }\n")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("RunNativeContext() error = %v, want context.DeadlineExceeded", err)
 	}
