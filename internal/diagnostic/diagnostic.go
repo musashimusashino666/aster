@@ -299,7 +299,10 @@ const (
 	TypeGenericArgumentCount         = "TYP080"
 	TypeGenericInference             = "TYP081"
 	TypeGenericArgumentsOnNonGeneric = "TYP082"
-	TypeGenericInstantiationLimit    = "TYP083"
+	TypeGenericInstantiationLimit      = "TYP083"
+	TypeGenericStructArgumentCount     = "TYP084"
+	TypeGenericStructInference         = "TYP085"
+	TypeGenericStructInstantiationLimit = "TYP086"
 )
 
 const (

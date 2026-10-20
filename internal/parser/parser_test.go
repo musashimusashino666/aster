@@ -166,6 +166,29 @@ func TestRejectsEmptyGenericParameterAndArgumentLists(t *testing.T) {
 	}
 }
 
+func TestParsesGenericStructDeclarationAndTypeArguments(t *testing.T) {
+	program, err := Parse(`struct Pair<T, U> { first: T, second: U }
+let pair: Pair<i64, string> = Pair::<i64, string>(1, "one");`, "generic-struct.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decl, ok := program.Decls[0].(*ast.StructDecl)
+	if !ok || len(decl.TypeParams) != 2 || decl.TypeParams[0] != "T" || decl.TypeParams[1] != "U" {
+		t.Fatalf("generic struct declaration = %#v", program.Decls[0])
+	}
+	let := program.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	if let.Annotation == nil || len(let.Annotation.Args) != 2 || let.Annotation.Args[0].Name != "i64" || let.Annotation.Args[1].Name != "string" {
+		t.Fatalf("generic struct annotation = %#v", let.Annotation)
+	}
+}
+
+func TestRejectsArrayWithMultipleTypeArguments(t *testing.T) {
+	_, err := Parse(`let pair: Array<i64, string> = [1];`, "generic-struct.ast")
+	if err == nil || !strings.Contains(err.Error(), "Array expects exactly one type argument") {
+		t.Fatalf("expected Array arity error, got %v", err)
+	}
+}
+
 func TestParsesStructDeclarationAndFieldSelection(t *testing.T) {
 	program, err := Parse(`struct Point { x: i64, y: i64, }
 let point = Point(3, 4);

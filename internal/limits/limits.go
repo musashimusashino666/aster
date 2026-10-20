@@ -40,5 +40,8 @@ const MaxGenericTypeParameters = 32
 // MaxGenericFunctionInstantiations bounds distinct monomorphized generic functions per program.
 const MaxGenericFunctionInstantiations = 1 << 12
 
+// MaxGenericStructInstantiations bounds distinct monomorphized generic structs per program.
+const MaxGenericStructInstantiations = 1 << 12
+
 // MaxGenericExpansionDepth bounds chains of expanding generic instantiations.
 const MaxGenericExpansionDepth = 256

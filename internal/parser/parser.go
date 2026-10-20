@@ -245,6 +245,10 @@ func (p *Parser) structDeclaration(start token.Token) (*ast.StructDecl, error) {
 	if err != nil {
 		return nil, err
 	}
+	typeParams, err := p.typeParameterNames()
+	if err != nil {
+		return nil, err
+	}
 	open, err := p.consume(token.LBrace, "expected '{' after struct name")
 	if err != nil {
 		return nil, err
@@ -276,7 +280,7 @@ func (p *Parser) structDeclaration(start token.Token) (*ast.StructDecl, error) {
 	if _, err = p.consume(token.RBrace, "expected '}' after struct fields"); err != nil {
 		return nil, err
 	}
-	return &ast.StructDecl{At: start.Pos, Name: name.Lexeme, Fields: fields}, nil
+	return &ast.StructDecl{At: start.Pos, Name: name.Lexeme, TypeParams: typeParams, Fields: fields}, nil
 }
 
 func (p *Parser) typeRef() (ast.TypeRef, error) {
@@ -293,14 +297,31 @@ func (p *Parser) typeRefDepth(depth int) (ast.TypeRef, error) {
 		if depth >= langtypes.MaxNestingDepth {
 			return ast.TypeRef{}, p.errorAtCode(t, diagnostic.ParserTypeNesting, fmt.Sprintf("type nesting exceeds limit %d", langtypes.MaxNestingDepth))
 		}
-		element, e := p.typeRefDepth(depth + 1)
-		if e != nil {
+		var args []ast.TypeRef
+		for {
+			arg, e := p.typeRefDepth(depth + 1)
+			if e != nil {
+				return ast.TypeRef{}, e
+			}
+			args = append(args, arg)
+			if !p.match(token.Comma) {
+				break
+			}
+			if p.check(token.Greater) {
+				return ast.TypeRef{}, p.errorAt(p.peek(), "expected type argument after ','")
+			}
+		}
+		if _, e := p.consume(token.Greater, "expected '>' after generic type arguments"); e != nil {
 			return ast.TypeRef{}, e
 		}
-		if _, e = p.consume(token.Greater, "expected '>' after generic type argument"); e != nil {
-			return ast.TypeRef{}, e
+		if t.Lexeme == "Array" {
+			if len(args) != 1 {
+				return ast.TypeRef{}, p.errorAt(t, "Array expects exactly one type argument")
+			}
+			ref.Element = &args[0]
+		} else {
+			ref.Args = args
 		}
-		ref.Element = &element
 	}
 	return ref, nil
 }

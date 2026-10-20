@@ -122,6 +122,9 @@ Codes are intended for tests, editor integrations, and bug reports. A code ident
 | `TYP081` | Generic type arguments cannot be inferred or are inconsistent |
 | `TYP082` | Explicit type arguments were supplied to a non-generic or unsupported target |
 | `TYP083` | Generic monomorphization resource limit exceeded |
+| `TYP084` | Generic struct has the wrong number of type arguments |
+| `TYP085` | Generic struct type arguments cannot be inferred or are inconsistent |
+| `TYP086` | Generic struct monomorphization resource limit exceeded |
 
 
 ## Runtime

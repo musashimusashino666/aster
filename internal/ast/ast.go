@@ -25,6 +25,7 @@ type TypeRef struct {
 	Name    string
 	At      token.Position
 	Element *TypeRef
+	Args    []TypeRef
 }
 
 func (t TypeRef) Pos() token.Position { return t.At }
@@ -41,11 +42,13 @@ type Function struct {
 func (n *Function) Pos() token.Position { return n.At }
 func (*Function) declNode()             {}
 
-// StructDecl declares a nominal, non-generic record type.
+// StructDecl declares a nominal record type. Generic declarations are
+// monomorphized into concrete declarations before type checking.
 type StructDecl struct {
-	At     token.Position
-	Name   string
-	Fields []StructField
+	At         token.Position
+	Name       string
+	TypeParams []string
+	Fields     []StructField
 }
 
 func (n *StructDecl) Pos() token.Position { return n.At }
