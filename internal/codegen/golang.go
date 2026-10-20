@@ -55,9 +55,10 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	}
 	g.writePreamble()
 	for _, structType := range typed.IR.StructTypes {
-		if err := g.irStructType(structType); err != nil {
-			return "", err
-		}
+		if err := g.irStructType(structType); err != nil { return "", err }
+	}
+	for _, enumType := range typed.IR.EnumTypes {
+		if err := g.irEnumType(enumType); err != nil { return "", err }
 	}
 	for _, f := range typed.IR.Functions {
 		if err := g.irFunction(f); err != nil {
