@@ -13,7 +13,7 @@ import (
 	"github.com/aster-lang/aster/internal/limits"
 )
 
-const FormatVersion = 4
+const FormatVersion = 5
 
 // Per-value allocation limits enforced by bytecode validation and the VM.
 // String limits are measured in UTF-8 bytes, not Unicode code points.
@@ -92,6 +92,8 @@ const (
 	OpBuildArray   Op = "BUILD_ARRAY"
 	OpIndex        Op = "INDEX"
 	OpSlice        Op = "SLICE"
+	OpToI64        Op = "TO_I64"
+	OpToF64        Op = "TO_F64"
 	OpSetIndexPath Op = "SET_INDEX_PATH"
 	OpStoreLocal   Op = "STORE_LOCAL"
 	OpPop          Op = "POP"
@@ -244,7 +246,7 @@ func (p *Program) Validate() error {
 				if ins.B != 1 {
 					return fmt.Errorf("function %q instruction %d passes invalid argument count %d to builtin", f.Name, pc, ins.B)
 				}
-			case OpPop, OpNeg, OpNot, OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
+			case OpPop, OpNeg, OpNot, OpToI64, OpToF64, OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
 			case OpReturn:
 				if fi == p.Entry {
 					return fmt.Errorf("RETURN is invalid in the entry function")
@@ -318,7 +320,7 @@ func validateFunctionStack(fn Function) error {
 				required, delta = ins.A+2, -ins.A-1
 			case OpStoreLocal, OpPop:
 				required, delta = 1, -1
-			case OpNeg, OpNot:
+			case OpNeg, OpNot, OpToI64, OpToF64:
 				required = 1
 			case OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual, OpNotEqual,
 				OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
