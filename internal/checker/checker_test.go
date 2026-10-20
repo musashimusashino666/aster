@@ -1,11 +1,13 @@
 package checker
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/ir"
+	"github.com/aster-lang/aster/internal/limits"
 	"github.com/aster-lang/aster/internal/parser"
 )
 
@@ -387,6 +389,59 @@ print(len(leaf.children));`
 	if err := checkSource(t, source); err != nil {
 		t.Fatalf("array-indirected recursive struct should be accepted: %v", err)
 	}
+}
+
+func TestRejectsReservedBuiltinTypeNamesForNominalDeclarations(t *testing.T) {
+	for _, name := range []string{"bool", "string", "unit"} {
+		t.Run("enum "+name, func(t *testing.T) {
+			err := checkSource(t, "enum "+name+" { Value, }")
+			if err == nil || !strings.Contains(err.Error(), "TYP063") {
+				t.Fatalf("expected reserved enum name diagnostic TYP063, got %v", err)
+			}
+		})
+		t.Run("struct "+name, func(t *testing.T) {
+			err := checkSource(t, "struct "+name+" { value: i64 }")
+			if err == nil || !strings.Contains(err.Error(), "TYP052") {
+				t.Fatalf("expected reserved struct name diagnostic TYP052, got %v", err)
+			}
+		})
+	}
+}
+
+func TestRejectsEnumMetadataOverSharedLimits(t *testing.T) {
+	t.Run("enum type count", func(t *testing.T) {
+		decls := make([]ast.Decl, limits.MaxEnumTypes+1)
+		for i := range decls {
+			decls[i] = &ast.EnumDecl{Name: fmt.Sprintf("Enum%d", i), Variants: []ast.EnumVariant{{Name: "Item"}}}
+		}
+		err := Check(&ast.Program{Decls: decls})
+		if err == nil || !strings.Contains(err.Error(), "TYP078") {
+			t.Fatalf("expected enum type resource limit diagnostic TYP078, got %v", err)
+		}
+	})
+	t.Run("variant count", func(t *testing.T) {
+		variants := make([]ast.EnumVariant, limits.MaxEnumVariants+1)
+		for i := range variants {
+			variants[i] = ast.EnumVariant{Name: fmt.Sprintf("Variant%d", i)}
+		}
+		err := Check(&ast.Program{Decls: []ast.Decl{&ast.EnumDecl{Name: "ManyVariants", Variants: variants}}})
+		if err == nil || !strings.Contains(err.Error(), "TYP078") {
+			t.Fatalf("expected enum variant resource limit diagnostic TYP078, got %v", err)
+		}
+	})
+	t.Run("payload field count", func(t *testing.T) {
+		payload := make([]ast.TypeRef, limits.MaxEnumPayloadFields+1)
+		for i := range payload {
+			payload[i] = ast.TypeRef{Name: "i64"}
+		}
+		err := Check(&ast.Program{Decls: []ast.Decl{&ast.EnumDecl{
+			Name: "ManyPayloads",
+			Variants: []ast.EnumVariant{{Name: "Values", Payload: payload}},
+		}}})
+		if err == nil || !strings.Contains(err.Error(), "TYP078") {
+			t.Fatalf("expected enum payload resource limit diagnostic TYP078, got %v", err)
+		}
+	})
 }
 
 func TestAcceptsEnumPayloadAndExhaustiveMatch(t *testing.T) {

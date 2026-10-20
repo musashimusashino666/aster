@@ -40,6 +40,9 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	if typed.IR == nil {
 		return "", fmt.Errorf("codegen: typed program has no normalized IR")
 	}
+	if err := validateEnumResourceLimits(typed.IR.EnumTypes); err != nil {
+		return "", err
+	}
 	g := &generator{}
 	for _, fn := range typed.IR.Functions {
 		ret := string(fn.ReturnType)

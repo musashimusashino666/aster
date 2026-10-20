@@ -116,6 +116,7 @@ Codes are intended for tests, editor integrations, and bug reports. A code ident
 | `TYP075` | Match arm result types do not agree |
 | `TYP076` | Duplicate or invalid match payload binding |
 | `TYP077` | Recursive by-value enum/nominal layout |
+| `TYP078` | Compile-time resource limit exceeded |
 
 
 ## Runtime

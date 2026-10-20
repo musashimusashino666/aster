@@ -35,9 +35,12 @@ const (
 	maxTotalParameterTypes      = 1 << 20
 	maxStructTypeCount          = 1 << 16
 	maxStructFieldCount         = 1 << 16
-	maxEnumTypeCount            = 1 << 16
-	maxEnumVariantCount         = 1 << 16
-	maxEnumPayloadCount         = 1 << 16
+	maxEnumTypeCount            = limits.MaxEnumTypes
+	maxEnumVariantCount         = limits.MaxEnumVariants
+	maxEnumPayloadCount         = limits.MaxEnumPayloadFields
+	maxMatchTableCount          = limits.MaxTotalMatchTables
+	maxMatchTablesPerFunction   = limits.MaxMatchTablesPerFunction
+	maxMatchTableTargets        = limits.MaxMatchTableTargets
 )
 
 const maxTypeNameBytes = langtypes.MaxTypeNameBytes
@@ -437,6 +440,7 @@ func (p *Program) validateEnumTypes(structTypesByName map[string]StructType) (ma
 	}
 	byName := make(map[string]EnumType, len(p.EnumTypes))
 	totalVariants := 0
+	totalPayloadFields := 0
 	for i, enumType := range p.EnumTypes {
 		name := enumType.Name
 		if name == "" || len(name) > maxTypeNameBytes || !langtypes.ValidName(name) {
@@ -468,8 +472,9 @@ func (p *Program) validateEnumTypes(structTypesByName map[string]StructType) (ma
 				return nil, fmt.Errorf("enum %q has duplicate variant %q", name, variant.Name)
 			}
 			seen[variant.Name] = struct{}{}
-			if len(variant.PayloadTypes) > maxEnumPayloadCount {
-				return nil, fmt.Errorf("enum %q variant %q exceeds payload-count safety limit", name, variant.Name)
+			totalPayloadFields += len(variant.PayloadTypes)
+			if totalPayloadFields > maxEnumPayloadCount {
+				return nil, fmt.Errorf("enum payload metadata exceeds safety limit")
 			}
 		}
 		byName[name] = enumType
@@ -545,11 +550,21 @@ func (p *Program) validateEnumTypes(structTypesByName map[string]StructType) (ma
 
 func (p *Program) validateMatchTables(enumTypesByName map[string]EnumType) error {
 	_ = enumTypesByName
+	totalTables := 0
+	totalTargets := 0
 	for _, fn := range p.Functions {
-		if len(fn.MatchTables) > maxEnumVariantCount {
+		if len(fn.MatchTables) > maxMatchTablesPerFunction {
 			return fmt.Errorf("function %q exceeds match-table safety limit", fn.Name)
 		}
+		totalTables += len(fn.MatchTables)
+		if totalTables > maxMatchTableCount {
+			return fmt.Errorf("program exceeds total match-table safety limit")
+		}
 		for ti, table := range fn.MatchTables {
+			totalTargets += len(table.Targets)
+			if totalTargets > maxMatchTableTargets {
+				return fmt.Errorf("program exceeds match-table target safety limit")
+			}
 			if table.EnumTypeID < 0 || table.EnumTypeID >= len(p.EnumTypes) {
 				return fmt.Errorf("function %q match table %d references invalid enum type %d", fn.Name, ti, table.EnumTypeID)
 			}
@@ -975,13 +990,18 @@ func Write(w io.Writer, p *Program) error {
 // bytecodePreflight tracks allocation-sensitive portions of the JSON before
 // decoding them into slices of Value, Function, and Instruction structs.
 type bytecodePreflight struct {
-	constantEntries  int
-	constantValues   int
-	constantStrings  int
-	arrayItems       int
-	functionEntries  int
-	instructionCount int
-	parameterTypes   int
+	constantEntries         int
+	constantValues          int
+	constantStrings         int
+	arrayItems              int
+	functionEntries         int
+	instructionCount        int
+	parameterTypes          int
+	enumTypeEntries         int
+	enumVariantEntries      int
+	enumPayloadEntries      int
+	matchTableEntries       int
+	matchTableTargetEntries int
 }
 
 const preflightErrorPrefix = "bytecode preflight: "
@@ -1010,6 +1030,8 @@ func preflightBytecodeLimits(raw []byte) error {
 		switch key {
 		case "constants":
 			err = preflightConstants(dec, limits)
+		case "enum_types":
+			err = preflightEnumTypes(dec, limits)
 		case "functions":
 			err = preflightFunctions(dec, limits)
 		default:
@@ -1131,6 +1153,217 @@ func preflightConstantArray(dec *json.Decoder, parentDepth int, limits *bytecode
 	return err
 }
 
+func preflightEnumTypes(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		limits.enumTypeEntries++
+		if limits.enumTypeEntries > maxEnumTypeCount {
+			return fmt.Errorf("%senum type metadata exceeds %d-entry safety limit", preflightErrorPrefix, maxEnumTypeCount)
+		}
+		if err := preflightEnumType(dec, limits); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token()
+	return err
+}
+
+func preflightEnumType(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isObject := token.(json.Delim)
+	if !isObject || delim != '{' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		fieldToken, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		field, ok := fieldToken.(string)
+		if !ok {
+			return fmt.Errorf("invalid enum type object key")
+		}
+		switch field {
+		case "variants":
+			if err := preflightEnumVariants(dec, limits); err != nil {
+				return err
+			}
+		default:
+			if err := skipPreflightJSONValue(dec, 0); err != nil {
+				return err
+			}
+		}
+	}
+	_, err = dec.Token()
+	return err
+}
+
+func preflightEnumVariants(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		limits.enumVariantEntries++
+		if limits.enumVariantEntries > maxEnumVariantCount {
+			return fmt.Errorf("%senum variant metadata exceeds %d-entry safety limit", preflightErrorPrefix, maxEnumVariantCount)
+		}
+		if err := preflightEnumVariant(dec, limits); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token()
+	return err
+}
+
+func preflightEnumVariant(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isObject := token.(json.Delim)
+	if !isObject || delim != '{' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		fieldToken, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		field, ok := fieldToken.(string)
+		if !ok {
+			return fmt.Errorf("invalid enum variant object key")
+		}
+		switch field {
+		case "payload_types":
+			if err := preflightEnumPayloadTypes(dec, limits); err != nil {
+				return err
+			}
+		default:
+			if err := skipPreflightJSONValue(dec, 0); err != nil {
+				return err
+			}
+		}
+	}
+	_, err = dec.Token()
+	return err
+}
+
+func preflightEnumPayloadTypes(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		limits.enumPayloadEntries++
+		if limits.enumPayloadEntries > maxEnumPayloadCount {
+			return fmt.Errorf("%senum payload metadata exceeds %d-field safety limit", preflightErrorPrefix, maxEnumPayloadCount)
+		}
+		if err := preflightTypeName(dec); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token()
+	return err
+}
+
+func preflightMatchTables(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isArray := token.(json.Delim)
+	if !isArray || delim != '[' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	functionTables := 0
+	for dec.More() {
+		functionTables++
+		if functionTables > maxMatchTablesPerFunction {
+			return fmt.Errorf("%sfunction match tables exceed %d-entry safety limit", preflightErrorPrefix, maxMatchTablesPerFunction)
+		}
+		limits.matchTableEntries++
+		if limits.matchTableEntries > maxMatchTableCount {
+			return fmt.Errorf("%sprogram match tables exceed %d-entry safety limit", preflightErrorPrefix, maxMatchTableCount)
+		}
+		if err := preflightMatchTable(dec, limits); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token()
+	return err
+}
+
+func preflightMatchTable(dec *json.Decoder, limits *bytecodePreflight) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, isObject := token.(json.Delim)
+	if !isObject || delim != '{' {
+		return skipPreflightJSONToken(dec, token, 0)
+	}
+	for dec.More() {
+		fieldToken, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		field, ok := fieldToken.(string)
+		if !ok {
+			return fmt.Errorf("invalid match table object key")
+		}
+		if field != "targets" {
+			if err := skipPreflightJSONValue(dec, 0); err != nil {
+				return err
+			}
+			continue
+		}
+		targetToken, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		targetDelim, isArray := targetToken.(json.Delim)
+		if !isArray || targetDelim != '[' {
+			if err := skipPreflightJSONToken(dec, targetToken, 0); err != nil {
+				return err
+			}
+			continue
+		}
+		for dec.More() {
+			limits.matchTableTargetEntries++
+			if limits.matchTableTargetEntries > maxMatchTableTargets {
+				return fmt.Errorf("%sprogram match-table targets exceed %d-entry safety limit", preflightErrorPrefix, maxMatchTableTargets)
+			}
+			if err := skipPreflightJSONValue(dec, 0); err != nil {
+				return err
+			}
+		}
+		if _, err := dec.Token(); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token()
+	return err
+}
+
 func preflightFunctions(dec *json.Decoder, limits *bytecodePreflight) error {
 	token, err := dec.Token()
 	if err != nil {
@@ -1182,6 +1415,10 @@ func preflightFunction(dec *json.Decoder, limits *bytecodePreflight) error {
 			}
 		case "return":
 			if err := preflightTypeName(dec); err != nil {
+				return err
+			}
+		case "match_tables":
+			if err := preflightMatchTables(dec, limits); err != nil {
 				return err
 			}
 		default:

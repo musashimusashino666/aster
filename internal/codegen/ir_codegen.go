@@ -56,6 +56,27 @@ func (g *generator) irStructType(structType ir.StructType) error {
 	g.line("")
 	return nil
 }
+func validateEnumResourceLimits(enumTypes []ir.EnumType) error {
+	if len(enumTypes) > limits.MaxEnumTypes {
+		return fmt.Errorf("codegen: enum type metadata exceeds %d-type safety limit", limits.MaxEnumTypes)
+	}
+	totalVariants := 0
+	totalPayloadFields := 0
+	for _, enumType := range enumTypes {
+		totalVariants += len(enumType.Variants)
+		if totalVariants > limits.MaxEnumVariants {
+			return fmt.Errorf("codegen: enum variant metadata exceeds %d-variant safety limit", limits.MaxEnumVariants)
+		}
+		for _, variant := range enumType.Variants {
+			totalPayloadFields += len(variant.Payload)
+			if totalPayloadFields > limits.MaxEnumPayloadFields {
+				return fmt.Errorf("codegen: enum payload metadata exceeds %d-field safety limit", limits.MaxEnumPayloadFields)
+			}
+		}
+	}
+	return nil
+}
+
 func (g *generator) irEnumType(enumType ir.EnumType) error {
 	if !langtypes.ValidName(enumType.Name) || len(enumType.Variants) == 0 {
 		return fmt.Errorf("codegen: invalid IR enum %q", enumType.Name)
