@@ -522,11 +522,11 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 		signature, _ := functionOf(decl.Name)
 		for j, param := range decl.Params {
 			local := Local{
-				At:   param.At,
+				At:    param.At,
 				EndAt: param.EndAt,
-				ID:   l.newSymbolID(),
-				Name: param.Name,
-				Type: signature.Params[j],
+				ID:    l.newSymbolID(),
+				Name:  param.Name,
+				Type:  signature.Params[j],
 			}
 			if !l.scope.define(local) {
 				return nil, fmt.Errorf("%d:%d: ir: duplicate parameter %q", param.At.Line, param.At.Column, param.Name)
