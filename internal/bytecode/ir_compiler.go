@@ -101,12 +101,15 @@ func compileIR(tree *ir.Program) (*Program, error) {
 }
 
 type irFunctionCompiler struct {
-	program  *Program
-	fnID     int
-	name     string
-	code     []Instruction
-	symbols  map[ir.SymbolID]int
-	nextSlot int
+	program      *Program
+	fnID         int
+	name         string
+	code         []Instruction
+	symbols      map[ir.SymbolID]int
+	nextSlot     int
+	currentStart token.Position
+	currentEnd   token.Position
+	hasSpan      bool
 }
 
 func newIRFunctionCompiler(p *Program, id int, name string) *irFunctionCompiler {
