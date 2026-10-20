@@ -1,4 +1,4 @@
-// Package limits defines value-size limits shared by Aster execution backends.
+// Package limits defines resource limits shared by Aster's compiler and execution backends.
 package limits
 
 // String values are limited by UTF-8 byte length, not Unicode code points.
@@ -45,6 +45,13 @@ const MaxGenericStructInstantiations = 1 << 12
 
 // MaxGenericEnumInstantiations bounds distinct monomorphized generic enums per program.
 const MaxGenericEnumInstantiations = 1 << 12
+
+// MaxGenericMonomorphizedDeclarations bounds distinct generic function, struct, and enum
+// instances combined across one program. Cache hits do not consume this budget.
+const MaxGenericMonomorphizedDeclarations = 1 << 13
+
+// MaxNativeSourceBytes bounds generated Native Go source by UTF-8 byte length.
+const MaxNativeSourceBytes = 64 << 20
 
 // MaxGenericExpansionDepth bounds chains of expanding generic instantiations.
 const MaxGenericExpansionDepth = 256

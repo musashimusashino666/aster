@@ -59,6 +59,51 @@ func TestGenerateTypedRejectsExcessiveEnumMetadata(t *testing.T) {
 	}
 }
 
+func TestLimitedBufferStopsAtByteLimit(t *testing.T) {
+	buffer := limitedBuffer{limit: 4}
+	if _, err := buffer.WriteString("abc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := buffer.WriteByte('d'); err != nil {
+		t.Fatal(err)
+	}
+	if buffer.exceeded || buffer.String() != "abcd" {
+		t.Fatalf("exact-limit write = (%q, exceeded=%t), want complete buffer without overflow", buffer.String(), buffer.exceeded)
+	}
+	if err := buffer.WriteByte('e'); err != nil {
+		t.Fatal(err)
+	}
+	if !buffer.exceeded || buffer.String() != "abcd" {
+		t.Fatalf("over-limit write = (%q, exceeded=%t), want bounded buffer", buffer.String(), buffer.exceeded)
+	}
+	if _, err := buffer.WriteString("ignored"); err != nil {
+		t.Fatal(err)
+	}
+	if buffer.String() != "abcd" {
+		t.Fatalf("buffer changed after overflow: %q", buffer.String())
+	}
+}
+
+func TestGenerateTypedRejectsNativeSourceOverLimitAtSourcePosition(t *testing.T) {
+	tree, err := parser.Parse(`fn bulky() { print("x"); }`, "native-limit.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fixed preamble fits; the first source declaration crosses this small
+	// test-only threshold, avoiding a 64 MiB allocation in the test itself.
+	limit := len(nativePreamble) + 1
+	_, err = generateTypedWithLimit(typed, limit)
+	if err == nil || !strings.Contains(err.Error(), "TYP078") ||
+		!strings.Contains(err.Error(), "native-limit.ast:1:1") ||
+		!strings.Contains(err.Error(), strconv.Itoa(limit)+"-byte limit") {
+		t.Fatalf("expected positioned native source limit diagnostic, got %v", err)
+	}
+}
+
 func TestGenerateTypedSupportsExplicitGenericFunctionInstances(t *testing.T) {
 	tree, err := parser.Parse(`fn identity<T>(value: T) -> T { return value; } print(identity::<i64>(7));`, "generic-native.ast")
 	if err != nil {

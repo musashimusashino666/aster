@@ -11,12 +11,93 @@ import (
 
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/checker"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/langtypes"
+	"github.com/aster-lang/aster/internal/limits"
+	"github.com/aster-lang/aster/internal/token"
 )
 
+type limitedBuffer struct {
+	data     bytes.Buffer
+	limit    int
+	exceeded bool
+}
+
+func (b *limitedBuffer) WriteString(s string) (int, error) {
+	if b.exceeded {
+		return 0, nil
+	}
+	if len(s) > b.limit-b.data.Len() {
+		b.exceeded = true
+		return 0, nil
+	}
+	return b.data.WriteString(s)
+}
+
+func (b *limitedBuffer) WriteByte(value byte) error {
+	if b.exceeded || b.data.Len() >= b.limit {
+		b.exceeded = true
+		return nil
+	}
+	return b.data.WriteByte(value)
+}
+
+func (b *limitedBuffer) String() string { return b.data.String() }
+
 type generator struct {
-	out    bytes.Buffer
+	out    limitedBuffer
 	indent int
+}
+
+func (g *generator) checkNativeSourceLimit(sourceName string, pos token.Position) error {
+	if !g.out.exceeded {
+		return nil
+	}
+	return diagnostic.NewAtSource(diagnostic.TypeResourceLimit, "codegen", sourceName, pos,
+		fmt.Sprintf("generated Native source exceeds %d-byte limit", g.out.limit))
+}
+
+func firstNativeSourcePosition(tree *ast.Program) token.Position {
+	if tree == nil {
+		return token.Position{}
+	}
+	for _, decl := range tree.Decls {
+		switch n := decl.(type) {
+		case *ast.Function:
+			return n.Pos()
+		case *ast.StructDecl:
+			return n.Pos()
+		case *ast.EnumDecl:
+			return n.Pos()
+		case *ast.StmtDecl:
+			if n.Statement != nil {
+				return n.Statement.Pos()
+			}
+		}
+	}
+	return token.Position{}
+}
+
+func nativeDeclarationPosition(tree *ast.Program, name string) token.Position {
+	if tree != nil {
+		for _, decl := range tree.Decls {
+			switch n := decl.(type) {
+			case *ast.Function:
+				if n.Name == name {
+					return n.Pos()
+				}
+			case *ast.StructDecl:
+				if n.Name == name {
+					return n.Pos()
+				}
+			case *ast.EnumDecl:
+				if n.Name == name {
+					return n.Pos()
+				}
+			}
+		}
+	}
+	return firstNativeSourcePosition(tree)
 }
 
 // Generate returns native-backend source. The resulting file can be compiled by
@@ -34,6 +115,10 @@ func Generate(tree *ast.Program) (string, error) {
 // GenerateTyped lowers the checker's normalized IR to Go. Expression types,
 // resolved symbols, function targets, and checked operations come from the checker phase.
 func GenerateTyped(typed *checker.TypedProgram) (string, error) {
+	return generateTypedWithLimit(typed, limits.MaxNativeSourceBytes)
+}
+
+func generateTypedWithLimit(typed *checker.TypedProgram, sourceLimit int) (string, error) {
 	if typed == nil {
 		return "", fmt.Errorf("codegen: nil typed program")
 	}
@@ -43,7 +128,7 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	if err := validateEnumResourceLimits(typed.IR.EnumTypes); err != nil {
 		return "", err
 	}
-	g := &generator{}
+	g := &generator{out: limitedBuffer{limit: sourceLimit}}
 	for _, fn := range typed.IR.Functions {
 		ret := string(fn.ReturnType)
 		if !langtypes.ValidName(ret) {
@@ -57,8 +142,14 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 		}
 	}
 	g.writePreamble()
+	if err := g.checkNativeSourceLimit(typed.IR.SourceName, firstNativeSourcePosition(typed.Tree)); err != nil {
+		return "", err
+	}
 	for _, structType := range typed.IR.StructTypes {
 		if err := g.irStructType(structType); err != nil {
+			return "", err
+		}
+		if err := g.checkNativeSourceLimit(typed.IR.SourceName, nativeDeclarationPosition(typed.Tree, structType.Name)); err != nil {
 			return "", err
 		}
 	}
@@ -66,9 +157,15 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 		if err := g.irEnumType(enumType); err != nil {
 			return "", err
 		}
+		if err := g.checkNativeSourceLimit(typed.IR.SourceName, nativeDeclarationPosition(typed.Tree, enumType.Name)); err != nil {
+			return "", err
+		}
 	}
 	for _, f := range typed.IR.Functions {
 		if err := g.irFunction(f); err != nil {
+			return "", err
+		}
+		if err := g.checkNativeSourceLimit(typed.IR.SourceName, f.Pos()); err != nil {
 			return "", err
 		}
 	}
@@ -81,9 +178,15 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 		if err := g.irStatement(stmt); err != nil {
 			return "", err
 		}
+		if err := g.checkNativeSourceLimit(typed.IR.SourceName, stmt.Pos()); err != nil {
+			return "", err
+		}
 	}
 	g.indent--
 	g.line("}")
+	if err := g.checkNativeSourceLimit(typed.IR.SourceName, firstNativeSourcePosition(typed.Tree)); err != nil {
+		return "", err
+	}
 	return g.out.String(), nil
 }
 func (g *generator) writePreamble() {

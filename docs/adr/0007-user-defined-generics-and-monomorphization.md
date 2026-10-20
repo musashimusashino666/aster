@@ -74,7 +74,7 @@ The cache key is the generic declaration ID plus normalized ordered type-argumen
 
 Generic instantiation creates compiler work and generated output; it must fail closed before exhausting process resources. Centralize limits in `internal/limits` and enforce them in the checker/monomorphizer and Native code generator, with defensive checks for untrusted bytecode metadata.
 
-At minimum, limits cover type parameters per declaration, recursive type-application depth, distinct function/type instances, active expansion depth, total monomorphized declarations, generated Native source bytes, aggregate metadata, verifier work, and match/payload tables after substitution. Cache hits do not count as new distinct instances. Numeric thresholds are centralized, documented, and tested at both sides of each boundary; they must not drift between checker and backends.
+At minimum, limits cover type parameters per declaration, recursive type-application depth, distinct function/type instances, active expansion depth, total monomorphized declarations, generated Native source bytes, aggregate metadata, verifier work, and match/payload tables after substitution. Cache hits do not count as new distinct instances. Numeric thresholds are centralized, documented, and tested at both sides of each boundary; they must not drift between checker and backends. The aggregate monomorphization limit is 8,192 distinct generic function, struct, and enum instances per program; generated Native Go source is capped at 64 MiB.
 
 Limit failures must be source-positioned where a source declaration or instantiation triggered them. These compile-time limits do not claim a process-wide memory bound and do not replace [ADR 0005](0005-native-resource-guarantees.md).
 

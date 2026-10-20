@@ -41,6 +41,18 @@ type expander struct {
 	nextEnumID         int
 }
 
+func (e *expander) totalMonomorphizedInstances() int {
+	return len(e.instances) + len(e.structInstances) + len(e.enumInstances)
+}
+
+func (e *expander) checkTotalMonomorphizedLimit(at token.Position, code, kind string) error {
+	if e.totalMonomorphizedInstances() >= limits.MaxGenericMonomorphizedDeclarations {
+		return typeError(at, code, "total generic instances exceed limit %d while instantiating generic %s",
+			limits.MaxGenericMonomorphizedDeclarations, kind)
+	}
+	return nil
+}
+
 // Expand specializes explicitly instantiated generic functions before type
 // checking. The returned AST contains only concrete functions; all later
 // compiler stages remain unaware of generic templates.
@@ -289,6 +301,9 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 	if len(e.instances) >= limits.MaxGenericFunctionInstantiations {
 		return "", typeError(at, diagnostic.TypeGenericInstantiationLimit, "generic function instances exceed limit %d", limits.MaxGenericFunctionInstantiations)
 	}
+	if err := e.checkTotalMonomorphizedLimit(at, diagnostic.TypeGenericInstantiationLimit, "function"); err != nil {
+		return "", err
+	}
 	sub := make(map[string]ast.TypeRef, len(template.TypeParams))
 	for i, name := range template.TypeParams {
 		sub[name] = concrete[i]
@@ -363,6 +378,9 @@ func (e *expander) instantiateStruct(template *ast.StructDecl, args []ast.TypeRe
 	if len(e.structInstances) >= limits.MaxGenericStructInstantiations {
 		return "", typeError(at, diagnostic.TypeGenericStructInstantiationLimit, "generic struct instances exceed limit %d", limits.MaxGenericStructInstantiations)
 	}
+	if err := e.checkTotalMonomorphizedLimit(at, diagnostic.TypeGenericStructInstantiationLimit, "struct"); err != nil {
+		return "", err
+	}
 	sub := make(map[string]ast.TypeRef, len(template.TypeParams))
 	for i, name := range template.TypeParams {
 		sub[name] = concrete[i]
@@ -416,6 +434,9 @@ func (e *expander) instantiateEnum(template *ast.EnumDecl, args []ast.TypeRef, a
 	}
 	if len(e.enumInstances) >= limits.MaxGenericEnumInstantiations {
 		return "", typeError(at, diagnostic.TypeGenericEnumInstantiationLimit, "generic enum instances exceed limit %d", limits.MaxGenericEnumInstantiations)
+	}
+	if err := e.checkTotalMonomorphizedLimit(at, diagnostic.TypeGenericEnumInstantiationLimit, "enum"); err != nil {
+		return "", err
 	}
 	sub := make(map[string]ast.TypeRef, len(template.TypeParams))
 	for i, param := range template.TypeParams {
