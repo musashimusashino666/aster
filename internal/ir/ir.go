@@ -440,7 +440,9 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 			enumType := EnumType{ID: id, Name: enumDecl.Name, Variants: make([]EnumVariant, 0, len(enumDecl.Variants))}
 			for _, variant := range enumDecl.Variants {
 				payload := make([]Type, len(variant.Payload))
-				for i, typ := range variant.Payload { payload[i] = typeRefType(typ) }
+				for i, typ := range variant.Payload {
+					payload[i] = typeRefType(typ)
+				}
 				enumType.Variants = append(enumType.Variants, EnumVariant{Name: variant.Name, Payload: payload})
 			}
 			program.EnumTypes = append(program.EnumTypes, enumType)
@@ -715,24 +717,37 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		return &ArrayExpr{At: n.Pos(), ResolvedType: resolvedType, Elements: elements}, nil
 	case *ast.EnumVariantExpr:
 		enumID, exists := l.enumIDs[n.EnumName]
-		if !exists { return nil, fmt.Errorf("%d:%d: ir: unresolved enum type %q", n.Pos().Line, n.Pos().Column, n.EnumName) }
+		if !exists {
+			return nil, fmt.Errorf("%d:%d: ir: unresolved enum type %q", n.Pos().Line, n.Pos().Column, n.EnumName)
+		}
 		variantIndex := -1
 		for i, variant := range l.enumTypes[enumID].Variants {
-			if variant.Name == n.VariantName { variantIndex = i; break }
+			if variant.Name == n.VariantName {
+				variantIndex = i
+				break
+			}
 		}
-		if variantIndex < 0 { return nil, fmt.Errorf("%d:%d: ir: unresolved enum variant %s::%s", n.Pos().Line, n.Pos().Column, n.EnumName, n.VariantName) }
+		if variantIndex < 0 {
+			return nil, fmt.Errorf("%d:%d: ir: unresolved enum variant %s::%s", n.Pos().Line, n.Pos().Column, n.EnumName, n.VariantName)
+		}
 		args := make([]Expr, len(n.Args))
 		for i, arg := range n.Args {
 			lowered, err := l.lowerExpr(arg)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			args[i] = lowered
 		}
 		return &EnumExpr{At: n.Pos(), ResolvedType: resolvedType, EnumID: enumID, VariantIndex: variantIndex, VariantName: n.VariantName, Args: args}, nil
 	case *ast.MatchExpr:
 		subject, err := l.lowerExpr(n.Subject)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		enumID, exists := l.enumIDs[string(subject.ExprType())]
-		if !exists { return nil, fmt.Errorf("%d:%d: ir: unresolved match enum %q", n.Pos().Line, n.Pos().Column, subject.ExprType()) }
+		if !exists {
+			return nil, fmt.Errorf("%d:%d: ir: unresolved match enum %q", n.Pos().Line, n.Pos().Column, subject.ExprType())
+		}
 		temp := Local{At: n.Pos(), ID: l.newSymbolID(), Name: "__match_subject", Type: subject.ExprType()}
 		arms := make([]MatchArm, 0, len(n.Arms))
 		covered := make(map[int]bool)
@@ -741,27 +756,43 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			var variantIndex int = -1
 			if arm.Pattern.Wildcard {
 				for i := range l.enumTypes[enumID].Variants {
-					if !covered[i] { irArm.VariantIndexes = append(irArm.VariantIndexes, i); covered[i] = true }
+					if !covered[i] {
+						irArm.VariantIndexes = append(irArm.VariantIndexes, i)
+						covered[i] = true
+					}
 				}
 			} else {
 				for i, variant := range l.enumTypes[enumID].Variants {
-					if variant.Name == arm.Pattern.VariantName { variantIndex = i; break }
+					if variant.Name == arm.Pattern.VariantName {
+						variantIndex = i
+						break
+					}
 				}
-				if variantIndex < 0 { return nil, fmt.Errorf("%d:%d: ir: unresolved match variant %q", arm.At.Line, arm.At.Column, arm.Pattern.VariantName) }
+				if variantIndex < 0 {
+					return nil, fmt.Errorf("%d:%d: ir: unresolved match variant %q", arm.At.Line, arm.At.Column, arm.Pattern.VariantName)
+				}
 				covered[variantIndex] = true
 				irArm.VariantIndexes = []int{variantIndex}
 				variant := l.enumTypes[enumID].Variants[variantIndex]
 				oldScope := l.scope
 				l.scope = newScope(oldScope)
 				for i, name := range arm.Pattern.Bindings {
-					if i >= len(variant.Payload) { l.scope = oldScope; return nil, fmt.Errorf("%d:%d: ir: too many enum pattern bindings", arm.At.Line, arm.At.Column) }
+					if i >= len(variant.Payload) {
+						l.scope = oldScope
+						return nil, fmt.Errorf("%d:%d: ir: too many enum pattern bindings", arm.At.Line, arm.At.Column)
+					}
 					local := Local{At: arm.Pattern.At, ID: l.newSymbolID(), Name: name, Type: variant.Payload[i]}
-					if !l.scope.define(local) { l.scope = oldScope; return nil, fmt.Errorf("%d:%d: ir: duplicate enum pattern binding %q", arm.At.Line, arm.At.Column, name) }
+					if !l.scope.define(local) {
+						l.scope = oldScope
+						return nil, fmt.Errorf("%d:%d: ir: duplicate enum pattern binding %q", arm.At.Line, arm.At.Column, name)
+					}
 					irArm.Bindings = append(irArm.Bindings, local)
 				}
 				lowered, lowerErr := l.lowerExpr(arm.Expr)
 				l.scope = oldScope
-				if lowerErr != nil { return nil, lowerErr }
+				if lowerErr != nil {
+					return nil, lowerErr
+				}
 				irArm.Expr = lowered
 				arms = append(arms, irArm)
 				continue
@@ -770,7 +801,9 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			l.scope = newScope(oldScope)
 			lowered, lowerErr := l.lowerExpr(arm.Expr)
 			l.scope = oldScope
-			if lowerErr != nil { return nil, lowerErr }
+			if lowerErr != nil {
+				return nil, lowerErr
+			}
 			irArm.Expr = lowered
 			arms = append(arms, irArm)
 		}
