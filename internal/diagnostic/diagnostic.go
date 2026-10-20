@@ -269,7 +269,6 @@ const (
 	TypeNumericCastOperand      = "TYP051"
 )
 
-
 const (
 	RuntimeGeneric                = "RUN000"
 	RuntimeAssertionFailed        = "RUN001"
