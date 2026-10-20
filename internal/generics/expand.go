@@ -558,7 +558,7 @@ func (e *expander) inferEnumTypeArgumentsWithContext(template *ast.EnumDecl, var
 	for i, param := range template.TypeParams {
 		typ, ok := inferred[param]
 		if !ok {
-			return nil, typeError(at, diagnostic.TypeGenericEnumInference, "cannot infer type parameter '%s' for enum '%s'; add a type annotation or use %s::<...>::%s", param, template.Name, template.Name, variantName)
+			return nil, typeError(at, diagnostic.TypeGenericEnumInference, "cannot infer type parameter '%s' for enum '%s'; provide an expected concrete enum type or use explicit type arguments such as %s::<...>::%s", param, template.Name, template.Name, variantName)
 		}
 		out[i] = typ
 	}
