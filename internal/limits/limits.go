@@ -43,5 +43,8 @@ const MaxGenericFunctionInstantiations = 1 << 12
 // MaxGenericStructInstantiations bounds distinct monomorphized generic structs per program.
 const MaxGenericStructInstantiations = 1 << 12
 
+// MaxGenericEnumInstantiations bounds distinct monomorphized generic enums per program.
+const MaxGenericEnumInstantiations = 1 << 12
+
 // MaxGenericExpansionDepth bounds chains of expanding generic instantiations.
 const MaxGenericExpansionDepth = 256
