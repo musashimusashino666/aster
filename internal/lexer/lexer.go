@@ -142,7 +142,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 		case ',':
 			kind = token.Comma
 		case ':':
-			kind = token.Colon
+			if l.match(':') { kind = token.DoubleColon } else { kind = token.Colon }
 		case ';':
 			kind = token.Semicolon
 		case '.':
@@ -164,6 +164,8 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 		case '=':
 			if l.match('=') {
 				kind = token.Equal
+			} else if l.match('>') {
+				kind = token.FatArrow
 			} else {
 				kind = token.Assign
 			}
@@ -212,6 +214,10 @@ func keywordKind(s string) token.Kind {
 		return token.Fn
 	case "struct":
 		return token.Struct
+	case "enum":
+		return token.Enum
+	case "match":
+		return token.Match
 	case "let":
 		return token.Let
 	case "mut":
