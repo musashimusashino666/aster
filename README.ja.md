@@ -163,6 +163,7 @@ GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）でも
 
 - [`docs/language-spec.md`](docs/language-spec.md): 現在実装されている文法と意味
 - [`docs/architecture.md`](docs/architecture.md): 処理系の構成
+- [`docs/diagnostics.md`](docs/diagnostics.md): 字句解析・構文解析・型検査の安定した診断コード
 - [`docs/security-model.md`](docs/security-model.md): 安全性の設計と未解決事項
 - [`docs/roadmap.md`](docs/roadmap.md): 段階的な開発計画
 - [`docs/contributing.md`](docs/contributing.md): 開発ルール

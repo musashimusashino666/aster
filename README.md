@@ -161,7 +161,8 @@ Only `native` is a supported build target in this version. Unsupported targets f
 ├── internal/
 │   ├── ast/              AST nodes
 │   ├── bytecode/         bytecode format, verifier, and typed-IR compiler
-│   ├── checker/          static type checker
+│   ├── checker/          static type checker and typed-IR producer
+│   ├── diagnostic/       stable front-end diagnostic codes
 │   ├── codegen/          native Go backend
 │   ├── lexer/            tokenization and source locations
 │   ├── parser/           syntax parser
@@ -185,6 +186,8 @@ Only `native` is a supported build target in this version. Unsupported targets f
 - Bytecode format changes require a format-version increment when compatibility is broken.
 - Native and VM behavior should be tested against the same examples, especially overflow, division by zero, branches, recursion, and short-circuit logic.
 - Do not mark a backend or domain library as supported until CI exercises it.
+
+See [`docs/diagnostics.md`](docs/diagnostics.md) for stable lexer, parser, and type-checker diagnostic codes.
 
 ## Local checks and CI
 
