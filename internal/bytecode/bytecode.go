@@ -349,7 +349,7 @@ func (p *Program) validateStructTypes() (map[string]StructType, error) {
 	var visit func(string) error
 	visit = func(name string) error {
 		if state[name] == 1 {
-			return nil, fmt.Errorf("struct %q has a recursive by-value layout", name)
+			return fmt.Errorf("struct %q has a recursive by-value layout", name)
 		}
 		if state[name] == 2 {
 			return nil
