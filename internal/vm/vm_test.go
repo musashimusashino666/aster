@@ -279,3 +279,23 @@ print(extracted);`
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
+
+
+func TestVMExhaustiveEnumMatchAndPayloadBinding(t *testing.T) {
+	out, err := runSource(t, `enum Message { Quit, Move(i64, i64), Text(string), }
+fn describe(message: Message) -> i64 {
+	return match message {
+		Message::Quit => 0,
+		Message::Move(x, y) => x + y,
+		Message::Text(text) => len(text),
+	};
+}
+print(describe(Message::Quit));
+print(describe(Message::Move(4, 5)));
+print(describe(Message::Text("abc")));
+`)
+	if err != nil { t.Fatal(err) }
+	if got, want := out, "0\n9\n3\n"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
