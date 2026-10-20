@@ -1,0 +1,79 @@
+name: Scheduled fuzzing
+
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: Duration per fuzz target
+        type: choice
+        required: true
+        default: 10m
+        options:
+          - 5m
+          - 10m
+          - 20m
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Lexer
+            package: ./internal/lexer
+            target: FuzzLexerNoPanic
+          - name: Parser
+            package: ./internal/parser
+            target: FuzzParserNoPanic
+          - name: Type checker
+            package: ./internal/checker
+            target: FuzzAnalyzeNoPanic
+          - name: Bytecode JSON reader
+            package: ./internal/bytecode
+            target: FuzzReadBytecodeNeverPanics
+          - name: Bytecode instruction verifier
+            package: ./internal/bytecode
+            target: FuzzValidateInstructionOperandsNeverPanics
+          - name: Structured bytecode verifier
+            package: ./internal/bytecode
+            target: FuzzValidateStructuredProgramsNeverPanics
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: true
+
+      - name: Run fuzz target
+        run: >-
+          go test
+          -run=^$
+          -fuzz=^${{ matrix.target }}$
+          -fuzztime=${{ inputs.fuzztime || '10m' }}
+          -parallel=2
+          ${{ matrix.package }}
+
+      - name: Upload any saved fuzz regression corpus
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          path: internal/**/testdata/fuzz/**
+          if-no-files-found: ignore
+          retention-days: 14
