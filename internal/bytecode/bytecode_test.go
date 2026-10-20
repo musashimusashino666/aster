@@ -709,7 +709,7 @@ func TestValidateRejectsNumericCastTypeMismatch(t *testing.T) {
 		{Op: OpStoreLocal, A: 0},
 		{Op: OpHalt},
 	}})
-	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "expected f64") {
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "TO_I64 requires f64, got i64") {
 		t.Fatalf("expected invalid TO_I64 operand type to be rejected, got %v", err)
 	}
 }
