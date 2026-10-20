@@ -239,6 +239,23 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			return "", fmt.Errorf("codegen: unsupported IR index operation %q", n.Op)
 		}
 		return "asterIndexI64(" + collection + ", " + index + ", " + irPositionArgs(n) + ")", nil
+	case *ir.SliceExpr:
+		collection, err := g.irExpression(n.Collection)
+		if err != nil {
+			return "", err
+		}
+		start, err := g.irExpression(n.Start)
+		if err != nil {
+			return "", err
+		}
+		end, err := g.irExpression(n.End)
+		if err != nil {
+			return "", err
+		}
+		if n.Op != ir.OpSliceChecked {
+			return "", fmt.Errorf("codegen: unsupported IR slice operation %q", n.Op)
+		}
+		return "asterSlice(" + collection + ", " + start + ", " + end + ", " + irPositionArgs(n) + ")", nil
 	case *ir.LocalExpr:
 		return irLocalName(n.Symbol), nil
 	case *ir.UnaryExpr:
