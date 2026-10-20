@@ -14,7 +14,7 @@ import (
 	"github.com/aster-lang/aster/internal/limits"
 )
 
-const FormatVersion = 7
+const FormatVersion = 8
 
 // Per-value allocation limits enforced by bytecode validation and the VM.
 // String limits are measured in UTF-8 bytes, not Unicode code points.
@@ -308,12 +308,16 @@ const (
 )
 
 type Instruction struct {
-	Op     Op  `json:"op"`
-	A      int `json:"a,omitempty"`
-	B      int `json:"b,omitempty"`
-	C      int `json:"c,omitempty"`
-	Line   int `json:"line,omitempty"`
-	Column int `json:"column,omitempty"`
+	Op        Op  `json:"op"`
+	A         int `json:"a,omitempty"`
+	B         int `json:"b,omitempty"`
+	C         int `json:"c,omitempty"`
+	Line      int `json:"line,omitempty"`
+	Column    int `json:"column,omitempty"`
+	Offset    int `json:"offset,omitempty"`
+	EndOffset int `json:"end_offset,omitempty"`
+	EndLine   int `json:"end_line,omitempty"`
+	EndColumn int `json:"end_column,omitempty"`
 }
 type Function struct {
 	Name        string        `json:"name"`
@@ -771,6 +775,9 @@ func (p *Program) Validate() error {
 			if ins.Line < 0 || ins.Column < 0 {
 				return fmt.Errorf("function %q instruction %d has invalid source location", f.Name, pc)
 			}
+			if err := validateInstructionSourceSpan(ins); err != nil {
+				return fmt.Errorf("function %q instruction %d has invalid source span: %w", f.Name, pc, err)
+			}
 		}
 	}
 	for _, f := range p.Functions {
@@ -798,6 +805,31 @@ const maxVerifiedStackDepth = 1 << 20
 // validateFunctionStack performs a control-flow dataflow analysis over operand
 // stack heights. Orphaned (unreachable) code regions are checked as independent
 // blocks with an empty entry stack so malformed dead code cannot hide underflow.
+// validateInstructionSourceSpan validates optional exclusive end-position
+// metadata. Synthetic instructions may omit the span entirely.
+func validateInstructionSourceSpan(ins Instruction) error {
+	hasSpan := ins.Offset != 0 || ins.EndOffset != 0 || ins.EndLine != 0 || ins.EndColumn != 0
+	if !hasSpan {
+		return nil
+	}
+	if ins.Line <= 0 || ins.Column <= 0 {
+		return fmt.Errorf("span has no valid start line/column")
+	}
+	if ins.Offset < 0 || ins.EndOffset < 0 {
+		return fmt.Errorf("span has a negative byte offset")
+	}
+	if ins.EndLine <= 0 || ins.EndColumn <= 0 {
+		return fmt.Errorf("span has no valid end line/column")
+	}
+	if ins.EndOffset < ins.Offset {
+		return fmt.Errorf("end offset precedes start offset")
+	}
+	if ins.EndLine < ins.Line || (ins.EndLine == ins.Line && ins.EndColumn < ins.Column) {
+		return fmt.Errorf("end position precedes start position")
+	}
+	return nil
+}
+
 func validateFunctionStack(fn Function) error {
 	depths := make([]int, len(fn.Code))
 	for i := range depths {
