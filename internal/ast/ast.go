@@ -50,6 +50,23 @@ type StructDecl struct {
 func (n *StructDecl) Pos() token.Position { return n.At }
 func (*StructDecl) declNode()             {}
 
+// EnumDecl declares a closed nominal sum type. Variant payloads are positional.
+type EnumDecl struct {
+	At       token.Position
+	Name     string
+	Variants []EnumVariant
+}
+
+func (n *EnumDecl) Pos() token.Position { return n.At }
+func (*EnumDecl) declNode()             {}
+
+type EnumVariant struct {
+	At      token.Position
+	Name    string
+	Payload []TypeRef
+}
+
+
 type StructField struct {
 	At   token.Position
 	Name string
@@ -197,6 +214,44 @@ type CallExpr struct {
 
 func (n *CallExpr) Pos() token.Position { return n.At }
 func (*CallExpr) exprNode()             {}
+
+// EnumVariantExpr constructs a concrete enum variant using a qualified name.
+type EnumVariantExpr struct {
+	At          token.Position
+	EnumName    string
+	VariantName string
+	Args        []Expr
+	HasPayload  bool
+}
+
+func (n *EnumVariantExpr) Pos() token.Position { return n.At }
+func (*EnumVariantExpr) exprNode()             {}
+
+// MatchPattern is either a wildcard or a flat, qualified enum variant pattern.
+type MatchPattern struct {
+	At          token.Position
+	Wildcard    bool
+	EnumName    string
+	VariantName string
+	Bindings    []string
+	HasPayload  bool
+}
+
+type MatchArm struct {
+	At      token.Position
+	Pattern MatchPattern
+	Expr    Expr
+}
+
+// MatchExpr evaluates its subject once and returns the selected arm expression.
+type MatchExpr struct {
+	At      token.Position
+	Subject Expr
+	Arms    []MatchArm
+}
+
+func (n *MatchExpr) Pos() token.Position { return n.At }
+func (*MatchExpr) exprNode()             {}
 
 // ArrayExpr creates a homogeneous, dynamically sized array literal.
 type ArrayExpr struct {
