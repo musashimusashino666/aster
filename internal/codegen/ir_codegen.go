@@ -194,6 +194,9 @@ func (g *generator) irBlockContents(block *ir.BlockStmt) error {
 }
 
 func (g *generator) irStatement(stmt ir.Stmt) error {
+	if err := g.checkContext(); err != nil {
+		return err
+	}
 	switch n := stmt.(type) {
 	case *ir.BlockStmt:
 		g.line("{")
@@ -392,6 +395,9 @@ func (g *generator) irMatchExpression(n *ir.MatchExpr) (string, error) {
 }
 
 func (g *generator) irExpression(expr ir.Expr) (string, error) {
+	if err := g.checkContext(); err != nil {
+		return "", err
+	}
 	switch n := expr.(type) {
 	case *ir.LiteralExpr:
 		switch n.Kind {
