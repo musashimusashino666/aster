@@ -188,7 +188,9 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 	// structs can refer forward to one another in the same source file.
 	for _, d := range program.Decls {
 		e, ok := d.(*ast.EnumDecl)
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		if !langtypes.ValidName(e.Name) || builtinName(e.Name) || e.Name == "Array" {
 			return typeError(e.Pos(), diagnostic.TypeDuplicateEnum, "invalid or reserved enum name '%s'", e.Name)
 		}
@@ -240,14 +242,18 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 	// Resolve enum payload types after all nominal names have been registered.
 	for _, d := range program.Decls {
 		e, ok := d.(*ast.EnumDecl)
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		info := c.enums[e.Name]
 		for i, variant := range e.Variants {
 			payload := make([]Type, 0, len(variant.Payload))
 			for _, payloadRef := range variant.Payload {
 				typ, err := c.typeFromRef(payloadRef)
 				if err != nil || typ == Unit {
-					if err == nil { err = fmt.Errorf("enum payloads cannot have type unit") }
+					if err == nil {
+						err = fmt.Errorf("enum payloads cannot have type unit")
+					}
 					return typeError(payloadRef.At, diagnostic.TypeInvalidEnumPayload, "invalid payload type for %s::%s: %v", e.Name, variant.Name, err)
 				}
 				payload = append(payload, typ)
@@ -443,23 +449,35 @@ func (c *Checker) validateStructLayoutCycles() error {
 		state[name] = 1
 		if info, ok := c.structs[name]; ok {
 			for _, field := range info.Fields {
-				if _, isArray := arrayElement(field.Type); isArray { continue }
+				if _, isArray := arrayElement(field.Type); isArray {
+					continue
+				}
 				target := string(field.Type)
 				if _, isStruct := c.structs[target]; isStruct {
-					if err := visit(target); err != nil { return err }
+					if err := visit(target); err != nil {
+						return err
+					}
 				} else if _, isEnum := c.enums[target]; isEnum {
-					if err := visit(target); err != nil { return err }
+					if err := visit(target); err != nil {
+						return err
+					}
 				}
 			}
 		} else if info, ok := c.enums[name]; ok {
 			for _, variant := range info.Variants {
 				for _, payloadType := range variant.Payload {
-					if _, isArray := arrayElement(payloadType); isArray { continue }
+					if _, isArray := arrayElement(payloadType); isArray {
+						continue
+					}
 					target := string(payloadType)
 					if _, isStruct := c.structs[target]; isStruct {
-						if err := visit(target); err != nil { return err }
+						if err := visit(target); err != nil {
+							return err
+						}
 					} else if _, isEnum := c.enums[target]; isEnum {
-						if err := visit(target); err != nil { return err }
+						if err := visit(target); err != nil {
+							return err
+						}
 					}
 				}
 			}
@@ -467,8 +485,16 @@ func (c *Checker) validateStructLayoutCycles() error {
 		state[name] = 2
 		return nil
 	}
-	for name := range c.structs { if err := visit(name); err != nil { return err } }
-	for name := range c.enums { if err := visit(name); err != nil { return err } }
+	for name := range c.structs {
+		if err := visit(name); err != nil {
+			return err
+		}
+	}
+	for name := range c.enums {
+		if err := visit(name); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -726,7 +752,10 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		variantIndex := -1
 		variant := EnumVariantInfo{}
 		for i, candidate := range info.Variants {
-			if candidate.Name == n.VariantName { variantIndex, variant = i, candidate; break }
+			if candidate.Name == n.VariantName {
+				variantIndex, variant = i, candidate
+				break
+			}
 		}
 		if variantIndex < 0 {
 			return "", typeError(n.Pos(), diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", n.EnumName, n.VariantName)
@@ -736,7 +765,9 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		}
 		for i, arg := range n.Args {
 			got, err := c.checkExprExpected(arg, variant.Payload[i])
-			if err != nil { return "", err }
+			if err != nil {
+				return "", err
+			}
 			if got != variant.Payload[i] {
 				return "", typeError(arg.Pos(), diagnostic.TypeEnumPayloadMismatch, "payload %d of %s::%s expects %s, got %s", i+1, n.EnumName, n.VariantName, variant.Payload[i], got)
 			}
@@ -969,7 +1000,9 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 
 func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 	subjectType, err := c.checkExpr(n.Subject)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	enumInfo, ok := c.enums[string(subjectType)]
 	if !ok {
 		return "", typeError(n.Subject.Pos(), diagnostic.TypeMatchNonEnum, "match subject must have an enum type, got %s", subjectType)
@@ -999,7 +1032,10 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 			variantIndex := -1
 			variant := EnumVariantInfo{}
 			for i, candidate := range enumInfo.Variants {
-				if candidate.Name == pattern.VariantName { variantIndex, variant = i, candidate; break }
+				if candidate.Name == pattern.VariantName {
+					variantIndex, variant = i, candidate
+					break
+				}
 			}
 			if variantIndex < 0 {
 				return "", typeError(pattern.At, diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", pattern.EnumName, pattern.VariantName)
@@ -1038,7 +1074,9 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 		}
 		armType, armErr := c.checkExpr(arm.Expr)
 		c.scopes = oldScope
-		if armErr != nil { return "", armErr }
+		if armErr != nil {
+			return "", armErr
+		}
 		if !haveResult {
 			resultType, haveResult = armType, true
 		} else if resultType != armType {
@@ -1048,11 +1086,15 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 	if !wildcardSeen && len(covered) != len(enumInfo.Variants) {
 		var missing []string
 		for i, variant := range enumInfo.Variants {
-			if !covered[i] { missing = append(missing, variant.Name) }
+			if !covered[i] {
+				missing = append(missing, variant.Name)
+			}
 		}
 		return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match on %s is missing variants: %s", enumInfo.Name, strings.Join(missing, ", "))
 	}
-	if !haveResult { return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match expression has no reachable arms") }
+	if !haveResult {
+		return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match expression has no reachable arms")
+	}
 	return resultType, nil
 }
 
