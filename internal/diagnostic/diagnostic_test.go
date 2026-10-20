@@ -85,4 +85,3 @@ func TestWrapToolchainPreservesCancellation(t *testing.T) {
 		t.Fatalf("wrapped cancellation is missing stable code: %v", cancelled)
 	}
 }
-
