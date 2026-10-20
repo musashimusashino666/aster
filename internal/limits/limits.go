@@ -1,4 +1,4 @@
-// Package limits defines value-size limits shared by Aster execution backends.
+// Package limits defines resource limits shared by Aster's compiler and execution backends.
 package limits
 
 // String values are limited by UTF-8 byte length, not Unicode code points.
