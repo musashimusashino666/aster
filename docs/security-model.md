@@ -21,7 +21,7 @@ Aster 0.1 is a prototype. It has not undergone an independent security audit and
 - Native code is a normal host executable and has the same process privileges as its caller. The shared call-depth, string, array, and per-`print` rendered-value limits apply to Native as well as the VM, but the VM's instruction budget, operand-stack cap, cumulative local-slot budget, and bytecode-loader limits do not apply to generated native executables. Since neither backend has a cumulative stdout-byte budget, and Native also lacks an instruction budget, output volume is not a reliable resource boundary. Native execution is not a sandbox.
 - The VM has per-value, active-local-slot, and decoded-constant bounds, but no comprehensive process-wide byte-accurate allocation quota. Stacks, temporary copies, nested values, and repeated allocations can still consume CPU and memory; the VM is not a sandbox. The local-slot budget is a bounded frame-allocation safeguard, not a complete memory limit.
 - No dependency signature verification or package lockfile yet.
-- Fuzz targets exist for the lexer, parser, and bytecode validation, but there is no sustained fuzzing campaign, formal semantics, independent audit, or release attestation.
+- A scheduled fuzz campaign now runs the lexer, parser, type checker, bytecode reader, and bytecode instruction verifier for 10 minutes per target each week. This is an initial automated baseline, not a substitute for long-duration campaigns, corpus review, formal semantics, independent audit, or release attestation.
 - The type system does not yet model ownership or borrowing; the design proposal's full memory-safety model is future work, not implemented behavior.
 
 ## Release requirements before security-sensitive use
