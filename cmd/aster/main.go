@@ -159,7 +159,7 @@ func commandRun(args []string) error {
 	}
 	switch *engine {
 	case "vm":
-		bc, err := bytecode.Compile(typed.Tree)
+		bc, err := bytecode.CompileTyped(typed)
 		if err != nil {
 			return err
 		}
@@ -189,7 +189,7 @@ func commandCompile(args []string) error {
 	if err != nil {
 		return err
 	}
-	bc, err := bytecode.Compile(typed.Tree)
+	bc, err := bytecode.CompileTyped(typed)
 	if err != nil {
 		return err
 	}
