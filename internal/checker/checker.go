@@ -28,6 +28,37 @@ type FunctionInfo struct {
 	Return Type
 	Decl   *ast.Function
 }
+
+// TypedProgram is the checked view of an AST. Expression types and function
+// signatures are produced by the checker and consumed by backend generators;
+// backends must not independently infer these semantic facts.
+type TypedProgram struct {
+	Tree            *ast.Program
+	expressionTypes map[ast.Expr]Type
+	functions       map[string]FunctionInfo
+}
+
+// TypeOf returns the checker's resolved type for expr.
+func (p *TypedProgram) TypeOf(expr ast.Expr) (Type, bool) {
+	if p == nil {
+		return "", false
+	}
+	t, ok := p.expressionTypes[expr]
+	return t, ok
+}
+
+// Function returns the resolved signature for a declared function.
+func (p *TypedProgram) Function(name string) (FunctionInfo, bool) {
+	if p == nil {
+		return FunctionInfo{}, false
+	}
+	info, ok := p.functions[name]
+	if !ok {
+		return FunctionInfo{}, false
+	}
+	info.Params = append([]Type(nil), info.Params...)
+	return info, true
+}
 type Variable struct {
 	Type    Type
 	Mutable bool
@@ -56,14 +87,37 @@ func (s *scope) define(name string, v Variable) bool {
 }
 
 type Checker struct {
-	functions     map[string]FunctionInfo
-	currentReturn Type
-	inFunction    bool
-	scopes        *scope
+	functions       map[string]FunctionInfo
+	expressionTypes map[ast.Expr]Type
+	currentReturn   Type
+	inFunction      bool
+	scopes          *scope
 }
 
+// Check validates program and discards the analysis metadata.
 func Check(program *ast.Program) error {
-	c := &Checker{functions: map[string]FunctionInfo{}}
+	_, err := Analyze(program)
+	return err
+}
+
+// Analyze validates program and returns the semantic information produced by
+// the checker for use by compiler backends.
+func Analyze(program *ast.Program) (*TypedProgram, error) {
+	c := &Checker{
+		functions:       map[string]FunctionInfo{},
+		expressionTypes: map[ast.Expr]Type{},
+	}
+	if err := c.checkProgram(program); err != nil {
+		return nil, err
+	}
+	return &TypedProgram{
+		Tree:            program,
+		expressionTypes: c.expressionTypes,
+		functions:       c.functions,
+	}, nil
+}
+
+func (c *Checker) checkProgram(program *ast.Program) error {
 	// First pass enables forward calls and recursion.
 	for _, d := range program.Decls {
 		f, ok := d.(*ast.Function)
@@ -118,7 +172,7 @@ func Check(program *ast.Program) error {
 		if _, err := c.checkBlock(f.Body, false); err != nil {
 			return err
 		}
-		if info.Return != Unit && !alwaysReturns(f.Body) {
+		if info.Return != Unit && !AlwaysReturns(f.Body) {
 			return c.err(f.Pos(), "function '%s' must return %s on every path", f.Name, info.Return)
 		}
 	}
@@ -310,6 +364,16 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 	}
 }
 func (c *Checker) checkExpr(e ast.Expr) (Type, error) {
+	t, err := c.checkExprImpl(e)
+	if err == nil {
+		c.expressionTypes[e] = t
+	}
+	return t, err
+}
+
+// checkExprImpl performs type inference/checking. Recursive children are routed
+// through checkExpr so every successfully checked expression is recorded.
+func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 	switch n := e.(type) {
 	case *ast.LiteralExpr:
 		switch n.Kind {
@@ -496,18 +560,19 @@ func (c *Checker) checkExpr(e ast.Expr) (Type, error) {
 	}
 	return "", c.err(e.Pos(), "unsupported expression node %T", e)
 }
-func alwaysReturns(s ast.Stmt) bool {
+// AlwaysReturns reports whether the conservative return-flow analysis guarantees a return.
+func AlwaysReturns(s ast.Stmt) bool {
 	switch n := s.(type) {
 	case *ast.ReturnStmt:
 		return true
 	case *ast.BlockStmt:
 		for _, child := range n.Statements {
-			if alwaysReturns(child) {
+			if AlwaysReturns(child) {
 				return true
 			}
 		}
 	case *ast.IfStmt:
-		if n.Else != nil && alwaysReturns(n.Then) && alwaysReturns(n.Else) {
+		if n.Else != nil && AlwaysReturns(n.Then) && AlwaysReturns(n.Else) {
 			return true
 		}
 	}
