@@ -83,21 +83,35 @@ func setIndexPath(collection bytecode.Value, indices []int64, replacement byteco
 	if collection.Kind != bytecode.ValueArray {
 		return bytecode.Value{}, fmt.Errorf("indexing requires an array, got %s", collection.Kind)
 	}
+	collection.EnsureArrayStorage()
 	index := indices[0]
 	if index < 0 || index >= int64(len(collection.Array)) {
 		return bytecode.Value{}, fmt.Errorf("array index %d out of bounds for length %d", index, len(collection.Array))
 	}
-	items := append([]bytecode.Value(nil), collection.Array...)
+
+	// Only detach shared containers. An unshared local can be mutated in place,
+	// avoiding a full slice copy for every element assignment in a tight loop.
+	collection.PrepareArrayWrite()
 	if len(indices) == 1 {
-		items[int(index)] = replacement
+		if replacement.Kind == bytecode.ValueArray {
+			replacement.EnsureArrayStorage()
+			if replacement.IsArrayBorrowed() {
+				replacement.MarkArrayShared()
+			}
+			replacement.ClearArrayBorrowed()
+		}
+		collection.Array[int(index)] = replacement
 	} else {
-		child, err := setIndexPath(items[int(index)], indices[1:], replacement)
+		child, err := setIndexPath(collection.Array[int(index)], indices[1:], replacement)
 		if err != nil {
 			return bytecode.Value{}, err
 		}
-		items[int(index)] = child
+		collection.Array[int(index)] = child
 	}
-	return bytecode.Value{Kind: bytecode.ValueArray, Array: items}, nil
+	// The updated root is being transferred back to the variable from which
+	// the indexed-assignment instruction loaded it; this is not a new alias.
+	collection.ClearArrayBorrowed()
+	return collection, nil
 }
 
 func (v *VM) step(i bytecode.Instruction, fnName string) error {
@@ -116,13 +130,35 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		if i.A < 0 || i.A >= len(v.program.Constants) {
 			return v.fault(i, "invalid constant index %d", i.A)
 		}
-		push(v.program.Constants[i.A])
+		constant := &v.program.Constants[i.A]
+		if constant.Kind == bytecode.ValueArray {
+			// The constant pool remains a live owner for the lifetime of the
+			// program, so any runtime value loaded from it must detach on write.
+			constant.EnsureArrayStorage()
+			constant.MarkArrayShared()
+			value := *constant
+			value.SetArrayBorrowed(true)
+			push(value)
+		} else {
+			push(*constant)
+		}
 	case bytecode.OpBuildArray:
 		if i.A < 0 || i.A > len(v.stack) {
 			return v.fault(i, "array construction needs %d values, stack has %d", i.A, len(v.stack))
 		}
 		start := len(v.stack) - i.A
 		items := append([]bytecode.Value(nil), v.stack[start:]...)
+		for index := range items {
+			if items[index].Kind != bytecode.ValueArray {
+				continue
+			}
+			items[index].EnsureArrayStorage()
+			if items[index].IsArrayBorrowed() {
+				// The source array remains live outside this newly built container.
+				items[index].MarkArrayShared()
+			}
+			items[index].ClearArrayBorrowed()
+		}
 		v.stack = v.stack[:start]
 		push(bytecode.Array(items))
 	case bytecode.OpIndex:
@@ -143,7 +179,13 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		if index.I64 < 0 || index.I64 >= int64(len(collection.Array)) {
 			return v.fault(i, "array index %d out of bounds for length %d", index.I64, len(collection.Array))
 		}
-		push(collection.Array[int(index.I64)])
+		value := collection.Array[int(index.I64)]
+		if value.Kind == bytecode.ValueArray {
+			value.EnsureArrayStorage()
+			// INDEX returns a value borrowed from the parent array.
+			value.SetArrayBorrowed(true)
+		}
+		push(value)
 	case bytecode.OpSlice:
 		end, err := pop()
 		if err != nil {
@@ -168,7 +210,13 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		}
 		items := make([]bytecode.Value, int(end.I64-start.I64))
 		copy(items, collection.Array[int(start.I64):int(end.I64)])
-		push(bytecode.Value{Kind: bytecode.ValueArray, Array: items})
+		for index := range items {
+			if items[index].Kind == bytecode.ValueArray {
+				items[index].EnsureArrayStorage()
+				items[index].MarkArrayShared()
+			}
+		}
+		push(bytecode.Array(items))
 	case bytecode.OpToI64:
 		value, err := pop()
 		if err != nil {
@@ -211,6 +259,9 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		if err != nil {
 			return err
 		}
+		if replacement.Kind == bytecode.ValueArray {
+			replacement.EnsureArrayStorage()
+		}
 		updated, err := setIndexPath(collection, indices, replacement)
 		if err != nil {
 			return v.fault(i, "%v", err)
@@ -221,7 +272,15 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		if i.A < 0 || i.A >= len(fr.locals) {
 			return v.fault(i, "invalid local slot %d", i.A)
 		}
-		push(fr.locals[i.A])
+		local := &fr.locals[i.A]
+		if local.Kind == bytecode.ValueArray {
+			local.EnsureArrayStorage()
+			value := *local
+			value.SetArrayBorrowed(true)
+			push(value)
+		} else {
+			push(*local)
+		}
 	case bytecode.OpStoreLocal:
 		x, err := pop()
 		if err != nil {
@@ -230,6 +289,14 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		fr := &v.frames[len(v.frames)-1]
 		if i.A < 0 || i.A >= len(fr.locals) {
 			return v.fault(i, "invalid local slot %d", i.A)
+		}
+		if x.Kind == bytecode.ValueArray {
+			x.EnsureArrayStorage()
+			if x.IsArrayBorrowed() {
+				// A borrowed value stored in another slot creates an alias.
+				x.MarkArrayShared()
+			}
+			x.ClearArrayBorrowed()
 		}
 		fr.locals[i.A] = x
 	case bytecode.OpPop:
@@ -315,6 +382,17 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		}
 		argsStart := len(v.stack) - i.B
 		args := append([]bytecode.Value(nil), v.stack[argsStart:]...)
+		for index := range args {
+			if args[index].Kind != bytecode.ValueArray {
+				continue
+			}
+			args[index].EnsureArrayStorage()
+			if args[index].IsArrayBorrowed() {
+				// The caller may retain an owner after this argument is passed.
+				args[index].MarkArrayShared()
+			}
+			args[index].ClearArrayBorrowed()
+		}
 		v.stack = v.stack[:argsStart]
 		locals := make([]bytecode.Value, target.Locals)
 		copy(locals, args)
@@ -367,6 +445,16 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		x, err := pop()
 		if err != nil {
 			return err
+		}
+		if x.Kind == bytecode.ValueArray {
+			x.EnsureArrayStorage()
+			if x.IsArrayBorrowed() {
+				// The source may be a nested element whose parent outlives this
+				// frame. Sharing is conservative even when the frame owns the
+				// only reference after return.
+				x.MarkArrayShared()
+			}
+			x.ClearArrayBorrowed()
 		}
 		fr := v.frames[len(v.frames)-1]
 		v.activeLocalSlots -= len(fr.locals)
