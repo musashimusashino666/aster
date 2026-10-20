@@ -120,6 +120,11 @@ func asterI64ToF64(value int64) float64 {
 	return float64(value)
 }
 
+// asterNegF64 performs floating-point negation at runtime so negative zero is preserved.
+func asterNegF64(value float64) float64 {
+	return -value
+}
+
 func asterSetIndexPath(collection any, indices []int64, replacement any, line, column int) any {
 	if len(indices) == 0 {
 		asterRuntimeError(line, column, "indexed assignment requires at least one index")

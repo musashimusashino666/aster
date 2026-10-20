@@ -267,7 +267,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		case ir.OpNegI64Checked:
 			return "asterNegI64(" + right + ", " + irPositionArgs(n) + ")", nil
 		case ir.OpNegF64:
-			return "(-" + right + ")", nil
+			return "asterNegF64(" + right + ")", nil
 		case ir.OpNotBool:
 			return "(!" + right + ")", nil
 		default:
