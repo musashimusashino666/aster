@@ -1154,8 +1154,10 @@ print(match wrapped { Option::Some(values) => values[0], Option::None => 0, });
 print(unwrap(Option::Some(42)));
 let result: Result<i64, string> = Result::Ok(7);
 print(match result { Result::Ok(value) => value, Result::Err(message) => errorCode(message), });
-let empty: Option<i64> = Option::<i64>::None;
+let empty: Option<i64> = Option::None;
+let nested: Option<Option<i64>> = Option::Some(Option::None);
 print(match empty { Option::Some(value) => value, Option::None => 0, });
+print(match nested { Option::Some(inner) => match inner { Option::Some(value) => value, Option::None => 0, }, Option::None => 0, });
 `
 	tree, err := parser.Parse(source, "generic-enum-parity.ast")
 	if err != nil {
@@ -1188,7 +1190,7 @@ print(match empty { Option::Some(value) => value, Option::None => 0, });
 	if err != nil {
 		t.Fatalf("Native generic enum program failed: %v\n%s", err, nativeOutput)
 	}
-	want := "1\n42\n7\n0\n"
+	want := "1\n42\n7\n0\n0\n0\n"
 	if got := vmOutput.String(); got != want {
 		t.Fatalf("unexpected generic enum VM output: got %q want %q", got, want)
 	}
