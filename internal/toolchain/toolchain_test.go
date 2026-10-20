@@ -1,10 +1,14 @@
 package toolchain
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func requireNativeToolchain(t *testing.T) {
@@ -79,5 +83,31 @@ func TestBuildNativeReplacesOutputAfterSuccessfulBuild(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != filepath.Base(output) {
 		t.Fatalf("temporary build artifacts remain: %v", entries)
+	}
+}
+
+func TestBuildNativeContextHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	output := filepath.Join(t.TempDir(), "aster-canceled")
+	err := BuildNativeContext(ctx, "package main\\nfunc main() {}\\n", output)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildNativeContext() error = %v, want context.Canceled", err)
+	}
+	if _, statErr := os.Stat(output); !os.IsNotExist(statErr) {
+		t.Fatalf("canceled build created output: stat error = %v", statErr)
+	}
+}
+
+func TestRunNativeContextStopsLongRunningProgram(t *testing.T) {
+	requireNativeToolchain(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := RunNativeContext(ctx, "package main\\nfunc main() { for {} }\\n")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunNativeContext() error = %v, want context.DeadlineExceeded", err)
+	}
+	if !strings.Contains(err.Error(), "native program timed out") {
+		t.Fatalf("expected native program timeout diagnostic, got %v", err)
 	}
 }
