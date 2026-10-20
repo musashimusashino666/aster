@@ -141,20 +141,33 @@ func (p *Parser) enumDeclaration(start token.Token) (*ast.EnumDecl, error) {
 			if !p.check(token.RParen) {
 				for {
 					typ, typeErr := p.typeRef()
+					if typeErr != nil {
+						return nil, typeErr
+					}
 					payload = append(payload, typ)
-					if !p.match(token.Comma) { break }
-					if p.check(token.RParen) { break }
+					if !p.match(token.Comma) {
+						break
+					}
+					if p.check(token.RParen) {
+						break
+					}
 				}
 			}
-			if _, e = p.consume(token.RParen, "expected ')' after enum payload types"); e != nil { return nil, e }
+			if _, e = p.consume(token.RParen, "expected ')' after enum payload types"); e != nil {
+				return nil, e
+			}
 		}
 		variants = append(variants, ast.EnumVariant{At: variant.Pos, Name: variant.Lexeme, Payload: payload})
-		if !p.match(token.Comma) { break }
+		if !p.match(token.Comma) {
+			break
+		}
 	}
 	if len(variants) == 0 {
 		return nil, p.errorAt(start, "enum must declare at least one variant")
 	}
-	if _, err = p.consume(token.RBrace, "expected '}' after enum variants"); err != nil { return nil, err }
+	if _, err = p.consume(token.RBrace, "expected '}' after enum variants"); err != nil {
+		return nil, err
+	}
 	return &ast.EnumDecl{At: start.Pos, Name: name.Lexeme, Variants: variants}, nil
 }
 
