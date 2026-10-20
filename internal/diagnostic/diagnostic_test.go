@@ -86,14 +86,19 @@ func nativeRuntimeDiagnosticCodeForTest(t *testing.T, message string) string {
 	if err != nil {
 		t.Fatalf("read native runtime template: %v", err)
 	}
-	start := strings.Index(string(source), "func asterRuntimeDiagnosticCode")
-	end := strings.Index(string(source), "\nfunc asterRuntimeError", start)
-	if start < 0 || end < 0 {
+	sourceText := string(source)
+	start := strings.Index(sourceText, "func asterRuntimeDiagnosticCode")
+	if start < 0 {
 		t.Fatal("native runtime classifier function was not found")
 	}
+	relativeEnd := strings.Index(sourceText[start:], "\nfunc asterRuntimeError")
+	if relativeEnd < 0 {
+		t.Fatal("native runtime error handler was not found after classifier")
+	}
+	end := start + relativeEnd
 	file, err := goparser.ParseFile(gotoken.NewFileSet(),
 		"runtime_classifier.go",
-		"package runtimeclassifier\nimport \"strings\"\n"+string(source[start:end]),
+		"package runtimeclassifier\nimport \"strings\"\n"+sourceText[start:end],
 		0)
 	if err != nil {
 		t.Fatalf("parse native runtime classifier: %v", err)
