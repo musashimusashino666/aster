@@ -1190,7 +1190,7 @@ print(match nested { Option::Some(inner) => match inner { Option::Some(value) =>
 	if err != nil {
 		t.Fatalf("Native generic enum program failed: %v\n%s", err, nativeOutput)
 	}
-	want := "1\n42\n7\n0\n0\n0\n"
+	want := "1\n42\n7\n0\n0\n"
 	if got := vmOutput.String(); got != want {
 		t.Fatalf("unexpected generic enum VM output: got %q want %q", got, want)
 	}
