@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Improved return-flow analysis for literal-boolean branches and literal-true loops; both backends lower constant conditions consistently.
+
 - Added abstract bytecode type verification for stack operations, function calls, returns, homogeneous arrays, and definite local initialization; bumped JSON bytecode format to v2 to carry parameter types.
 - Fixed native code generation for annotated array types and non-call expression statements.
 - Rejected invalid `unit` bindings and print arguments, reserved compiler-internal function names, and improved integer-boundary and unsupported array-assignment diagnostics.
