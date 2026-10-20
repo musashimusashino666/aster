@@ -209,6 +209,19 @@ func (n *IndexExpr) Pos() token.Position { return n.At }
 func (*IndexExpr) exprNode()             {}
 func (n *IndexExpr) ExprType() Type      { return n.ResolvedType }
 
+type SliceExpr struct {
+	At           token.Position
+	ResolvedType Type
+	Collection   Expr
+	Start        Expr
+	End          Expr
+	Op           RuntimeOp
+}
+
+func (n *SliceExpr) Pos() token.Position { return n.At }
+func (*SliceExpr) exprNode()             {}
+func (n *SliceExpr) ExprType() Type      { return n.ResolvedType }
+
 type CallTarget string
 
 const (
@@ -260,6 +273,7 @@ const (
 	OpLogicalAndShortCircuit RuntimeOp = "logical_and_short_circuit"
 	OpLogicalOrShortCircuit  RuntimeOp = "logical_or_short_circuit"
 	OpIndexChecked           RuntimeOp = "index_checked"
+	OpSliceChecked           RuntimeOp = "slice_checked"
 )
 
 type scope struct {
@@ -593,6 +607,23 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			return nil, err
 		}
 		return &IndexExpr{At: n.Pos(), ResolvedType: resolvedType, Collection: collection, Index: index, Op: OpIndexChecked}, nil
+	case *ast.SliceExpr:
+		collection, err := l.lowerExpr(n.Collection)
+		if err != nil {
+			return nil, err
+		}
+		start, err := l.lowerExpr(n.Start)
+		if err != nil {
+			return nil, err
+		}
+		end, err := l.lowerExpr(n.End)
+		if err != nil {
+			return nil, err
+		}
+		return &SliceExpr{
+			At: n.Pos(), ResolvedType: resolvedType,
+			Collection: collection, Start: start, End: end, Op: OpSliceChecked,
+		}, nil
 	case *ast.CallExpr:
 		callee, ok := n.Callee.(*ast.IdentifierExpr)
 		if !ok {
