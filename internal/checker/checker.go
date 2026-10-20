@@ -94,10 +94,10 @@ type Checker struct {
 	scopes          *scope
 }
 
-// Check validates program and discards the analysis metadata.
+// Check validates program without retaining expression-type metadata.
 func Check(program *ast.Program) error {
-	_, err := Analyze(program)
-	return err
+	c := &Checker{functions: map[string]FunctionInfo{}}
+	return c.checkProgram(program)
 }
 
 // Analyze validates program and returns the semantic information produced by
@@ -365,7 +365,7 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 }
 func (c *Checker) checkExpr(e ast.Expr) (Type, error) {
 	t, err := c.checkExprImpl(e)
-	if err == nil {
+	if err == nil && c.expressionTypes != nil {
 		c.expressionTypes[e] = t
 	}
 	return t, err
