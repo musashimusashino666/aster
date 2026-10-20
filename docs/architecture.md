@@ -22,6 +22,7 @@ The checker is run before both backends. This ensures that type errors are rejec
 - `internal/parser`: recursive-descent statements and Pratt expressions.
 - `internal/checker`: two-pass function discovery, static semantic checks, source type-depth validation, and `TypedProgram` output containing expression types and resolved function signatures. `Check` remains a validation-only API; `Analyze` returns the semantic metadata.
 - `internal/langtypes`: shared source type-name validation and maximum nesting depth used across frontend and bytecode validation.
+- `internal/limits`: shared string-size and array-length limits consumed by bytecode validation and native code generation.
 - `internal/bytecode`: bytecode model, structural and resource validation, control-flow/stack-height/type/local-initialization verification, JSON serialization, compiler. The compiler shares the checker's conservative `AlwaysReturns` rule, but still lowers AST nodes directly.
 - `internal/vm`: stack-based VM, call frames, checked arithmetic, built-ins, resource limits.
 - `internal/codegen`: native Go source generation. `GenerateTyped` consumes checker-produced expression types and function signatures instead of re-inferring them; identifier mangling prevents Aster names from colliding with Go keywords, and helper functions implement Aster arithmetic checks.
