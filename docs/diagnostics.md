@@ -29,7 +29,7 @@ These codes are intended for tests, editor integrations, and bug reports. A code
 | `PAR004` | Function name uses a reserved compiler-internal prefix |
 | `PAR005` | `main` is reserved for the top-level program |
 | `PAR006` | Type nesting limit exceeded |
-| `PAR007` | Array element assignment is not supported in Aster 0.1 |
+| `PAR007` | Reserved: previously used for unsupported array-element assignment in Aster 0.1 |
 | `PAR008` | Integer literal is out of range |
 | `PAR009` | Invalid floating-point literal |
 | `PAR010` | Expected an expression |
@@ -85,3 +85,4 @@ These codes are intended for tests, editor integrations, and bug reports. A code
 | `TYP044` | Incorrect function argument count |
 | `TYP045` | Function argument type mismatch |
 | `TYP046` | Unsupported expression node |
+| `TYP047` | Indexed assignment value type mismatch |
