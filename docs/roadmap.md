@@ -33,7 +33,7 @@ This roadmap is a planning document, not a commitment that work is already in pr
 - [x] Half-open array slices (`values[start:end]`) returning independent array values; start is inclusive and end is exclusive
 - [x] Non-generic structs: nominal declarations, construction, read-only field selection, and VM/Native value-semantics parity (implemented by PR #61; direct field assignment, Struct display, and equality remain unsupported; see [ADR 0006](adr/0006-nominal-data-types-and-pattern-matching.md))
 - [x] Non-generic enums with positional payloads and exhaustive flat `match` expressions, including payload bindings, Bytecode v7 verifier support, VM/Native COW parity, and malformed-bytecode/type-checking tests (see ADR 0006; user-defined generics and Option/Result remain planned)
-- [ ] User-defined generics, including substitution and recursive-type/resource limits
+- [ ] User-defined generics: implementation pending; design and acceptance criteria are recorded in [ADR 0007](adr/0007-user-defined-generics-and-monomorphization.md)
 - [ ] Core `Option<T>` and `Result<T, E>` as generic enums with exhaustive matching
 - [x] Explicit numeric casts with `i64(value)` / `f64(value)`, defined truncation and range rules, and VM/Native parity tests (implicit numeric promotion remains unsupported)
 - [ ] Module/import system and package lockfile

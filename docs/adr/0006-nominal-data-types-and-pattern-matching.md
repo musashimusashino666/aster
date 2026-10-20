@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-20
-- **Relationship:** Builds on [ADR 0003: Array value semantics](0003-array-value-semantics.md) and [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md). The rollout order is accepted; implementation status is tracked in the roadmap. PR #61 implements the initial non-generic-struct slice. PR #63 implements the initial non-generic enum and exhaustive `match` slice; user-defined generics and `Option<T>` / `Result<T, E>` remain planned.
+- **Relationship:** Builds on [ADR 0003: Array value semantics](0003-array-value-semantics.md) and [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md). [ADR 0007](0007-user-defined-generics-and-monomorphization.md) specifies the generic substitution and monomorphization strategy for the third rollout stage. The rollout order is accepted; implementation status is tracked in the roadmap. PR #61 implements the initial non-generic-struct slice. PR #63 implements the initial non-generic enum and exhaustive `match` slice; user-defined generics and `Option<T>` / `Result<T, E>` remain planned.
 
 ## Context
 
