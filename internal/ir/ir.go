@@ -651,7 +651,6 @@ func binaryOperation(op string, operand Type) (RuntimeOp, bool) {
 	return "", false
 }
 
-
 // AlwaysReturns reports whether the checked control-flow shape guarantees a
 // return on all paths represented by stmt. Loops remain conservative because
 // the language does not assume that a loop executes at least once.
