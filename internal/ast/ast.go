@@ -190,3 +190,15 @@ type IndexExpr struct {
 
 func (n *IndexExpr) Pos() token.Position { return n.At }
 func (*IndexExpr) exprNode()             {}
+
+// SliceExpr creates an independent array containing collection[start:end].
+// The start is inclusive and the end is exclusive.
+type SliceExpr struct {
+	At         token.Position
+	Collection Expr
+	Start      Expr
+	End        Expr
+}
+
+func (n *SliceExpr) Pos() token.Position { return n.At }
+func (*SliceExpr) exprNode()             {}
