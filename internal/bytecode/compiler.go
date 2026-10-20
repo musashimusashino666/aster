@@ -25,4 +25,3 @@ func CompileTyped(typed *checker.TypedProgram) (*Program, error) {
 	}
 	return compileIR(typed.IR)
 }
-
