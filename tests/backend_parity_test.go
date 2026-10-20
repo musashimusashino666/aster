@@ -692,3 +692,51 @@ func TestNativePrintWriteFailureMatchesVM(t *testing.T) {
 		t.Fatalf("both backends should report the failed write reason: VM=%q native=%q", vmErr.Error(), nativeDiagnostic)
 	}
 }
+
+
+func TestConstantConditionFlowBackendParity(t *testing.T) {
+	source := "fn truth() -> i64 { if true { return 11; } }\n" +
+		"fn falsity() -> i64 { if false { return 99; } else { return 22; } }\n" +
+		"fn skip() -> i64 { while false { return 99; } return 33; }\n" +
+		"fn repeat() -> i64 { while true { return 44; } }\n" +
+		"fn diverge() -> i64 { while true { } }\n" +
+		"print(truth()); print(falsity()); print(skip()); print(repeat());"
+	tree, err := parser.Parse(source, "constant-flow.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-constant-flow")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin)
+	var nativeOutput bytes.Buffer
+	cmd.Stdout = &nativeOutput
+	cmd.Stderr = &bytes.Buffer{}
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if vmOutput.String() != nativeOutput.String() {
+		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), nativeOutput.String())
+	}
+	if got, want := vmOutput.String(), "11\n22\n33\n44\n"; got != want {
+		t.Fatalf("execution output = %q, want %q", got, want)
+	}
+}
