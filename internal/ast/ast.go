@@ -34,7 +34,7 @@ type TypeRef struct {
 	Args    []TypeRef
 }
 
-func (t TypeRef) Pos() token.Position { return t.At }
+func (t TypeRef) Pos() token.Position    { return t.At }
 func (t TypeRef) EndPos() token.Position { return t.EndAt }
 
 type Function struct {
@@ -47,9 +47,9 @@ type Function struct {
 	Body       *BlockStmt
 }
 
-func (n *Function) Pos() token.Position { return n.At }
+func (n *Function) Pos() token.Position    { return n.At }
 func (n *Function) EndPos() token.Position { return n.EndAt }
-func (*Function) declNode()             {}
+func (*Function) declNode()                {}
 
 // StructDecl declares a nominal record type. Generic declarations are
 // monomorphized into concrete declarations before type checking.
@@ -61,9 +61,9 @@ type StructDecl struct {
 	Fields     []StructField
 }
 
-func (n *StructDecl) Pos() token.Position { return n.At }
+func (n *StructDecl) Pos() token.Position    { return n.At }
 func (n *StructDecl) EndPos() token.Position { return n.EndAt }
-func (*StructDecl) declNode()             {}
+func (*StructDecl) declNode()                {}
 
 // EnumDecl declares a closed nominal sum type. Variant payloads are positional.
 type EnumDecl struct {
@@ -74,9 +74,9 @@ type EnumDecl struct {
 	Variants   []EnumVariant
 }
 
-func (n *EnumDecl) Pos() token.Position { return n.At }
+func (n *EnumDecl) Pos() token.Position    { return n.At }
 func (n *EnumDecl) EndPos() token.Position { return n.EndAt }
-func (*EnumDecl) declNode()             {}
+func (*EnumDecl) declNode()                {}
 
 type EnumVariant struct {
 	At      token.Position
@@ -85,7 +85,7 @@ type EnumVariant struct {
 	Payload []TypeRef
 }
 
-func (n EnumVariant) Pos() token.Position { return n.At }
+func (n EnumVariant) Pos() token.Position    { return n.At }
 func (n EnumVariant) EndPos() token.Position { return n.EndAt }
 
 type StructField struct {
@@ -95,7 +95,7 @@ type StructField struct {
 	Type  TypeRef
 }
 
-func (n StructField) Pos() token.Position { return n.At }
+func (n StructField) Pos() token.Position    { return n.At }
 func (n StructField) EndPos() token.Position { return n.EndAt }
 
 type Param struct {
@@ -105,14 +105,14 @@ type Param struct {
 	Type  TypeRef
 }
 
-func (n Param) Pos() token.Position { return n.At }
+func (n Param) Pos() token.Position    { return n.At }
 func (n Param) EndPos() token.Position { return n.EndAt }
 
 type StmtDecl struct{ Statement Stmt }
 
-func (n *StmtDecl) Pos() token.Position { return n.Statement.Pos() }
+func (n *StmtDecl) Pos() token.Position    { return n.Statement.Pos() }
 func (n *StmtDecl) EndPos() token.Position { return n.Statement.EndPos() }
-func (*StmtDecl) declNode()             {}
+func (*StmtDecl) declNode()                {}
 
 type BlockStmt struct {
 	At         token.Position
@@ -120,9 +120,9 @@ type BlockStmt struct {
 	Statements []Stmt
 }
 
-func (n *BlockStmt) Pos() token.Position { return n.At }
+func (n *BlockStmt) Pos() token.Position    { return n.At }
 func (n *BlockStmt) EndPos() token.Position { return n.EndAt }
-func (*BlockStmt) stmtNode()             {}
+func (*BlockStmt) stmtNode()                {}
 
 type LetStmt struct {
 	At         token.Position
@@ -133,9 +133,9 @@ type LetStmt struct {
 	Value      Expr
 }
 
-func (n *LetStmt) Pos() token.Position { return n.At }
+func (n *LetStmt) Pos() token.Position    { return n.At }
 func (n *LetStmt) EndPos() token.Position { return n.EndAt }
-func (*LetStmt) stmtNode()             {}
+func (*LetStmt) stmtNode()                {}
 
 type AssignStmt struct {
 	At    token.Position
@@ -144,9 +144,9 @@ type AssignStmt struct {
 	Value Expr
 }
 
-func (n *AssignStmt) Pos() token.Position { return n.At }
+func (n *AssignStmt) Pos() token.Position    { return n.At }
 func (n *AssignStmt) EndPos() token.Position { return n.EndAt }
-func (*AssignStmt) stmtNode()             {}
+func (*AssignStmt) stmtNode()                {}
 
 type IndexAssignStmt struct {
 	At     token.Position
@@ -155,9 +155,9 @@ type IndexAssignStmt struct {
 	Value  Expr
 }
 
-func (n *IndexAssignStmt) Pos() token.Position { return n.At }
+func (n *IndexAssignStmt) Pos() token.Position    { return n.At }
 func (n *IndexAssignStmt) EndPos() token.Position { return n.EndAt }
-func (*IndexAssignStmt) stmtNode()             {}
+func (*IndexAssignStmt) stmtNode()                {}
 
 type ExprStmt struct {
 	At    token.Position
@@ -165,9 +165,9 @@ type ExprStmt struct {
 	Expr  Expr
 }
 
-func (n *ExprStmt) Pos() token.Position { return n.At }
+func (n *ExprStmt) Pos() token.Position    { return n.At }
 func (n *ExprStmt) EndPos() token.Position { return n.EndAt }
-func (*ExprStmt) stmtNode()             {}
+func (*ExprStmt) stmtNode()                {}
 
 type IfStmt struct {
 	At        token.Position
@@ -177,9 +177,9 @@ type IfStmt struct {
 	Else      Stmt
 }
 
-func (n *IfStmt) Pos() token.Position { return n.At }
+func (n *IfStmt) Pos() token.Position    { return n.At }
 func (n *IfStmt) EndPos() token.Position { return n.EndAt }
-func (*IfStmt) stmtNode()             {}
+func (*IfStmt) stmtNode()                {}
 
 type WhileStmt struct {
 	At        token.Position
@@ -188,9 +188,9 @@ type WhileStmt struct {
 	Body      *BlockStmt
 }
 
-func (n *WhileStmt) Pos() token.Position { return n.At }
+func (n *WhileStmt) Pos() token.Position    { return n.At }
 func (n *WhileStmt) EndPos() token.Position { return n.EndAt }
-func (*WhileStmt) stmtNode()             {}
+func (*WhileStmt) stmtNode()                {}
 
 type ReturnStmt struct {
 	At    token.Position
@@ -198,9 +198,9 @@ type ReturnStmt struct {
 	Value Expr
 }
 
-func (n *ReturnStmt) Pos() token.Position { return n.At }
+func (n *ReturnStmt) Pos() token.Position    { return n.At }
 func (n *ReturnStmt) EndPos() token.Position { return n.EndAt }
-func (*ReturnStmt) stmtNode()             {}
+func (*ReturnStmt) stmtNode()                {}
 
 type IdentifierExpr struct {
 	At    token.Position
@@ -208,9 +208,9 @@ type IdentifierExpr struct {
 	Name  string
 }
 
-func (n *IdentifierExpr) Pos() token.Position { return n.At }
+func (n *IdentifierExpr) Pos() token.Position    { return n.At }
 func (n *IdentifierExpr) EndPos() token.Position { return n.EndAt }
-func (*IdentifierExpr) exprNode()             {}
+func (*IdentifierExpr) exprNode()                {}
 
 // FieldExpr reads a declared field from a struct value.
 type FieldExpr struct {
@@ -220,9 +220,9 @@ type FieldExpr struct {
 	Name   string
 }
 
-func (n *FieldExpr) Pos() token.Position { return n.At }
+func (n *FieldExpr) Pos() token.Position    { return n.At }
 func (n *FieldExpr) EndPos() token.Position { return n.EndAt }
-func (*FieldExpr) exprNode()             {}
+func (*FieldExpr) exprNode()                {}
 
 type LiteralExpr struct {
 	At     token.Position
@@ -235,9 +235,9 @@ type LiteralExpr struct {
 	Bool   bool
 }
 
-func (n *LiteralExpr) Pos() token.Position { return n.At }
+func (n *LiteralExpr) Pos() token.Position    { return n.At }
 func (n *LiteralExpr) EndPos() token.Position { return n.EndAt }
-func (*LiteralExpr) exprNode()             {}
+func (*LiteralExpr) exprNode()                {}
 
 type UnaryExpr struct {
 	At    token.Position
@@ -246,9 +246,9 @@ type UnaryExpr struct {
 	Right Expr
 }
 
-func (n *UnaryExpr) Pos() token.Position { return n.At }
+func (n *UnaryExpr) Pos() token.Position    { return n.At }
 func (n *UnaryExpr) EndPos() token.Position { return n.EndAt }
-func (*UnaryExpr) exprNode()             {}
+func (*UnaryExpr) exprNode()                {}
 
 type BinaryExpr struct {
 	At    token.Position
@@ -258,9 +258,9 @@ type BinaryExpr struct {
 	Right Expr
 }
 
-func (n *BinaryExpr) Pos() token.Position { return n.At }
+func (n *BinaryExpr) Pos() token.Position    { return n.At }
 func (n *BinaryExpr) EndPos() token.Position { return n.EndAt }
-func (*BinaryExpr) exprNode()             {}
+func (*BinaryExpr) exprNode()                {}
 
 type CallExpr struct {
 	At       token.Position
@@ -270,9 +270,9 @@ type CallExpr struct {
 	Args     []Expr
 }
 
-func (n *CallExpr) Pos() token.Position { return n.At }
+func (n *CallExpr) Pos() token.Position    { return n.At }
 func (n *CallExpr) EndPos() token.Position { return n.EndAt }
-func (*CallExpr) exprNode()             {}
+func (*CallExpr) exprNode()                {}
 
 // EnumVariantExpr constructs a concrete enum variant using a qualified name.
 type EnumVariantExpr struct {
@@ -285,9 +285,9 @@ type EnumVariantExpr struct {
 	HasPayload  bool
 }
 
-func (n *EnumVariantExpr) Pos() token.Position { return n.At }
+func (n *EnumVariantExpr) Pos() token.Position    { return n.At }
 func (n *EnumVariantExpr) EndPos() token.Position { return n.EndAt }
-func (*EnumVariantExpr) exprNode()             {}
+func (*EnumVariantExpr) exprNode()                {}
 
 // MatchPattern is either a wildcard or a flat, qualified enum variant pattern.
 type MatchPattern struct {
@@ -300,7 +300,7 @@ type MatchPattern struct {
 	HasPayload  bool
 }
 
-func (n MatchPattern) Pos() token.Position { return n.At }
+func (n MatchPattern) Pos() token.Position    { return n.At }
 func (n MatchPattern) EndPos() token.Position { return n.EndAt }
 
 type MatchArm struct {
@@ -310,7 +310,7 @@ type MatchArm struct {
 	Expr    Expr
 }
 
-func (n MatchArm) Pos() token.Position { return n.At }
+func (n MatchArm) Pos() token.Position    { return n.At }
 func (n MatchArm) EndPos() token.Position { return n.EndAt }
 
 // MatchExpr evaluates its subject once and returns the selected arm expression.
@@ -321,9 +321,9 @@ type MatchExpr struct {
 	Arms    []MatchArm
 }
 
-func (n *MatchExpr) Pos() token.Position { return n.At }
+func (n *MatchExpr) Pos() token.Position    { return n.At }
 func (n *MatchExpr) EndPos() token.Position { return n.EndAt }
-func (*MatchExpr) exprNode()             {}
+func (*MatchExpr) exprNode()                {}
 
 // ArrayExpr creates a homogeneous, dynamically sized array literal.
 type ArrayExpr struct {
@@ -332,9 +332,9 @@ type ArrayExpr struct {
 	Elements []Expr
 }
 
-func (n *ArrayExpr) Pos() token.Position { return n.At }
+func (n *ArrayExpr) Pos() token.Position    { return n.At }
 func (n *ArrayExpr) EndPos() token.Position { return n.EndAt }
-func (*ArrayExpr) exprNode()             {}
+func (*ArrayExpr) exprNode()                {}
 
 // IndexExpr reads one element from an array. Bounds are checked at runtime.
 type IndexExpr struct {
@@ -344,9 +344,9 @@ type IndexExpr struct {
 	Index      Expr
 }
 
-func (n *IndexExpr) Pos() token.Position { return n.At }
+func (n *IndexExpr) Pos() token.Position    { return n.At }
 func (n *IndexExpr) EndPos() token.Position { return n.EndAt }
-func (*IndexExpr) exprNode()             {}
+func (*IndexExpr) exprNode()                {}
 
 // SliceExpr creates an independent array containing collection[start:end].
 // The start is inclusive and the end is exclusive.
@@ -358,6 +358,6 @@ type SliceExpr struct {
 	End        Expr
 }
 
-func (n *SliceExpr) Pos() token.Position { return n.At }
+func (n *SliceExpr) Pos() token.Position    { return n.At }
 func (n *SliceExpr) EndPos() token.Position { return n.EndAt }
-func (*SliceExpr) exprNode()             {}
+func (*SliceExpr) exprNode()                {}
