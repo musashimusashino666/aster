@@ -979,3 +979,93 @@ func TestRejectsOutOfRangeEnumPayloadInstruction(t *testing.T) {
 		t.Fatalf("expected payload-index verifier rejection, got %v", err)
 	}
 }
+
+func TestInstructionSourceSpanValidation(t *testing.T) {
+	valid := Instruction{
+		Op: OpHalt, Line: 1, Column: 1,
+		Offset: 0, EndOffset: 1, EndLine: 1, EndColumn: 2,
+	}
+	makeProgram := func(instruction Instruction) *Program {
+		return &Program{
+			Format: "aster-bytecode", Version: FormatVersion, Constants: []Value{},
+			Functions: []Function{{Name: "main", Return: "unit", Code: []Instruction{instruction}}},
+			Entry:     0,
+		}
+	}
+	if err := makeProgram(valid).Validate(); err != nil {
+		t.Fatalf("valid exclusive source span rejected: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		instruction Instruction
+		want        string
+	}{
+		{
+			name: "end offset before start",
+			instruction: Instruction{
+				Op: OpHalt, Line: 1, Column: 3,
+				Offset: 5, EndOffset: 4, EndLine: 1, EndColumn: 8,
+			},
+			want: "end offset precedes start offset",
+		},
+		{
+			name: "end position before start",
+			instruction: Instruction{
+				Op: OpHalt, Line: 2, Column: 3,
+				Offset: 5, EndOffset: 6, EndLine: 1, EndColumn: 8,
+			},
+			want: "end position precedes start position",
+		},
+		{
+			name: "partial end position",
+			instruction: Instruction{
+				Op: OpHalt, Line: 1, Column: 1,
+				Offset: 0, EndOffset: 1,
+			},
+			want: "span has no valid end line/column",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := makeProgram(tc.instruction).Validate(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected source-span validation error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestInstructionSourceSpanRoundTripsThroughJSON(t *testing.T) {
+	p := &Program{
+		Format: "aster-bytecode", Version: FormatVersion, Constants: []Value{},
+		Functions: []Function{{
+			Name: "main", Return: "unit",
+			Code: []Instruction{{
+				Op: OpHalt, Line: 2, Column: 4,
+				Offset: 12, EndOffset: 15, EndLine: 2, EndColumn: 7,
+			}},
+		}},
+		Entry: 0,
+	}
+	encoded, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := Read(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decoded.Functions[0].Code[0]; got != p.Functions[0].Code[0] {
+		t.Fatalf("round-tripped instruction = %+v, want %+v", got, p.Functions[0].Code[0])
+	}
+}
+
+func TestRejectsBytecodeVersionSevenAfterSourceSpanSchemaBump(t *testing.T) {
+	p := &Program{
+		Format: "aster-bytecode", Version: 7, Constants: []Value{},
+		Functions: []Function{{Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}}}},
+		Entry:     0,
+	}
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported bytecode version") {
+		t.Fatalf("expected version 7 to be rejected, got %v", err)
+	}
+}

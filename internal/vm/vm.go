@@ -795,11 +795,11 @@ func valueEqual(a, b bytecode.Value) bool {
 }
 func (v *VM) fault(i bytecode.Instruction, format string, args ...any) error {
 	msg := fmt.Sprintf(format, args...)
-	return diagnostic.NewAtSource(
-		diagnostic.RuntimeCode(msg),
-		"runtime",
-		v.program.Source,
-		token.Position{Line: i.Line, Column: i.Column},
-		msg,
-	)
+	code := diagnostic.RuntimeCode(msg)
+	start := token.Position{Offset: i.Offset, Line: i.Line, Column: i.Column}
+	if i.EndLine > 0 && i.EndColumn > 0 {
+		end := token.Position{Offset: i.EndOffset, Line: i.EndLine, Column: i.EndColumn}
+		return diagnostic.NewAtSourceSpan(code, "runtime", v.program.Source, start, end, msg)
+	}
+	return diagnostic.NewAtSource(code, "runtime", v.program.Source, start, msg)
 }

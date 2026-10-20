@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/aster-lang/aster/internal/ir"
+	"github.com/aster-lang/aster/internal/token"
 )
 
 func compileIR(tree *ir.Program) (*Program, error) {
@@ -76,8 +77,8 @@ func compileIR(tree *ir.Program) (*Program, error) {
 			}
 		}
 		if fn.ReturnType == "unit" {
-			c.emit(OpConst, c.addConstant(Unit()), 0, fn.Pos().Line, fn.Pos().Column)
-			c.emit(OpReturn, 0, 0, fn.Pos().Line, fn.Pos().Column)
+			c.emitAt(OpConst, c.addConstant(Unit()), 0, fn.Pos(), fn.EndPos())
+			c.emitAt(OpReturn, 0, 0, fn.Pos(), fn.EndPos())
 		}
 		p.Functions[i].Locals = c.nextSlot
 		p.Functions[i].Code = c.code
@@ -100,12 +101,15 @@ func compileIR(tree *ir.Program) (*Program, error) {
 }
 
 type irFunctionCompiler struct {
-	program  *Program
-	fnID     int
-	name     string
-	code     []Instruction
-	symbols  map[ir.SymbolID]int
-	nextSlot int
+	program      *Program
+	fnID         int
+	name         string
+	code         []Instruction
+	symbols      map[ir.SymbolID]int
+	nextSlot     int
+	currentStart token.Position
+	currentEnd   token.Position
+	hasSpan      bool
 }
 
 func newIRFunctionCompiler(p *Program, id int, name string) *irFunctionCompiler {
@@ -118,13 +122,60 @@ func newIRFunctionCompiler(p *Program, id int, name string) *irFunctionCompiler 
 }
 
 func (c *irFunctionCompiler) emit(op Op, a, b, line, column int) int {
-	c.code = append(c.code, Instruction{Op: op, A: a, B: b, Line: line, Column: column})
+	ins := Instruction{Op: op, A: a, B: b, Line: line, Column: column}
+	if c.hasSpan && line == c.currentStart.Line && column == c.currentStart.Column {
+		ins.Offset = c.currentStart.Offset
+		ins.EndOffset = c.currentEnd.Offset
+		ins.EndLine = c.currentEnd.Line
+		ins.EndColumn = c.currentEnd.Column
+	}
+	c.code = append(c.code, ins)
 	return len(c.code) - 1
 }
 
 func (c *irFunctionCompiler) emitABC(op Op, a, b, operandC, line, column int) int {
-	c.code = append(c.code, Instruction{Op: op, A: a, B: b, C: operandC, Line: line, Column: column})
+	ins := Instruction{Op: op, A: a, B: b, C: operandC, Line: line, Column: column}
+	if c.hasSpan && line == c.currentStart.Line && column == c.currentStart.Column {
+		ins.Offset = c.currentStart.Offset
+		ins.EndOffset = c.currentEnd.Offset
+		ins.EndLine = c.currentEnd.Line
+		ins.EndColumn = c.currentEnd.Column
+	}
+	c.code = append(c.code, ins)
 	return len(c.code) - 1
+}
+
+func (c *irFunctionCompiler) emitAt(op Op, a, b int, start, end token.Position) int {
+	ins := Instruction{Op: op, A: a, B: b, Line: start.Line, Column: start.Column}
+	if start.Line > 0 && start.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= start.Offset {
+		ins.Offset = start.Offset
+		ins.EndOffset = end.Offset
+		ins.EndLine = end.Line
+		ins.EndColumn = end.Column
+	}
+	c.code = append(c.code, ins)
+	return len(c.code) - 1
+}
+
+func (c *irFunctionCompiler) emitABCAt(op Op, a, b, operandC int, start, end token.Position) int {
+	ins := Instruction{Op: op, A: a, B: b, C: operandC, Line: start.Line, Column: start.Column}
+	if start.Line > 0 && start.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= start.Offset {
+		ins.Offset = start.Offset
+		ins.EndOffset = end.Offset
+		ins.EndLine = end.Line
+		ins.EndColumn = end.Column
+	}
+	c.code = append(c.code, ins)
+	return len(c.code) - 1
+}
+
+func (c *irFunctionCompiler) enterSpan(start, end token.Position) func() {
+	previousStart, previousEnd, previousHasSpan := c.currentStart, c.currentEnd, c.hasSpan
+	c.currentStart, c.currentEnd = start, end
+	c.hasSpan = start.Line > 0 && start.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= start.Offset
+	return func() {
+		c.currentStart, c.currentEnd, c.hasSpan = previousStart, previousEnd, previousHasSpan
+	}
 }
 
 func (c *irFunctionCompiler) patch(at, target int) {
@@ -165,6 +216,8 @@ func (c *irFunctionCompiler) compileBlock(block *ir.BlockStmt) error {
 }
 
 func (c *irFunctionCompiler) compileStmt(stmt ir.Stmt) error {
+	restoreSpan := c.enterSpan(stmt.Pos(), stmt.EndPos())
+	defer restoreSpan()
 	pos := stmt.Pos()
 	switch n := stmt.(type) {
 	case *ir.BlockStmt:
@@ -282,6 +335,8 @@ func (c *irFunctionCompiler) compileStmt(stmt ir.Stmt) error {
 }
 
 func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
+	restoreSpan := c.enterSpan(expr.Pos(), expr.EndPos())
+	defer restoreSpan()
 	pos := expr.Pos()
 	switch n := expr.(type) {
 	case *ir.LiteralExpr:
@@ -365,17 +420,17 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 				if variantIndex < 0 {
 					return fmt.Errorf("%d:%d: compiler: wildcard arm cannot bind enum payloads", arm.At.Line, arm.At.Column)
 				}
-				c.emitABC(OpGetEnumPayload, subjectSlot, variantIndex, payloadIndex, binding.At.Line, binding.At.Column)
+				c.emitABCAt(OpGetEnumPayload, subjectSlot, variantIndex, payloadIndex, binding.At, binding.EndAt)
 				bindingSlot, bindErr := c.allocate(binding.ID, binding.Name)
 				if bindErr != nil {
 					return fmt.Errorf("%d:%d: %w", binding.At.Line, binding.At.Column, bindErr)
 				}
-				c.emit(OpStoreLocal, bindingSlot, 0, binding.At.Line, binding.At.Column)
+				c.emitAt(OpStoreLocal, bindingSlot, 0, binding.At, binding.EndAt)
 			}
 			if err := c.compileExpr(arm.Expr); err != nil {
 				return err
 			}
-			endJumps = append(endJumps, c.emit(OpJump, -1, 0, arm.At.Line, arm.At.Column))
+			endJumps = append(endJumps, c.emitAt(OpJump, -1, 0, arm.At, arm.EndAt))
 		}
 		for i, target := range targets {
 			if target < 0 {
