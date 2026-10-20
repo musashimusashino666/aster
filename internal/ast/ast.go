@@ -27,7 +27,7 @@ type Expr interface {
 type TypeRef struct {
 	Name    string
 	At      token.Position
-	EndAt token.Position
+	EndAt   token.Position
 	Element *TypeRef
 	Args    []TypeRef
 }
@@ -37,7 +37,7 @@ func (t TypeRef) EndPos() token.Position { return t.EndAt }
 
 type Function struct {
 	At         token.Position
-	EndAt token.Position
+	EndAt      token.Position
 	Name       string
 	TypeParams []string
 	Params     []Param
@@ -53,7 +53,7 @@ func (*Function) declNode()             {}
 // monomorphized into concrete declarations before type checking.
 type StructDecl struct {
 	At         token.Position
-	EndAt token.Position
+	EndAt      token.Position
 	Name       string
 	TypeParams []string
 	Fields     []StructField
@@ -66,7 +66,7 @@ func (*StructDecl) declNode()             {}
 // EnumDecl declares a closed nominal sum type. Variant payloads are positional.
 type EnumDecl struct {
 	At         token.Position
-	EndAt token.Position
+	EndAt      token.Position
 	Name       string
 	TypeParams []string
 	Variants   []EnumVariant
@@ -114,7 +114,7 @@ func (*StmtDecl) declNode()             {}
 
 type BlockStmt struct {
 	At         token.Position
-	EndAt token.Position
+	EndAt      token.Position
 	Statements []Stmt
 }
 
@@ -124,7 +124,7 @@ func (*BlockStmt) stmtNode()             {}
 
 type LetStmt struct {
 	At         token.Position
-	EndAt token.Position
+	EndAt      token.Position
 	Name       string
 	Mutable    bool
 	Annotation *TypeRef
@@ -148,7 +148,7 @@ func (*AssignStmt) stmtNode()             {}
 
 type IndexAssignStmt struct {
 	At     token.Position
-	EndAt token.Position
+	EndAt  token.Position
 	Target Expr
 	Value  Expr
 }
@@ -158,9 +158,9 @@ func (n *IndexAssignStmt) EndPos() token.Position { return n.EndAt }
 func (*IndexAssignStmt) stmtNode()             {}
 
 type ExprStmt struct {
-	At   token.Position
+	At    token.Position
 	EndAt token.Position
-	Expr Expr
+	Expr  Expr
 }
 
 func (n *ExprStmt) Pos() token.Position { return n.At }
@@ -169,7 +169,7 @@ func (*ExprStmt) stmtNode()             {}
 
 type IfStmt struct {
 	At        token.Position
-	EndAt token.Position
+	EndAt     token.Position
 	Condition Expr
 	Then      *BlockStmt
 	Else      Stmt
@@ -181,7 +181,7 @@ func (*IfStmt) stmtNode()             {}
 
 type WhileStmt struct {
 	At        token.Position
-	EndAt token.Position
+	EndAt     token.Position
 	Condition Expr
 	Body      *BlockStmt
 }
@@ -201,9 +201,9 @@ func (n *ReturnStmt) EndPos() token.Position { return n.EndAt }
 func (*ReturnStmt) stmtNode()             {}
 
 type IdentifierExpr struct {
-	At   token.Position
+	At    token.Position
 	EndAt token.Position
-	Name string
+	Name  string
 }
 
 func (n *IdentifierExpr) Pos() token.Position { return n.At }
@@ -213,7 +213,7 @@ func (*IdentifierExpr) exprNode()             {}
 // FieldExpr reads a declared field from a struct value.
 type FieldExpr struct {
 	At     token.Position
-	EndAt token.Position
+	EndAt  token.Position
 	Object Expr
 	Name   string
 }
@@ -224,7 +224,7 @@ func (*FieldExpr) exprNode()             {}
 
 type LiteralExpr struct {
 	At     token.Position
-	EndAt token.Position
+	EndAt  token.Position
 	Kind   string
 	Text   string
 	Int    int64
@@ -262,7 +262,7 @@ func (*BinaryExpr) exprNode()             {}
 
 type CallExpr struct {
 	At       token.Position
-	EndAt token.Position
+	EndAt    token.Position
 	Callee   Expr
 	TypeArgs []TypeRef
 	Args     []Expr
@@ -275,7 +275,7 @@ func (*CallExpr) exprNode()             {}
 // EnumVariantExpr constructs a concrete enum variant using a qualified name.
 type EnumVariantExpr struct {
 	At          token.Position
-	EndAt token.Position
+	EndAt       token.Position
 	EnumName    string
 	VariantName string
 	TypeArgs    []TypeRef
@@ -314,7 +314,7 @@ func (n MatchArm) EndPos() token.Position { return n.EndAt }
 // MatchExpr evaluates its subject once and returns the selected arm expression.
 type MatchExpr struct {
 	At      token.Position
-	EndAt token.Position
+	EndAt   token.Position
 	Subject Expr
 	Arms    []MatchArm
 }
@@ -326,7 +326,7 @@ func (*MatchExpr) exprNode()             {}
 // ArrayExpr creates a homogeneous, dynamically sized array literal.
 type ArrayExpr struct {
 	At       token.Position
-	EndAt token.Position
+	EndAt    token.Position
 	Elements []Expr
 }
 
@@ -337,7 +337,7 @@ func (*ArrayExpr) exprNode()             {}
 // IndexExpr reads one element from an array. Bounds are checked at runtime.
 type IndexExpr struct {
 	At         token.Position
-	EndAt token.Position
+	EndAt      token.Position
 	Collection Expr
 	Index      Expr
 }
@@ -350,7 +350,7 @@ func (*IndexExpr) exprNode()             {}
 // The start is inclusive and the end is exclusive.
 type SliceExpr struct {
 	At         token.Position
-	EndAt token.Position
+	EndAt      token.Position
 	Collection Expr
 	Start      Expr
 	End        Expr
