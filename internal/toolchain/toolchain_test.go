@@ -19,7 +19,11 @@ func requireNativeToolchain(t *testing.T) {
 func TestBuildNativePreservesExistingOutputOnFailure(t *testing.T) {
 	requireNativeToolchain(t)
 	dir := t.TempDir()
-	output := filepath.Join(dir, "aster-app")
+	name := "aster-app"
+	if os.PathSeparator == '\\' {
+		name += ".exe"
+	}
+	output := filepath.Join(dir, name)
 	const original = "pre-existing output"
 	if err := os.WriteFile(output, []byte(original), 0o755); err != nil {
 		t.Fatal(err)
@@ -48,7 +52,11 @@ func TestBuildNativePreservesExistingOutputOnFailure(t *testing.T) {
 func TestBuildNativeReplacesOutputAfterSuccessfulBuild(t *testing.T) {
 	requireNativeToolchain(t)
 	dir := t.TempDir()
-	output := filepath.Join(dir, "aster-app")
+	name := "aster-app"
+	if os.PathSeparator == '\\' {
+		name += ".exe"
+	}
+	output := filepath.Join(dir, name)
 	if err := os.WriteFile(output, []byte("old output"), 0o755); err != nil {
 		t.Fatal(err)
 	}
