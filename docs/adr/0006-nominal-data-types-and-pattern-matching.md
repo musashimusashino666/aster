@@ -2,17 +2,17 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-20
-- **Relationship:** Builds on [ADR 0003: Array value semantics](0003-array-value-semantics.md) and [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md). [ADR 0007](0007-user-defined-generics-and-monomorphization.md) specifies the generic substitution and monomorphization strategy for the third rollout stage. The rollout order is accepted; implementation status is tracked in the roadmap. PR #61 implements the initial non-generic-struct slice. PR #63 implements the initial non-generic enum and exhaustive `match` slice; user-defined generics and `Option<T>` / `Result<T, E>` remain planned.
+- **Relationship:** Builds on [ADR 0003: Array value semantics](0003-array-value-semantics.md) and [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md). [ADR 0007](0007-user-defined-generics-and-monomorphization.md) specifies the generic substitution and monomorphization strategy. The staged rollout described here has landed in the implemented subset; see [the roadmap](../roadmap.md) and [language specification](../language-spec.md) for current status and exact limitations. PRs #61 and #63 introduced the initial struct and enum/match slices; subsequent changes added generic functions, structs, and enums.
 
 ## Context
 
-Aster supports primitive types, `Array<T>`, and the initial non-generic-struct subset. Adding enums, generics, `Option<T>`, and `Result<T, E>` together would combine several independent changes: name resolution, recursive type validation, aggregate representation, bytecode verification, pattern exhaustiveness, and generic instantiation. The VM and Native backends share a typed IR, so new semantics should be resolved by the checker and carried through that IR rather than re-inferred by either backend.
+When this ADR was drafted, Aster supported primitive types, `Array<T>`, and the initial non-generic-struct subset. Adding enums, generics, `Option<T>`, and `Result<T, E>` together would have combined several independent changes: name resolution, recursive type validation, aggregate representation, bytecode verification, pattern exhaustiveness, and generic instantiation. The VM and Native backends share a typed IR, so these semantics are resolved by the checker and carried through that IR rather than re-inferred by either backend. The resulting implemented subset and its remaining limits are recorded in the language specification.
 
 Arrays already have explicit value semantics. Any aggregate that contains an array must preserve those semantics across bindings, function arguments and returns, field reads, and aggregate construction. A shallow Go-struct copy must not become an observable aliasing loophole.
 
 ## Decision
 
-Implement these features as separate, reviewable vertical slices, in this order:
+The accepted implementation sequence was split into separate, reviewable vertical slices:
 
 1. **Non-generic structs** — nominal declarations, field type validation, construction, read-only field selection, value passing, and VM/Native parity.
 2. **Enums with payloads and exhaustive `match` expressions** — named variants, payload construction/deconstruction, arm-local bindings, result-type agreement, unreachable/duplicate-arm checks, and exhaustiveness checks.
@@ -71,7 +71,7 @@ let message = Message::Move(10, 20);
 print(describe(message));
 ```
 
-Fix the following syntax for this slice:
+The initial grammar for this slice was:
 
 ```ebnf
 enum_decl       = "enum" identifier "{" enum_variant
@@ -94,11 +94,11 @@ The lexer must recognize `::` as a single token. Match arms are comma-separated 
 Semantics and scope:
 
 - Enum declarations are top-level and visible throughout the source file, including before their declaration, matching the existing function and struct declaration model. Type names share the nominal type namespace with structs. Enum names cannot collide with struct names, other enums, built-in types, or reserved built-in names. Variant names must be unique within one enum; the same variant name in two different enums is permitted because all construction and matching uses the qualified `Enum::Variant` form.
-- Enums are non-generic in this slice. Payloads may use currently supported storable concrete types, including primitives other than `unit`, arrays, structs, and enums. Generic payloads, implicit conversions, type inference for unqualified variants, and `Option<T>`/`Result<T, E>` are deferred. Direct by-value recursive cycles across structs and enums are rejected; recursion guarded by `Array<T>` is permitted under the existing type-nesting and resource limits.
+- The initial enum slice was non-generic. Generic enum declarations and generic payload substitution/inference were added later; see [ADR 0007](0007-user-defined-generics-and-monomorphization.md) and the language specification. Payloads must resolve to supported storable types after substitution; `unit` payloads and implicit conversions remain unsupported. Direct by-value recursive cycles across structs and enums are rejected; recursion guarded by `Array<T>` is permitted under the existing type-nesting and resource limits.
 - Variant identity is the pair (enum type ID, declaration-order variant index). Constructor arguments are evaluated once, left to right, and must match payload types and arity exactly. Constructed values preserve aggregate value semantics, including array copy-on-write boundaries across construction, local bindings, function arguments/returns, and payload extraction.
 - `match` evaluates its subject exactly once and requires the subject to have an enum type. Every named pattern must reference a variant of that exact enum. Pattern payload arity must match the variant declaration. A payload binding is immutable and visible only in that arm's expression; repeated binding names in one pattern are rejected. `_` matches any remaining variant and does not bind the subject.
 - Every arm is an expression. All arm expressions must have the same type; there is no implicit coercion. Only the selected arm is evaluated, and there is no fallthrough. A match is exhaustive when every variant is covered explicitly or by a wildcard. A variant may be named in at most one arm. A second wildcard, any arm after a wildcard, and a wildcard after all variants have already been explicitly covered are unreachable and rejected. Missing variants without a wildcard are a type-checking error.
-- This slice intentionally excludes guards, nested patterns, literal patterns, alternative/or-patterns, structural destructuring of structs, exceptions, and generic enums. Unsupported forms must receive a parser or checker diagnostic rather than reaching a backend.
+- The implemented flat-match subset still excludes guards, nested patterns, literal patterns, alternative/or-patterns, structural destructuring of structs, and exceptions. Generic enums are supported separately under [ADR 0007](0007-user-defined-generics-and-monomorphization.md). Unsupported forms must receive a parser or checker diagnostic rather than reaching a backend.
 - Assign stable type-checker diagnostic codes for enum declaration/variant conflicts, invalid payload types, constructor type/arity mismatch, non-enum match subjects, unknown or mismatched variants, pattern binding errors, duplicate/unreachable arms, non-exhaustive matches, and arm result-type disagreement. Tests must assert diagnostic codes, not only error text.
 
 Bytecode v7 and backend contract for enums/match:
@@ -128,7 +128,7 @@ Bytecode v7 and backend contract for enums/match:
 3. Add malformed bytecode tests before enabling VM execution of aggregate instructions.
 4. Run the same semantic fixtures on VM and Native. Compare output, failure class, exit status, and source-positioned diagnostics.
 5. Benchmark representative construction, field reads, nested arrays, and function passing after correctness gates pass. Benchmarks inform optimization; they do not relax value semantics.
-6. Update the roadmap only for the exact slice that landed. Generics and `Option`/`Result` remain unchecked until their own implementation and test requirements are met.
+6. Update the roadmap only for the exact slice that landed. The roadmap currently marks structs, enums/match, and user-defined generics (including ordinary `Option<T>` / `Result<T, E>` enum definitions) as implemented; future extensions remain planned until their own implementation and test requirements are met.
 
 ## Open questions for later slices and deferred enhancements
 
