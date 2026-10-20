@@ -141,7 +141,7 @@ func requireAbstractType(fn string, pc int, op Op, got, want string) error {
 // validateFunctionTypes performs forward dataflow over operand-stack types and
 // local initialization. Disconnected code is verified as its own component so
 // its abstract local state cannot weaken guarantees on reachable instructions.
-func validateFunctionTypes(p *Program, fi int, constantTypes []string) error {
+func validateFunctionTypes(p *Program, fi int, constantTypes []string, structTypesByName map[string]StructType) error {
 	fn := p.Functions[fi]
 	states := make([]*abstractState, len(fn.Code))
 	components := make([]int, len(fn.Code))
@@ -171,7 +171,7 @@ func validateFunctionTypes(p *Program, fi int, constantTypes []string) error {
 			pc := queue[head]
 			state := cloneAbstractState(states[pc])
 			ins := fn.Code[pc]
-			terminal, err := applyAbstractInstruction(p, fi, pc, ins, state, constantTypes)
+			terminal, err := applyAbstractInstruction(p, fi, pc, ins, state, constantTypes, structTypesByName)
 			if err != nil {
 				return err
 			}
@@ -226,7 +226,7 @@ func validateFunctionTypes(p *Program, fi int, constantTypes []string) error {
 	return nil
 }
 
-func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstractState, constantTypes []string) (bool, error) {
+func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstractState, constantTypes []string, structTypesByName map[string]StructType) (bool, error) {
 	fn := p.Functions[fi]
 	push := func(t string) { pushAbstractType(s, t) }
 	pop := func() (string, error) { return abstractPop(s, fn.Name, pc, ins.Op) }
@@ -280,7 +280,7 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		if err != nil {
 			return false, err
 		}
-		structType := p.structTypeByName(receiverType)
+		structType := structTypesByName[receiverType]
 		if structType.Name == "" {
 			return false, fmt.Errorf("function %q instruction %d: GET_FIELD requires a struct receiver, got %s", fn.Name, pc, receiverType)
 		}

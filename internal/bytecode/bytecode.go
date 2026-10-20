@@ -305,41 +305,43 @@ type Program struct {
 
 // validateStructTypes validates nominal metadata from untrusted bytecode,
 // including duplicate names/fields, field types, and by-value layout cycles.
-func (p *Program) validateStructTypes() error {
+func (p *Program) validateStructTypes() (map[string]StructType, error) {
 	if len(p.StructTypes) > maxStructTypeCount {
-		return fmt.Errorf("struct type metadata exceeds safety limit")
+		return nil, fmt.Errorf("struct type metadata exceeds safety limit")
 	}
 	types := make(map[string]struct{}, len(p.StructTypes))
+	structTypesByName := make(map[string]StructType, len(p.StructTypes))
 	for i, st := range p.StructTypes {
 		if st.Name == "" || len(st.Name) > maxTypeNameBytes || !langtypes.ValidName(st.Name) {
-			return fmt.Errorf("struct type %d has invalid name %q", i, st.Name)
+			return nil, fmt.Errorf("struct type %d has invalid name %q", i, st.Name)
 		}
 		switch st.Name {
 		case "i64", "f64", "bool", "string", "unit", "Array":
-			return fmt.Errorf("struct type %q uses a reserved name", st.Name)
+			return nil, fmt.Errorf("struct type %q uses a reserved name", st.Name)
 		}
 		if _, exists := types[st.Name]; exists {
-			return fmt.Errorf("duplicate struct type %q", st.Name)
+			return nil, fmt.Errorf("duplicate struct type %q", st.Name)
 		}
 		types[st.Name] = struct{}{}
+		structTypesByName[st.Name] = st
 		if len(st.Fields) > maxStructFieldCount {
-			return fmt.Errorf("struct %q exceeds field-count safety limit", st.Name)
+			return nil, fmt.Errorf("struct %q exceeds field-count safety limit", st.Name)
 		}
 		seen := make(map[string]struct{}, len(st.Fields))
 		for _, field := range st.Fields {
 			if field.Name == "" || len(field.Name) > maxTypeNameBytes || (!langtypes.ValidName(field.Name) && field.Name != "Array") {
-				return fmt.Errorf("struct %q has invalid field name %q", st.Name, field.Name)
+				return nil, fmt.Errorf("struct %q has invalid field name %q", st.Name, field.Name)
 			}
 			if _, exists := seen[field.Name]; exists {
-				return fmt.Errorf("struct %q has duplicate field %q", st.Name, field.Name)
+				return nil, fmt.Errorf("struct %q has duplicate field %q", st.Name, field.Name)
 			}
 			seen[field.Name] = struct{}{}
 		}
 	}
 	for _, st := range p.StructTypes {
 		for _, field := range st.Fields {
-			if field.Type == "unit" || !p.validProgramTypeName(field.Type) {
-				return fmt.Errorf("struct %q field %q has invalid type %q", st.Name, field.Name, field.Type)
+			if field.Type == "unit" || !p.validProgramTypeName(field.Type, structTypesByName) {
+				return nil, fmt.Errorf("struct %q field %q has invalid type %q", st.Name, field.Name, field.Type)
 			}
 		}
 	}
@@ -347,13 +349,13 @@ func (p *Program) validateStructTypes() error {
 	var visit func(string) error
 	visit = func(name string) error {
 		if state[name] == 1 {
-			return fmt.Errorf("struct %q has a recursive by-value layout", name)
+			return nil, fmt.Errorf("struct %q has a recursive by-value layout", name)
 		}
 		if state[name] == 2 {
 			return nil
 		}
 		state[name] = 1
-		st := p.structTypeByName(name)
+		st := structTypesByName[name]
 		for _, field := range st.Fields {
 			if _, arr := abstractArrayElementType(field.Type); arr {
 				continue
@@ -372,36 +374,23 @@ func (p *Program) validateStructTypes() error {
 			return err
 		}
 	}
-	return nil
+	return structTypesByName, nil
 }
 
-func (p *Program) structTypeByName(name string) StructType {
-	for _, st := range p.StructTypes {
-		if st.Name == name {
-			return st
-		}
-	}
-	return StructType{}
-}
-
-func (p *Program) validProgramTypeName(name string) bool {
+func (p *Program) validProgramTypeName(name string, structTypesByName map[string]StructType) bool {
 	if !langtypes.ValidName(name) {
 		return false
 	}
 	if strings.HasPrefix(name, "Array<") && strings.HasSuffix(name, ">") {
 		element := name[len("Array<") : len(name)-1]
-		return element != "unit" && p.validProgramTypeName(element)
+		return element != "unit" && p.validProgramTypeName(element, structTypesByName)
 	}
 	switch name {
 	case "i64", "f64", "bool", "string", "unit":
 		return true
 	default:
-		for _, st := range p.StructTypes {
-			if st.Name == name {
-				return true
-			}
-		}
-		return false
+		_, ok := structTypesByName[name]
+		return ok
 	}
 }
 
@@ -421,7 +410,8 @@ func (p *Program) Validate() error {
 	if len(p.Constants) > maxConstantPoolEntries {
 		return fmt.Errorf("constant pool exceeds safety limit")
 	}
-	if err := p.validateStructTypes(); err != nil {
+	structTypesByName, err := p.validateStructTypes()
+	if err != nil {
 		return err
 	}
 	totalConstantValues := 0
@@ -456,11 +446,11 @@ func (p *Program) Validate() error {
 			return fmt.Errorf("function %q has %d parameters but %d parameter types", f.Name, f.Params, len(f.ParamTypes))
 		}
 		for pi, typ := range f.ParamTypes {
-			if !p.validProgramTypeName(typ) || typ == "unit" {
+			if !p.validProgramTypeName(typ, structTypesByName) || typ == "unit" {
 				return fmt.Errorf("function %q parameter %d has invalid type %q", f.Name, pi, typ)
 			}
 		}
-		if !p.validProgramTypeName(f.Return) {
+		if !p.validProgramTypeName(f.Return, structTypesByName) {
 			return fmt.Errorf("function %q has invalid return type %q", f.Name, f.Return)
 		}
 		if len(f.Code) == 0 {
@@ -556,7 +546,7 @@ func (p *Program) Validate() error {
 		typedStateCells += len(f.Code) * f.Locals
 	}
 	for fi := range p.Functions {
-		if err := validateFunctionTypes(p, fi, constantTypes); err != nil {
+		if err := validateFunctionTypes(p, fi, constantTypes, structTypesByName); err != nil {
 			return err
 		}
 	}

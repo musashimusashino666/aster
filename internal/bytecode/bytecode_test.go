@@ -760,6 +760,79 @@ func TestValidateTypedStructBytecode(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsInvalidStructMetadata(t *testing.T) {
+	tests := []struct {
+		name    string
+		structs []StructType
+		want    string
+	}{
+		{
+			name:    "duplicate struct name",
+			structs: []StructType{{Name: "Point"}, {Name: "Point"}},
+			want:    "duplicate struct type",
+		},
+		{
+			name: "duplicate field name",
+			structs: []StructType{{Name: "Point", Fields: []StructField{
+				{Name: "x", Type: "i64"},
+				{Name: "x", Type: "i64"},
+			}}},
+			want: "duplicate field",
+		},
+		{
+			name:    "unknown field type",
+			structs: []StructType{{Name: "Point", Fields: []StructField{{Name: "x", Type: "Missing"}}}},
+			want:    "has invalid type",
+		},
+		{
+			name:    "unit field type",
+			structs: []StructType{{Name: "Point", Fields: []StructField{{Name: "x", Type: "unit"}}}},
+			want:    "has invalid type",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			program := &Program{
+				Format:      "aster-bytecode",
+				Version:     FormatVersion,
+				StructTypes: tt.structs,
+				Functions: []Function{{
+					Name:   "main",
+					Return: "unit",
+					Code:   []Instruction{{Op: OpHalt}},
+				}},
+				Entry: 0,
+			}
+			if err := program.Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("invalid struct metadata should be rejected with %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsStructConstructorFieldTypeMismatch(t *testing.T) {
+	program := &Program{
+		Format:      "aster-bytecode",
+		Version:     FormatVersion,
+		StructTypes: []StructType{{Name: "Point", Fields: []StructField{{Name: "x", Type: "i64"}}}},
+		Constants:   []Value{Bool(true)},
+		Functions: []Function{{
+			Name:   "main",
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpBuildStruct, A: 0, B: 1},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		}},
+		Entry: 0,
+	}
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "constructor field") {
+		t.Fatalf("struct constructor field type mismatch should be rejected, got %v", err)
+	}
+}
+
 func TestValidateRejectsRecursiveStructLayout(t *testing.T) {
 	program := &Program{
 		Format:  "aster-bytecode",
