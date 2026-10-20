@@ -1,4 +1,4 @@
-// Package codegen lowers the type-checked Aster AST to a self-contained Go program.
+// Package codegen lowers the normalized, type-checked Aster IR to a self-contained Go program.
 // The Go backend is an initial native backend; generated executables include
 // Aster runtime checks rather than relying on unchecked Go arithmetic.
 package codegen
@@ -35,9 +35,8 @@ func Generate(tree *ast.Program) (string, error) {
 	return GenerateTyped(typed)
 }
 
-// GenerateTyped lowers checker-produced semantic metadata and its AST to Go.
-// Expression types and function signatures are read from the checker result;
-// the native backend does not independently re-infer them.
+// GenerateTyped lowers the checker's normalized IR to Go. Expression types,
+// resolved symbols, function targets, and checked operations come from the checker phase.
 func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	if typed == nil || typed.Tree == nil {
 		return "", fmt.Errorf("codegen: nil typed program")
