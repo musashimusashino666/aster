@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/token"
@@ -42,5 +43,35 @@ func TestUnterminatedBlockComment(t *testing.T) {
 func TestInvalidCharacter(t *testing.T) {
 	if _, err := New("let x = @;").Lex(); err == nil {
 		t.Fatal("expected invalid character error")
+	}
+}
+
+func TestLexIgnoresLeadingUTF8BOM(t *testing.T) {
+	got, err := New("\uFEFFlet value = 1;").Lex()
+	if err != nil {
+		t.Fatalf("lexing source with leading UTF-8 BOM failed: %v", err)
+	}
+	if len(got) < 2 || got[0].Kind != token.Let || got[0].Pos.Offset != len("\uFEFF") {
+		t.Fatalf("unexpected token stream after BOM: %#v", got)
+	}
+}
+
+func TestUnexpectedUnicodeCharacterReportsCodePoint(t *testing.T) {
+	_, err := New("let x = ；;").Lex()
+	if err == nil {
+		t.Fatal("expected invalid Unicode character error")
+	}
+	if !strings.Contains(err.Error(), "U+FF1B") {
+		t.Fatalf("diagnostic should identify Unicode code point U+FF1B, got %q", err)
+	}
+}
+
+func TestLexSkipsUnicodeWhitespace(t *testing.T) {
+	got, err := New("　let value = 1;").Lex()
+	if err != nil {
+		t.Fatalf("lexing after Unicode whitespace failed: %v", err)
+	}
+	if len(got) < 2 || got[0].Kind != token.Let || got[0].Pos.Offset != len("　") {
+		t.Fatalf("unexpected token stream after Unicode whitespace: %#v", got)
 	}
 }
