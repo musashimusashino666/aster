@@ -191,7 +191,6 @@ func TestAnalyzeBuildsTypedIRWithResolvedSymbolsAndCheckedOperations(t *testing.
 	}
 }
 
-
 func TestConstantBooleanConditionsImproveReturnFlow(t *testing.T) {
 	valid := []struct {
 		name   string
