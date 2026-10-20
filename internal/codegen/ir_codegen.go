@@ -226,27 +226,27 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			return "", err
 		}
 		checkedHelpers := map[ir.RuntimeOp]string{
-			ir.OpAddI64Checked:      "asterAddI64",
-			ir.OpSubI64Checked:      "asterSubI64",
-			ir.OpMulI64Checked:      "asterMulI64",
-			ir.OpDivI64Checked:      "asterDivI64",
-			ir.OpModI64Checked:      "asterModI64",
-			ir.OpAddF64Checked:      "asterAddF64",
-			ir.OpSubF64Checked:      "asterSubF64",
-			ir.OpMulF64Checked:      "asterMulF64",
-			ir.OpDivF64Checked:      "asterDivF64",
+			ir.OpAddI64Checked:       "asterAddI64",
+			ir.OpSubI64Checked:       "asterSubI64",
+			ir.OpMulI64Checked:       "asterMulI64",
+			ir.OpDivI64Checked:       "asterDivI64",
+			ir.OpModI64Checked:       "asterModI64",
+			ir.OpAddF64Checked:       "asterAddF64",
+			ir.OpSubF64Checked:       "asterSubF64",
+			ir.OpMulF64Checked:       "asterMulF64",
+			ir.OpDivF64Checked:       "asterDivF64",
 			ir.OpConcatStringChecked: "asterAddString",
 		}
 		if helper, ok := checkedHelpers[n.Op]; ok {
 			return helper + "(" + left + ", " + right + ", " + irPositionArgs(n) + ")", nil
 		}
 		goOperators := map[ir.RuntimeOp]string{
-			ir.OpEqual:                 "==",
-			ir.OpNotEqual:              "!=",
-			ir.OpLess:                  "<",
-			ir.OpLessEqual:             "<=",
-			ir.OpGreater:               ">",
-			ir.OpGreaterEqual:          ">=",
+			ir.OpEqual:                  "==",
+			ir.OpNotEqual:               "!=",
+			ir.OpLess:                   "<",
+			ir.OpLessEqual:              "<=",
+			ir.OpGreater:                ">",
+			ir.OpGreaterEqual:           ">=",
 			ir.OpLogicalAndShortCircuit: "&&",
 			ir.OpLogicalOrShortCircuit:  "||",
 		}
