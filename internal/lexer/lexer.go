@@ -142,7 +142,11 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 		case ',':
 			kind = token.Comma
 		case ':':
-			if l.match(':') { kind = token.DoubleColon } else { kind = token.Colon }
+			if l.match(':') {
+				kind = token.DoubleColon
+			} else {
+				kind = token.Colon
+			}
 		case ';':
 			kind = token.Semicolon
 		case '.':
