@@ -344,3 +344,48 @@ func TestChecksExplicitNumericCasts(t *testing.T) {
 		})
 	}
 }
+
+
+func TestChecksStructConstructionAndFieldSelection(t *testing.T) {
+	valid := `struct Point { x: i64, y: i64 }
+struct Box { point: Point, values: Array<i64> }
+fn pass(value: Box) -> Box { return value; }
+let mut values: Array<i64> = [1, 2, 3];
+let boxValue = pass(Box(Point(4, 5), values));
+print(boxValue.point.x);
+print(boxValue.values[1]);`
+	if err := checkSource(t, valid); err != nil {
+		t.Fatalf("valid struct program failed: %v", err)
+	}
+}
+
+func TestRejectsInvalidStructOperations(t *testing.T) {
+	tests := []struct {
+		name, source, want string
+	}{
+		{"unknown field", "struct Point { x: i64 } let p = Point(1); print(p.y);", "has no field 'y'"},
+		{"constructor arity", "struct Point { x: i64 } let p = Point();", "expects 1 fields, got 0"},
+		{"constructor type", "struct Point { x: i64 } let p = Point(true);", "expects i64, got bool"},
+		{"non-struct field", "let value = 1; print(value.x);", "field selection requires a struct value"},
+		{"duplicate field", "struct Point { x: i64, x: i64 }", "field 'x' is duplicated"},
+		{"by-value recursive layout", "struct A { b: B } struct B { a: A }", "recursive by-value layout"},
+		{"struct print unsupported", "struct Point { x: i64 } print(Point(1));", "print does not yet support values of type Point"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkSource(t, tt.source)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestAllowsRecursiveStructThroughArray(t *testing.T) {
+	source := `struct Node { children: Array<Node> }
+let leaf = Node([]);
+print(len(leaf.children));`
+	if err := checkSource(t, source); err != nil {
+		t.Fatalf("array-indirected recursive struct should be accepted: %v", err)
+	}
+}
