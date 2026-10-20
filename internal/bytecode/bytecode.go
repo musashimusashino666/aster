@@ -719,6 +719,9 @@ func (p *Program) Validate() error {
 					return fmt.Errorf("function %q instruction %d has invalid enum payload operands", f.Name, pc)
 				}
 			case OpIndex:
+				if ins.A != 0 || ins.B != 0 || ins.C != 0 {
+					return fmt.Errorf("function %q instruction %d has invalid index operands", f.Name, pc)
+				}
 			case OpSlice:
 				if ins.A != 0 || ins.B != 0 {
 					return fmt.Errorf("function %q instruction %d has invalid slice operands", f.Name, pc)
