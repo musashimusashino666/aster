@@ -196,11 +196,12 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 				return typeError(p.At, diagnostic.TypeDuplicateParameter, "duplicate parameter '%s'", p.Name)
 			}
 		}
-		if _, err := c.checkBlock(f.Body, false); err != nil {
+		cannotFallThrough, err := c.checkBlock(f.Body, false)
+		if err != nil {
 			return err
 		}
-		if info.Return != Unit && !AlwaysReturns(f.Body) {
-			return typeError(f.Pos(), diagnostic.TypeMissingReturn, "function '%s' must return %s on every path", f.Name, info.Return)
+		if info.Return != Unit && !cannotFallThrough {
+			return typeError(f.Pos(), diagnostic.TypeMissingReturn, "function '%s' must return %s on every path that reaches its end", f.Name, info.Return)
 		}
 	}
 	c.inFunction = false
@@ -275,18 +276,18 @@ func (c *Checker) checkBlock(b *ast.BlockStmt, push bool) (bool, error) {
 		c.scopes = newScope(old)
 		defer func() { c.scopes = old }()
 	}
-	returned := false
+	cannotFallThrough := false
 	for _, s := range b.Statements {
-		if returned {
+		if cannotFallThrough {
 			return false, typeError(s.Pos(), diagnostic.TypeUnreachableStatement, "unreachable statement")
 		}
-		r, err := c.checkStmt(s)
+		terminates, err := c.checkStmt(s)
 		if err != nil {
 			return false, err
 		}
-		returned = r
+		cannotFallThrough = terminates
 	}
-	return returned, nil
+	return cannotFallThrough, nil
 }
 func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 	switch n := s.(type) {
@@ -359,6 +360,15 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 				return false, err
 			}
 		}
+		if condition, ok := astBoolLiteral(n.Condition); ok {
+			if condition {
+				return thenRet, nil
+			}
+			if n.Else != nil {
+				return elseRet, nil
+			}
+			return false, nil
+		}
 		return n.Else != nil && thenRet && elseRet, nil
 	case *ast.WhileStmt:
 		cond, err := c.checkExpr(n.Condition)
@@ -369,7 +379,11 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 			return false, typeError(n.Condition.Pos(), diagnostic.TypeWhileCondition, "while condition must be bool, got %s", cond)
 		}
 		_, err = c.checkBlock(n.Body, true)
-		return false, err
+		if err != nil {
+			return false, err
+		}
+		condition, constant := astBoolLiteral(n.Condition)
+		return constant && condition, nil
 	case *ast.ReturnStmt:
 		if !c.inFunction {
 			return false, typeError(n.Pos(), diagnostic.TypeReturnOutsideFunction, "return is only valid inside a function")
@@ -588,24 +602,14 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 	return "", typeError(e.Pos(), diagnostic.TypeUnsupportedExpression, "unsupported expression node %T", e)
 }
 
-// AlwaysReturns reports whether the conservative return-flow analysis guarantees a return.
-func AlwaysReturns(s ast.Stmt) bool {
-	switch n := s.(type) {
-	case *ast.ReturnStmt:
-		return true
-	case *ast.BlockStmt:
-		for _, child := range n.Statements {
-			if AlwaysReturns(child) {
-				return true
-			}
-		}
-	case *ast.IfStmt:
-		if n.Else != nil && AlwaysReturns(n.Then) && AlwaysReturns(n.Else) {
-			return true
-		}
+func astBoolLiteral(expr ast.Expr) (bool, bool) {
+	literal, ok := expr.(*ast.LiteralExpr)
+	if !ok || literal.Kind != "bool" {
+		return false, false
 	}
-	return false
+	return literal.Bool, true
 }
+
 func typeError(pos token.Position, code string, format string, args ...any) error {
 	return diagnostic.New(code, "type", pos, fmt.Sprintf(format, args...))
 }
