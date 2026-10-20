@@ -83,6 +83,56 @@ len(data);
 	}
 }
 
+func TestGenericFunctionVMAndNativeBackendParity(t *testing.T) {
+	source := `fn identity<T>(value: T) -> T { return value; }
+fn select<T>(left: T, right: T, choose_left: bool) -> T {
+    if choose_left { return left; }
+    return right;
+}
+print(identity::<i64>(42));
+print(identity::<string>("aster"));
+print(select::<i64>(7, 9, false));
+`
+	tree, err := parser.Parse(source, "generic-function-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := program.Validate(); err != nil {
+		t.Fatalf("generic bytecode failed validation: %v", err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-generic-parity")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("Native generic program failed: %v\n%s", err, nativeOutput)
+	}
+	if got, want := vmOutput.String(), "42\naster\n9\n"; got != want {
+		t.Fatalf("unexpected generic VM output: got %q want %q", got, want)
+	}
+	if got := string(nativeOutput); got != vmOutput.String() {
+		t.Fatalf("generic backend output differs: VM=%q Native=%q", vmOutput.String(), got)
+	}
+}
+
 func TestExtendedVMAndNativeBackendParity(t *testing.T) {
 	source := `print(1.5 + 2.25); print(false && (1 / 0 == 0)); print(true || (1 / 0 == 0)); print("alpha" == "alpha"); print("alpha" < "beta");`
 	tree, err := parser.Parse(source, "extended-parity.ast")

@@ -486,6 +486,13 @@ func TestRejectsTypeMismatchAfterGenericSubstitution(t *testing.T) {
 	}
 }
 
+func TestRejectsExplicitTypeArgumentsOnNonGenericFunction(t *testing.T) {
+	err := checkSource(t, `let value = len::<i64>([1, 2]);`)
+	if err == nil || !strings.Contains(err.Error(), "TYP082") {
+		t.Fatalf("expected TYP082 non-generic target diagnostic, got %v", err)
+	}
+}
+
 func TestAcceptsEnumPayloadAndExhaustiveMatch(t *testing.T) {
 	source := `enum Result { Ok(i64), Err(string), }
 fn value(result: Result) -> i64 {
