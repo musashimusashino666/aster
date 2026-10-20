@@ -201,9 +201,9 @@ type CallTarget string
 
 const (
 	CallUserFunction CallTarget = "user_function"
-	CallPrint         CallTarget = "print"
-	CallLen           CallTarget = "len"
-	CallAssert        CallTarget = "assert"
+	CallPrint        CallTarget = "print"
+	CallLen          CallTarget = "len"
+	CallAssert       CallTarget = "assert"
 )
 
 type CallExpr struct {
@@ -228,26 +228,26 @@ const (
 	OpNegF64        RuntimeOp = "neg_f64"
 	OpNotBool       RuntimeOp = "not_bool"
 
-	OpAddI64Checked RuntimeOp = "add_i64_checked"
-	OpSubI64Checked RuntimeOp = "sub_i64_checked"
-	OpMulI64Checked RuntimeOp = "mul_i64_checked"
-	OpDivI64Checked RuntimeOp = "div_i64_checked"
-	OpModI64Checked RuntimeOp = "mod_i64_checked"
-	OpAddF64Checked RuntimeOp = "add_f64_checked"
-	OpSubF64Checked RuntimeOp = "sub_f64_checked"
-	OpMulF64Checked RuntimeOp = "mul_f64_checked"
-	OpDivF64Checked RuntimeOp = "div_f64_checked"
+	OpAddI64Checked       RuntimeOp = "add_i64_checked"
+	OpSubI64Checked       RuntimeOp = "sub_i64_checked"
+	OpMulI64Checked       RuntimeOp = "mul_i64_checked"
+	OpDivI64Checked       RuntimeOp = "div_i64_checked"
+	OpModI64Checked       RuntimeOp = "mod_i64_checked"
+	OpAddF64Checked       RuntimeOp = "add_f64_checked"
+	OpSubF64Checked       RuntimeOp = "sub_f64_checked"
+	OpMulF64Checked       RuntimeOp = "mul_f64_checked"
+	OpDivF64Checked       RuntimeOp = "div_f64_checked"
 	OpConcatStringChecked RuntimeOp = "concat_string_checked"
 
-	OpEqual              RuntimeOp = "equal"
-	OpNotEqual           RuntimeOp = "not_equal"
-	OpLess               RuntimeOp = "less"
-	OpLessEqual          RuntimeOp = "less_equal"
-	OpGreater            RuntimeOp = "greater"
-	OpGreaterEqual       RuntimeOp = "greater_equal"
+	OpEqual                  RuntimeOp = "equal"
+	OpNotEqual               RuntimeOp = "not_equal"
+	OpLess                   RuntimeOp = "less"
+	OpLessEqual              RuntimeOp = "less_equal"
+	OpGreater                RuntimeOp = "greater"
+	OpGreaterEqual           RuntimeOp = "greater_equal"
 	OpLogicalAndShortCircuit RuntimeOp = "logical_and_short_circuit"
 	OpLogicalOrShortCircuit  RuntimeOp = "logical_or_short_circuit"
-	OpIndexChecked       RuntimeOp = "index_checked"
+	OpIndexChecked           RuntimeOp = "index_checked"
 )
 
 type scope struct {
