@@ -47,7 +47,7 @@ func (e *expander) totalMonomorphizedInstances() int {
 
 func (e *expander) checkTotalMonomorphizedLimit(at token.Position, code, kind string) error {
 	if e.totalMonomorphizedInstances() >= limits.MaxGenericMonomorphizedDeclarations {
-		return typeError(at, code, "total generic instances exceed limit %d while specializing a %s",
+		return typeError(at, code, "total generic instances exceed limit %d while instantiating generic %s",
 			limits.MaxGenericMonomorphizedDeclarations, kind)
 	}
 	return nil
