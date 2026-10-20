@@ -18,6 +18,7 @@ prevent the remaining targets from running.
 | Type checker | `FuzzAnalyzeNoPanic` | Accepted ASTs through static analysis and typed-IR lowering |
 | Bytecode reader | `FuzzReadBytecodeNeverPanics` | Untrusted JSON bytecode input and decode limits |
 | Bytecode verifier | `FuzzValidateInstructionOperandsNeverPanics` | Generated instruction opcodes and operand ranges |
+| Structured bytecode verifier | `FuzzValidateStructuredProgramsNeverPanics` | Bounded generated programs with functions, constants, control flow, types, and instruction sequences |
 
 A failing run uploads any persisted Go fuzz corpus as an artifact for 14 days.
 When a failure is found, preserve the minimized input under the corresponding
@@ -34,6 +35,7 @@ go test -run=^$ -fuzz=^FuzzParserNoPanic$ -fuzztime=10m ./internal/parser
 go test -run=^$ -fuzz=^FuzzAnalyzeNoPanic$ -fuzztime=10m ./internal/checker
 go test -run=^$ -fuzz=^FuzzReadBytecodeNeverPanics$ -fuzztime=10m ./internal/bytecode
 go test -run=^$ -fuzz=^FuzzValidateInstructionOperandsNeverPanics$ -fuzztime=10m ./internal/bytecode
+go test -run=^$ -fuzz=^FuzzValidateStructuredProgramsNeverPanics$ -fuzztime=10m ./internal/bytecode
 ```
 
 Run deterministic VM/Native output and runtime-failure comparisons:
