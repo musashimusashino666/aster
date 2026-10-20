@@ -302,7 +302,7 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 	case *ast.BlockStmt:
 		return c.checkBlock(n, true)
 	case *ast.LetStmt:
-		if n.Name == "print" || n.Name == "len" || n.Name == "assert" {
+		if builtinName(n.Name) {
 			return false, typeError(n.Pos(), diagnostic.TypeReservedBinding, "'%s' is reserved", n.Name)
 		}
 		if _, exists := c.scopes.vars[n.Name]; exists {
