@@ -127,7 +127,6 @@ func TestTokenEndPositionsAreExclusive(t *testing.T) {
 	t.Fatal("print identifier token not found")
 }
 
-
 func TestLexerDiagnosticsRetainExclusiveSourceSpan(t *testing.T) {
 	source := "let x = ；;"
 	_, err := New(source).Lex()
