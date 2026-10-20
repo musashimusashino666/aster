@@ -36,8 +36,11 @@ func (g *generator) irFunction(fn *ir.Function) error {
 		}
 		params[i] = irLocalName(param.ID) + " " + goType(paramType)
 	}
+	params = append(params, "_asterCallLine int", "_asterCallColumn int")
 	g.line(fmt.Sprintf("func %s(%s) %s {", irFunctionName(fn.ID), strings.Join(params, ", "), goType(ret)))
 	g.indent++
+	g.line("asterEnterCall(_asterCallLine, _asterCallColumn)")
+	g.line("defer asterLeaveCall()")
 	if fn.Body != nil {
 		if err := g.irBlockContents(fn.Body); err != nil {
 			return err
@@ -278,7 +281,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		case ir.CallAssert:
 			return "asterAssert(" + joined + ", " + irPositionArgs(n) + ")", nil
 		case ir.CallUserFunction:
-			return irFunctionName(n.Function) + "(" + joined + ")", nil
+			return irFunctionName(n.Function) + "(" + joined + ", " + irPositionArgs(n) + ")", nil
 		default:
 			return "", fmt.Errorf("codegen: unsupported IR call target %q", n.Target)
 		}

@@ -9,3 +9,6 @@ const MaxArrayLength = 1 << 18
 
 // MaxArrayNestingDepth bounds recursive array traversal and display.
 const MaxArrayNestingDepth = 256
+
+// MaxCallDepth bounds active Aster function calls in every execution backend.
+const MaxCallDepth = 4096

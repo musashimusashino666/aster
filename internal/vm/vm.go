@@ -9,10 +9,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/aster-lang/aster/internal/bytecode"
+	"github.com/aster-lang/aster/internal/limits"
 )
 
 const maxStackDepth = 1 << 20
-const maxCallDepth = 4096
+const maxCallDepth = limits.MaxCallDepth
 
 // maxActiveLocalSlots bounds the sum of local slots across all live call frames.
 // It is a deterministic allocation budget, not a complete process memory quota.

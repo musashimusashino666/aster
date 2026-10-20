@@ -89,7 +89,7 @@ Build a native executable:
 ./fibonacci
 ```
 
-The native build currently uses a generated Go source file and the installed Go compiler. Aster users do not need to edit generated source, but Go is a build-time dependency. The VM and native backend are distinct execution paths; they are not two independent language implementations. VM instruction, call-depth, string-size, array-size, and printed-output limits do not currently apply to generated native executables; native programs run with the host process's privileges.
+The native build currently uses generated Go source and the installed Go compiler. Aster users do not need to edit generated source, but Go is a build-time dependency. The VM and native backend are distinct execution paths; they are not two independent language implementations. Both backends enforce function call-depth, string-size, array-size, and printed-output limits. The VM additionally enforces an instruction budget, operand-stack limit, and active-local-slot budget; these VM-specific budgets are not a process sandbox. Native programs run with the host process's privileges.
 
 ## Language tour
 

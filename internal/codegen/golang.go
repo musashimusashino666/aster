@@ -6,7 +6,6 @@ package codegen
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
@@ -16,8 +15,6 @@ import (
 )
 
 type generator struct {
-	typed  *checker.TypedProgram
-	tree   *ast.Program
 	out    bytes.Buffer
 	indent int
 }
@@ -37,34 +34,22 @@ func Generate(tree *ast.Program) (string, error) {
 // GenerateTyped lowers the checker's normalized IR to Go. Expression types,
 // resolved symbols, function targets, and checked operations come from the checker phase.
 func GenerateTyped(typed *checker.TypedProgram) (string, error) {
-	if typed == nil || typed.Tree == nil {
+	if typed == nil {
 		return "", fmt.Errorf("codegen: nil typed program")
 	}
-	tree := typed.Tree
-	g := &generator{typed: typed, tree: tree}
 	if typed.IR == nil {
 		return "", fmt.Errorf("codegen: typed program has no normalized IR")
 	}
-	for _, d := range tree.Decls {
-		f, ok := d.(*ast.Function)
-		if !ok {
-			continue
-		}
-		info, ok := typed.Function(f.Name)
-		if !ok {
-			return "", fmt.Errorf("codegen: checker has no signature for function %q", f.Name)
-		}
-		ret := info.Return.String()
+	g := &generator{}
+	for _, fn := range typed.IR.Functions {
+		ret := string(fn.ReturnType)
 		if !langtypes.ValidName(ret) {
-			return "", fmt.Errorf("codegen: invalid return type %q for function %q", ret, f.Name)
+			return "", fmt.Errorf("codegen: invalid IR return type %q for function %q", ret, fn.Name)
 		}
-		if len(info.Params) != len(f.Params) {
-			return "", fmt.Errorf("codegen: checker parameter count mismatch for function %q", f.Name)
-		}
-		for _, paramType := range info.Params {
-			name := paramType.String()
-			if !langtypes.ValidName(name) || paramType == checker.Unit {
-				return "", fmt.Errorf("codegen: invalid parameter type %q for function %q", name, f.Name)
+		for _, param := range fn.Params {
+			name := string(param.Type)
+			if !langtypes.ValidName(name) || name == string(checker.Unit) {
+				return "", fmt.Errorf("codegen: invalid IR parameter type %q for function %q", name, fn.Name)
 			}
 		}
 	}
@@ -76,6 +61,7 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	}
 	g.line("func main() {")
 	g.indent++
+	g.line("asterCallDepth = 1")
 	g.line("defer func() { if r := recover(); r != nil { msg := fmt.Sprint(r); if !strings.Contains(msg, \"runtime error:\") { msg = \"runtime error: \" + msg }; fmt.Fprintln(os.Stderr, msg); os.Exit(1) } }()")
 	for _, stmt := range typed.IR.Body {
 		if err := g.irStatement(stmt); err != nil {
@@ -104,6 +90,10 @@ func (g *generator) writePreamble() {
 	g.line("func asterPrint(v any, line, column int) struct{} { var out strings.Builder; asterFormatValue(reflect.ValueOf(v), &out, line, column, 0); if _, err := fmt.Fprintln(os.Stdout, out.String()); err != nil { asterRuntimeError(line, column, fmt.Sprintf(\"write output: %v\", err)) }; return struct{}{} }")
 	g.line("func asterLenString(s string) int64 { return int64(utf8.RuneCountInString(s)) }")
 	g.line(fmt.Sprintf("const asterMaxStringBytes = %d", limits.MaxStringBytes))
+	g.line(fmt.Sprintf("const asterMaxCallDepth = %d", limits.MaxCallDepth))
+	g.line("var asterCallDepth int")
+	g.line("func asterEnterCall(line, column int) { if asterCallDepth >= asterMaxCallDepth { asterRuntimeError(line, column, fmt.Sprintf(\"call depth limit exceeded (maximum %d)\", asterMaxCallDepth)) }; asterCallDepth++ }")
+	g.line("func asterLeaveCall() { asterCallDepth-- }")
 	g.line(fmt.Sprintf("const asterMaxArrayNestingDepth = %d", limits.MaxArrayNestingDepth))
 	g.line("func asterDisplayWrite(out *strings.Builder, text string, line, column int) { if len(text) > asterMaxStringBytes-out.Len() { asterRuntimeError(line, column, fmt.Sprintf(\"printed value exceeds %d-byte output limit\", asterMaxStringBytes)) }; out.WriteString(text) }")
 	g.line("func asterFormatValue(value reflect.Value, out *strings.Builder, line, column, depth int) { if value.Kind() == reflect.Slice { if depth >= asterMaxArrayNestingDepth && value.Len() > 0 { asterRuntimeError(line, column, \"printed array nesting exceeds depth limit\") }; asterDisplayWrite(out, \"[\", line, column); for i := 0; i < value.Len(); i++ { if i > 0 { asterDisplayWrite(out, \" \", line, column) }; asterFormatValue(value.Index(i), out, line, column, depth+1) }; asterDisplayWrite(out, \"]\", line, column); return }; if value.Kind() == reflect.String { asterDisplayWrite(out, value.String(), line, column); return }; asterDisplayWrite(out, fmt.Sprint(value.Interface()), line, column) }")
@@ -125,273 +115,6 @@ func (g *generator) writePreamble() {
 	g.line("func asterDivF64(a,b float64, line,column int) float64 { if b==0 { asterRuntimeError(line,column, \"division by zero\") }; z:=a/b; if math.IsInf(z,0)||math.IsNaN(z) { asterRuntimeError(line,column, \"non-finite floating-point result\") }; return z }")
 	g.line("")
 }
-func (g *generator) function(f *ast.Function) error {
-	info, ok := g.typed.Function(f.Name)
-	if !ok {
-		return fmt.Errorf("codegen: checker has no signature for function %q", f.Name)
-	}
-	params := make([]string, 0, len(f.Params))
-	for i, p := range f.Params {
-		pt := info.Params[i].String()
-		params = append(params, "v_"+p.Name+" "+goType(pt))
-	}
-	ret := info.Return.String()
-	g.line(fmt.Sprintf("func asterFn_%s(%s) %s {", f.Name, strings.Join(params, ", "), goType(ret)))
-	g.indent++
-	if err := g.blockContents(f.Body); err != nil {
-		return err
-	}
-	if ret == "unit" {
-		g.line("return struct{}{}")
-	}
-	g.indent--
-	g.line("}")
-	g.line("")
-	return nil
-}
-func (g *generator) blockContents(b *ast.BlockStmt) error {
-	for _, s := range b.Statements {
-		if err := g.statement(s); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func (g *generator) statement(s ast.Stmt) error {
-	switch n := s.(type) {
-	case *ast.BlockStmt:
-		g.line("{")
-		g.indent++
-		err := g.blockContents(n)
-		g.indent--
-		g.line("}")
-		return err
-	case *ast.LetStmt:
-		expr, err := g.expression(n.Value)
-		if err != nil {
-			return err
-		}
-		t, err := g.typeOf(n.Value)
-		if err != nil {
-			return fmt.Errorf("codegen: infer initializer type for %q: %w", n.Name, err)
-		}
-		if !langtypes.ValidName(t) || t == "unit" {
-			return fmt.Errorf("codegen: invalid variable type %q for %q", t, n.Name)
-		}
-		g.line(fmt.Sprintf("v_%s := %s", n.Name, expr))
-		g.line("_ = v_" + n.Name)
-		return nil
-	case *ast.AssignStmt:
-		expr, err := g.expression(n.Value)
-		if err != nil {
-			return err
-		}
-		g.line(fmt.Sprintf("v_%s = %s", n.Name, expr))
-		return nil
-	case *ast.ExprStmt:
-		expr, err := g.expression(n.Expr)
-		if err != nil {
-			return err
-		}
-		// Go only permits certain call expressions as statements. Assigning the
-		// value to the blank identifier preserves evaluation for all Aster
-		// expression statements (including pure expressions and unit calls).
-		g.line("_ = " + expr)
-		return nil
-	case *ast.IfStmt:
-		cond, err := g.expression(n.Condition)
-		if err != nil {
-			return err
-		}
-		g.line("if " + cond + " {")
-		g.indent++
-		err = g.blockContents(n.Then)
-		g.indent--
-		if err != nil {
-			return err
-		}
-		if n.Else != nil {
-			g.line("} else {")
-			g.indent++
-			err = g.statement(n.Else)
-			g.indent--
-			if err != nil {
-				return err
-			}
-			g.line("}")
-		} else {
-			g.line("}")
-		}
-		return nil
-	case *ast.WhileStmt:
-		cond, err := g.expression(n.Condition)
-		if err != nil {
-			return err
-		}
-		g.line("for " + cond + " {")
-		g.indent++
-		err = g.blockContents(n.Body)
-		g.indent--
-		g.line("}")
-		return err
-	case *ast.ReturnStmt:
-		if n.Value == nil {
-			g.line("return struct{}{}")
-			return nil
-		}
-		expr, err := g.expression(n.Value)
-		if err != nil {
-			return err
-		}
-		g.line("return " + expr)
-		return nil
-	default:
-		return fmt.Errorf("codegen: unsupported statement %T", s)
-	}
-}
-func (g *generator) expression(e ast.Expr) (string, error) {
-	switch n := e.(type) {
-	case *ast.LiteralExpr:
-		switch n.Kind {
-		case "i64":
-			return "int64(" + strconv.FormatInt(n.Int, 10) + ")", nil
-		case "f64":
-			return "float64(" + strconv.FormatFloat(n.Float, 'g', -1, 64) + ")", nil
-		case "bool":
-			return strconv.FormatBool(n.Bool), nil
-		case "string":
-			if len(n.String) > limits.MaxStringBytes {
-				pos := n.Pos()
-				return "", fmt.Errorf("%d:%d: codegen: string literal exceeds %d-byte limit", pos.Line, pos.Column, limits.MaxStringBytes)
-			}
-			return strconv.Quote(n.String), nil
-		}
-	case *ast.ArrayExpr:
-		if len(n.Elements) > limits.MaxArrayLength {
-			pos := n.Pos()
-			return "", fmt.Errorf("%d:%d: codegen: array literal has %d elements; maximum is %d", pos.Line, pos.Column, len(n.Elements), limits.MaxArrayLength)
-		}
-		items := make([]string, len(n.Elements))
-		for i, item := range n.Elements {
-			x, err := g.expression(item)
-			if err != nil {
-				return "", err
-			}
-			items[i] = x
-		}
-		arrayType, err := g.typeOf(n)
-		if err != nil {
-			return "", err
-		}
-		return goType(arrayType) + "{" + strings.Join(items, ", ") + "}", nil
-	case *ast.IndexExpr:
-		collection, err := g.expression(n.Collection)
-		if err != nil {
-			return "", err
-		}
-		index, err := g.expression(n.Index)
-		if err != nil {
-			return "", err
-		}
-		return "asterIndexI64(" + collection + ", " + index + ", " + positionArgs(n) + ")", nil
-	case *ast.IdentifierExpr:
-		return "v_" + n.Name, nil
-	case *ast.UnaryExpr:
-		r, err := g.expression(n.Right)
-		if err != nil {
-			return "", err
-		}
-		if n.Op == "-" {
-			rightType, err := g.typeOf(n.Right)
-			if err != nil {
-				return "", err
-			}
-			if rightType == "i64" {
-				return "asterNegI64(" + r + ", " + positionArgs(n) + ")", nil
-			}
-		}
-		if n.Op == "!" {
-			return "(!" + r + ")", nil
-		}
-		return "(" + n.Op + r + ")", nil
-	case *ast.BinaryExpr:
-		l, err := g.expression(n.Left)
-		if err != nil {
-			return "", err
-		}
-		r, err := g.expression(n.Right)
-		if err != nil {
-			return "", err
-		}
-		t, err := g.typeOf(n.Left)
-		if err != nil {
-			return "", err
-		}
-		if n.Op == "+" && t == "string" {
-			return "asterAddString(" + l + ", " + r + ", " + positionArgs(n) + ")", nil
-		}
-		if t == "i64" {
-			helpers := map[string]string{"+": "asterAddI64", "-": "asterSubI64", "*": "asterMulI64", "/": "asterDivI64", "%": "asterModI64"}
-			if h, ok := helpers[n.Op]; ok {
-				return h + "(" + l + ", " + r + ", " + positionArgs(n) + ")", nil
-			}
-		}
-		if t == "f64" {
-			helpers := map[string]string{"+": "asterAddF64", "-": "asterSubF64", "*": "asterMulF64", "/": "asterDivF64"}
-			if h, ok := helpers[n.Op]; ok {
-				return h + "(" + l + ", " + r + ", " + positionArgs(n) + ")", nil
-			}
-		}
-		return "(" + l + " " + n.Op + " " + r + ")", nil
-	case *ast.CallExpr:
-		id, ok := n.Callee.(*ast.IdentifierExpr)
-		if !ok {
-			return "", fmt.Errorf("codegen: only named functions can be called")
-		}
-		args := make([]string, len(n.Args))
-		for i, a := range n.Args {
-			x, err := g.expression(a)
-			if err != nil {
-				return "", err
-			}
-			args[i] = x
-		}
-		joined := strings.Join(args, ", ")
-		switch id.Name {
-		case "print":
-			return "asterPrint(" + joined + ", " + positionArgs(n) + ")", nil
-		case "len":
-			if len(n.Args) == 1 {
-				argType, err := g.typeOf(n.Args[0])
-				if err != nil {
-					return "", err
-				}
-				if argType != "string" {
-					return "int64(len(" + joined + "))", nil
-				}
-			}
-			return "asterLenString(" + joined + ")", nil
-		case "assert":
-			return "asterAssert(" + joined + ", " + positionArgs(n) + ")", nil
-		default:
-			return "asterFn_" + id.Name + "(" + joined + ")", nil
-		}
-	}
-	return "", fmt.Errorf("codegen: unsupported expression %T", e)
-}
-func (g *generator) typeOf(e ast.Expr) (string, error) {
-	t, ok := g.typed.TypeOf(e)
-	if !ok {
-		return "", fmt.Errorf("codegen: checker has no type for expression %T", e)
-	}
-	return t.String(), nil
-}
-
-func positionArgs(node ast.Node) string {
-	pos := node.Pos()
-	return fmt.Sprintf("%d, %d", pos.Line, pos.Column)
-}
-
 func goType(t string) string {
 	switch t {
 	case "i64":
