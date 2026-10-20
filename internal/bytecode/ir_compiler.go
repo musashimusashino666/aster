@@ -15,7 +15,18 @@ func compileIR(tree *ir.Program) (*Program, error) {
 		Version:   FormatVersion,
 		Source:    tree.SourceName,
 		Constants: []Value{},
+		StructTypes: make([]StructType, len(tree.StructTypes)),
 		Entry:     len(tree.Functions),
+	}
+	for i, structType := range tree.StructTypes {
+		if structType.ID != i {
+			return nil, fmt.Errorf("bytecode: non-canonical IR struct id %d at index %d", structType.ID, i)
+		}
+		fields := make([]StructField, len(structType.Fields))
+		for j, field := range structType.Fields {
+			fields[j] = StructField{Name: field.Name, Type: string(field.Type)}
+		}
+		p.StructTypes[i] = StructType{Name: structType.Name, Fields: fields}
 	}
 	for i, fn := range tree.Functions {
 		if fn == nil {
@@ -277,6 +288,12 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 		}
 		c.emit(OpBuildArray, len(n.Elements), 0, pos.Line, pos.Column)
 		return nil
+	case *ir.FieldExpr:
+		if err := c.compileExpr(n.Object); err != nil {
+			return err
+		}
+		c.emit(OpGetField, n.FieldIndex, 0, pos.Line, pos.Column)
+		return nil
 	case *ir.IndexExpr:
 		if err := c.compileExpr(n.Collection); err != nil {
 			return err
@@ -372,6 +389,14 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 			}
 		}
 		switch n.Target {
+		case ir.CallStructConstructor:
+			if n.StructID < 0 || n.StructID >= len(c.program.StructTypes) {
+				return fmt.Errorf("%d:%d: compiler: invalid struct id %d", pos.Line, pos.Column, n.StructID)
+			}
+			if len(n.Args) != len(c.program.StructTypes[n.StructID].Fields) {
+				return fmt.Errorf("%d:%d: compiler: struct %q has wrong constructor arity", pos.Line, pos.Column, n.FunctionName)
+			}
+			c.emit(OpBuildStruct, n.StructID, len(n.Args), pos.Line, pos.Column)
 		case ir.CallPrint:
 			c.emit(OpBuiltin, 0, len(n.Args), pos.Line, pos.Column)
 		case ir.CallLen:
