@@ -214,7 +214,7 @@ The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci
 
 ## Roadmap
 
-See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, and stable lexer/parser/type-checker diagnostic codes are implemented. Near-term work is focused on end-to-end source spans, continued fuzzing and differential testing, explicit numeric conversions, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
+See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, and stable lexer/parser/type-checker diagnostic codes are implemented. Near-term work is focused on end-to-end source spans, continued fuzzing and differential testing, runtime/toolchain diagnostic codes, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
 
 ## License
 
