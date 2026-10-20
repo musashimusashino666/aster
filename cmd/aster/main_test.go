@@ -111,7 +111,6 @@ func TestWriteOutputAtomicallyReplacesSymlinkItself(t *testing.T) {
 	}
 }
 
-
 func TestCommandFmtWritesCanonicalSource(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "example.ast")
 	if err := os.WriteFile(path, []byte("fn  f(){return 1;}"), 0o600); err != nil {
