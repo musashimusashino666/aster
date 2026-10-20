@@ -32,6 +32,7 @@ func (t TypeRef) Pos() token.Position { return t.At }
 type Function struct {
 	At         token.Position
 	Name       string
+	TypeParams []string
 	Params     []Param
 	ReturnType *TypeRef
 	Body       *BlockStmt
@@ -206,9 +207,10 @@ func (n *BinaryExpr) Pos() token.Position { return n.At }
 func (*BinaryExpr) exprNode()             {}
 
 type CallExpr struct {
-	At     token.Position
-	Callee Expr
-	Args   []Expr
+	At       token.Position
+	Callee   Expr
+	TypeArgs []TypeRef
+	Args     []Expr
 }
 
 func (n *CallExpr) Pos() token.Position { return n.At }

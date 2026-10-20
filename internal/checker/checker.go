@@ -7,6 +7,7 @@ import (
 
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/diagnostic"
+	"github.com/aster-lang/aster/internal/generics"
 	"github.com/aster-lang/aster/internal/ir"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/limits"
@@ -129,13 +130,22 @@ type Checker struct {
 
 // Check validates program without retaining expression-type metadata.
 func Check(program *ast.Program) error {
+	expanded, err := generics.Expand(program)
+	if err != nil {
+		return err
+	}
 	c := &Checker{functions: map[string]FunctionInfo{}, structs: map[string]StructInfo{}, enums: map[string]EnumInfo{}}
-	return c.checkProgram(program)
+	return c.checkProgram(expanded)
 }
 
 // Analyze validates program and returns the semantic information produced by
 // the checker for use by compiler backends.
 func Analyze(program *ast.Program) (*TypedProgram, error) {
+	expanded, err := generics.Expand(program)
+	if err != nil {
+		return nil, err
+	}
+	program = expanded
 	c := &Checker{
 		functions:       map[string]FunctionInfo{},
 		structs:         map[string]StructInfo{},

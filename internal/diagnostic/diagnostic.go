@@ -295,6 +295,11 @@ const (
 	TypeMatchDuplicateBinding = "TYP076"
 	TypeRecursiveEnumLayout   = "TYP077"
 	TypeResourceLimit         = "TYP078"
+	TypeInvalidGenericParameter = "TYP079"
+	TypeGenericArgumentCount   = "TYP080"
+	TypeGenericInference       = "TYP081"
+	TypeGenericArgumentsOnNonGeneric = "TYP082"
+	TypeGenericInstantiationLimit = "TYP083"
 )
 
 const (

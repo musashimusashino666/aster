@@ -117,6 +117,11 @@ Codes are intended for tests, editor integrations, and bug reports. A code ident
 | `TYP076` | Duplicate or invalid match payload binding |
 | `TYP077` | Recursive by-value enum/nominal layout |
 | `TYP078` | Compile-time resource limit exceeded |
+| `TYP079` | Invalid or duplicate generic type parameter |
+| `TYP080` | Generic function has the wrong number of type arguments |
+| `TYP081` | Generic type arguments are required in this implementation stage |
+| `TYP082` | Explicit type arguments were supplied to a non-generic or unsupported target |
+| `TYP083` | Generic monomorphization resource limit exceeded |
 
 
 ## Runtime

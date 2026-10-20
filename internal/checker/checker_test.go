@@ -444,6 +444,48 @@ func TestRejectsEnumMetadataOverSharedLimits(t *testing.T) {
 	})
 }
 
+func TestChecksExplicitGenericFunctionInstantiations(t *testing.T) {
+	source := `fn identity<T>(value: T) -> T { return value; }
+fn choose<T>(left: T, right: T, flag: bool) -> T {
+	if flag { return left; }
+	return right;
+}
+let integer = identity::<i64>(7);
+let text = identity::<string>("ok");
+let chosen = choose::<i64>(integer, 9, true);`
+	if err := checkSource(t, source); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRejectsGenericFunctionWithoutExplicitTypeArguments(t *testing.T) {
+	err := checkSource(t, `fn identity<T>(value: T) -> T { return value; } let value = identity(1);`)
+	if err == nil || !strings.Contains(err.Error(), "TYP081") {
+		t.Fatalf("expected TYP081 explicit-type-argument diagnostic, got %v", err)
+	}
+}
+
+func TestRejectsWrongGenericTypeArgumentCount(t *testing.T) {
+	err := checkSource(t, `fn identity<T>(value: T) -> T { return value; } let value = identity::<i64, string>(1);`)
+	if err == nil || !strings.Contains(err.Error(), "TYP080") {
+		t.Fatalf("expected TYP080 generic-arity diagnostic, got %v", err)
+	}
+}
+
+func TestRejectsDuplicateGenericTypeParameters(t *testing.T) {
+	err := checkSource(t, `fn identity<T, T>(value: T) -> T { return value; } let value = identity::<i64>(1);`)
+	if err == nil || !strings.Contains(err.Error(), "TYP079") {
+		t.Fatalf("expected TYP079 invalid type parameter diagnostic, got %v", err)
+	}
+}
+
+func TestRejectsTypeMismatchAfterGenericSubstitution(t *testing.T) {
+	err := checkSource(t, `fn identity<T>(value: T) -> T { return value; } print(identity::<i64>("wrong"));`)
+	if err == nil || !strings.Contains(err.Error(), "TYP045") {
+		t.Fatalf("expected TYP045 concrete argument mismatch, got %v", err)
+	}
+}
+
 func TestAcceptsEnumPayloadAndExhaustiveMatch(t *testing.T) {
 	source := `enum Result { Ok(i64), Err(string), }
 fn value(result: Result) -> i64 {

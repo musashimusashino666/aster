@@ -59,6 +59,28 @@ func TestGenerateTypedRejectsExcessiveEnumMetadata(t *testing.T) {
 	}
 }
 
+func TestGenerateTypedSupportsExplicitGenericFunctionInstances(t *testing.T) {
+	tree, err := parser.Parse(`fn identity<T>(value: T) -> T { return value; } print(identity::<i64>(7));`, "generic-native.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	formatted, err := format.Source([]byte(source))
+	if err != nil {
+		t.Fatalf("generated generic native source is not valid Go: %v\n%s", err, source)
+	}
+	if !strings.Contains(string(formatted), "func asterFn_") {
+		t.Fatalf("generated source is missing the specialized function:\n%s", formatted)
+	}
+}
+
 func TestGenerateRejectsUnknownExpressionType(t *testing.T) {
 	tests := []struct {
 		name   string
