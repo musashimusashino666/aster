@@ -45,7 +45,6 @@ print(returned);`
 	}
 }
 
-
 // TestIndexedArrayReadsShareOnlyAtValueCopyBoundaries verifies that an array
 // row read into a local or assigned to an existing local remains independent,
 // while temporary reads in expressions need not create a new semantic owner.
