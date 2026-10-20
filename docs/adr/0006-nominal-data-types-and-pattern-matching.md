@@ -48,9 +48,9 @@ print(p.y);
 
 Using a call-shaped constructor avoids making `Type { ... }` ambiguous with the existing `if condition { ... }` block syntax. The syntax can be reconsidered if a future parser design adds an unambiguous record-literal form.
 
-### Enum and match source model (proposed)
+### Enum and match source model (implementation contract)
 
-Enums are closed nominal sum types. Variants may carry zero or more typed positional payloads:
+Enums are closed nominal sum types. The initial slice supports non-generic enums with one or more variants; each variant has zero or more positional payload types:
 
 ```aster
 enum Message {
@@ -58,13 +58,59 @@ enum Message {
     Move(i64, i64),
     Write(string),
 }
+
+fn describe(message: Message) -> string {
+    match message {
+        Message::Quit => "quit",
+        Message::Move(x, y) => "move",
+        Message::Write(text) => text,
+    }
+}
+
+let message = Message::Move(10, 20);
+print(describe(message));
 ```
 
-Use `Message::Quit`, `Message::Move(10, 20)`, and `Message::Write("hello")` for variant construction. Enums should be introduced together with `match`; exposing tags without a safe way to inspect payloads would leave the feature incomplete.
+Fix the following syntax for this slice:
 
-The proposed `match` is an expression. Every arm produces a value, every arm must resolve to the same type, and a non-exhaustive match is a type-checking error. Initial patterns should support a variant with positional binders and a wildcard. Duplicate variants, unreachable arms after a wildcard, payload-arity mismatches, and repeated pattern bindings are rejected. The exact punctuation and grammar of match arms must be fixed in the implementation PR before code generation starts.
+```ebnf
+enum_decl       = "enum" identifier "{" enum_variant
+                  { "," enum_variant } [ "," ] "}" ;
+enum_variant    = identifier [ "(" type { "," type } [ "," ] ")" ] ;
+variant_value   = enum_name "::" variant_name
+                | enum_name "::" variant_name
+                  "(" expression { "," expression } [ "," ] ")" ;
+match_expr      = "match" expression "{" match_arm
+                  { "," match_arm } [ "," ] "}" ;
+match_arm       = pattern "=>" expression ;
+pattern         = "_" | enum_name "::" variant_name
+                | enum_name "::" variant_name
+                  "(" binding { "," binding } [ "," ] ")" ;
+binding         = identifier ;
+```
 
-No implicit fallthrough, exception-like control transfer, or unchecked tag cast is introduced. Generic enums and standard `Option`/`Result` declarations wait until generic substitution and recursive type validation exist.
+The lexer must recognize `::` as a single token. Match arms are comma-separated and a trailing comma is optional. A payload variant declares at least one payload type; a zero-payload variant is written without parentheses. Constructors and patterns for payload variants require parentheses with exactly the declared number of arguments or bindings.
+
+Semantics and scope:
+
+- Enum declarations are top-level and visible throughout the source file, including before their declaration, matching the existing function and struct declaration model. Type names share the nominal type namespace with structs. Enum names cannot collide with struct names, other enums, built-in types, or reserved built-in names. Variant names must be unique within one enum; the same variant name in two different enums is permitted because all construction and matching uses the qualified `Enum::Variant` form.
+- Enums are non-generic in this slice. Payloads may use currently supported storable concrete types, including primitives other than `unit`, arrays, structs, and enums. Generic payloads, implicit conversions, type inference for unqualified variants, and `Option<T>`/`Result<T, E>` are deferred. Direct by-value recursive cycles across structs and enums are rejected; recursion guarded by `Array<T>` is permitted under the existing type-nesting and resource limits.
+- Variant identity is the pair (enum type ID, declaration-order variant index). Constructor arguments are evaluated once, left to right, and must match payload types and arity exactly. Constructed values preserve aggregate value semantics, including array copy-on-write boundaries across construction, local bindings, function arguments/returns, and payload extraction.
+- `match` evaluates its subject exactly once and requires the subject to have an enum type. Every named pattern must reference a variant of that exact enum. Pattern payload arity must match the variant declaration. A payload binding is immutable and visible only in that arm's expression; repeated binding names in one pattern are rejected. `_` matches any remaining variant and does not bind the subject.
+- Every arm is an expression. All arm expressions must have the same type; there is no implicit coercion. Only the selected arm is evaluated, and there is no fallthrough. A match is exhaustive when every variant is covered explicitly or by a wildcard. A variant may be named in at most one arm. A second wildcard, any arm after a wildcard, and a wildcard after all variants have already been explicitly covered are unreachable and rejected. Missing variants without a wildcard are a type-checking error.
+- This slice intentionally excludes guards, nested patterns, literal patterns, alternative/or-patterns, structural destructuring of structs, exceptions, and generic enums. Unsupported forms must receive a parser or checker diagnostic rather than reaching a backend.
+- Assign stable type-checker diagnostic codes for enum declaration/variant conflicts, invalid payload types, constructor type/arity mismatch, non-enum match subjects, unknown or mismatched variants, pattern binding errors, duplicate/unreachable arms, non-exhaustive matches, and arm result-type disagreement. Tests must assert diagnostic codes, not only error text.
+
+Bytecode v7 and backend contract for enums/match:
+
+- Increment the bytecode format from v6 to v7. Version 7 is the only accepted format after the change; continue rejecting unsupported versions. Add immutable `EnumTypes` metadata containing each enum's stable ID, name, declaration-order variants, and payload type lists.
+- Add a tagged enum runtime value that stores the enum type ID, variant index, and payload values; do not infer a tag from source strings or generated Go type names.
+- `BUILD_ENUM` identifies the enum type ID and variant index and consumes exactly the payload values declared for that variant. The verifier validates enum/variant indexes, arity, and each operand's abstract type before VM execution.
+- Represent each source-level match as an explicit bytecode match table. A table names one enum type and contains exactly one valid target PC for every declaration-order variant; wildcard coverage is expanded to the corresponding variant entries during lowering. `MATCH_ENUM` dispatches from an initialized local holding a value of that enum type. The verifier checks enum/local type agreement, table size and type ID, every target PC, payload access indexes/types, and compatible abstract operand-stack states at branch merges. It must reject an incomplete or malformed dispatch table before execution.
+- `GET_ENUM_PAYLOAD` reads a declared payload slot from the verified enum value/local. It cannot be used with a mismatched enum type, variant, or out-of-range payload index. All branch and payload metadata are resolved in the typed IR; neither backend re-resolves variant names from source text.
+- The Native backend must emit collision-free Go identifiers and implement the same selected-arm, payload, evaluation-order, failure-class, and aggregate value semantics as the VM. Generated source must not embed source identifiers as trusted raw Go fragments.
+- Keep COW metadata out of serialized bytecode. Add VM/Native differential tests for nested arrays in enum payloads, function passing and returning enums, and arm bindings; compare output, exit status, and source-positioned failures.
+- Enum metadata and match tables must obey the existing limits for type depth, aggregate recursion, verifier work, and generated source size. These features are not a process sandbox or a process-wide memory bound.
 
 ## Bytecode and backend requirements
 
@@ -86,7 +132,6 @@ No implicit fallthrough, exception-like control transfer, or unchecked tag cast 
 
 ## Open questions for later slices and deferred enhancements
 
-- Exact `match` arm grammar, pattern binding scope, and nested-pattern support.
 - Whether aggregate equality will be explicit, derived structurally, or unavailable in the initial releases.
-- The bytecode representation and verification rules for enum variants, payloads, and match dispatch, including the required format-version changes.
 - Whether direct struct-field mutation should be added later, once aggregate COW paths are available.
+- Whether nested, literal, guarded, or alternative patterns should be introduced after the initial flat-pattern slice.
