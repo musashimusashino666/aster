@@ -105,6 +105,7 @@ func (s *scope) define(name string, v Variable) bool {
 
 type Checker struct {
 	functions       map[string]FunctionInfo
+	structs         map[string]StructInfo
 	expressionTypes map[ast.Expr]Type
 	currentReturn   Type
 	inFunction      bool
