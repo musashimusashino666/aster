@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -266,19 +267,39 @@ func TestEveryExampleCompilesToValidatedBytecode(t *testing.T) {
 	}
 }
 
+func sourceMarkerPosition(t *testing.T, source, marker string, offset int) (int, int) {
+	t.Helper()
+	index := strings.Index(source, marker)
+	if index < 0 {
+		t.Fatalf("source marker %q not found in %q", marker, source)
+	}
+	index += offset
+	if index < 0 || index > len(source) {
+		t.Fatalf("source marker offset %d is outside source", index)
+	}
+	prefix := source[:index]
+	line := strings.Count(prefix, "\n") + 1
+	column := len(prefix) - strings.LastIndex(prefix, "\n")
+	return line, column
+}
+
 func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 	tests := []struct {
 		name       string
 		source     string
 		diagnostic string
+		marker     string
+		offset     int
 	}{
-		{name: "division_by_zero", source: "print(10 / 0);", diagnostic: "division by zero"},
-		{name: "integer_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum + 1);", diagnostic: "overflow"},
-		{name: "assertion_failure", source: "assert(false);", diagnostic: "assertion failed"},
-		{name: "float_division_by_zero", source: "print(1.0 / 0.0);", diagnostic: "division by zero"},
+		{name: "division_by_zero", source: "print(10 / 0);", diagnostic: "division by zero", marker: "/"},
+		{name: "integer_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum + 1);", diagnostic: "overflow", marker: "+"},
+		{name: "assertion_failure", source: "assert(false);", diagnostic: "assertion failed", marker: "assert(", offset: len("assert")},
+		{name: "float_division_by_zero", source: "print(1.0 / 0.0);", diagnostic: "division by zero", marker: "/"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			line, column := sourceMarkerPosition(t, tt.source, tt.marker, tt.offset)
+			expectedPrefix := fmt.Sprintf("%d:%d: runtime error:", line, column)
 			tree, err := parser.Parse(tt.source, tt.name+".ast")
 			if err != nil {
 				t.Fatal(err)
@@ -295,6 +316,9 @@ func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 			if vmErr == nil || !strings.Contains(vmErr.Error(), tt.diagnostic) {
 				t.Fatalf("VM should report %q, got output=%q error=%v", tt.diagnostic, vmOutput.String(), vmErr)
 			}
+			if !strings.HasPrefix(vmErr.Error(), expectedPrefix) {
+				t.Fatalf("VM error should start with %q, got %q", expectedPrefix, vmErr.Error())
+			}
 
 			goSource, err := codegen.Generate(tree)
 			if err != nil {
@@ -308,8 +332,14 @@ func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 			if nativeErr == nil {
 				t.Fatalf("native backend should fail with %q, output=%q", tt.diagnostic, nativeOutput)
 			}
-			if !bytes.Contains(nativeOutput, []byte(tt.diagnostic)) {
+			if !strings.Contains(string(nativeOutput), tt.diagnostic) {
 				t.Fatalf("native backend should report %q, got %q", tt.diagnostic, nativeOutput)
+			}
+			if !strings.HasPrefix(strings.TrimSpace(string(nativeOutput)), expectedPrefix) {
+				t.Fatalf("native error should start with %q, got %q", expectedPrefix, nativeOutput)
+			}
+			if got := strings.TrimSpace(string(nativeOutput)); got != vmErr.Error() {
+				t.Fatalf("backend diagnostics differ: VM=%q native=%q", vmErr.Error(), got)
 			}
 		})
 	}
