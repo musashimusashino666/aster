@@ -1,4 +1,4 @@
-// Package generics expands explicit generic-function calls into concrete functions.
+// Package generics monomorphizes generic functions, structs, and enums to concrete declarations.
 package generics
 
 import (
@@ -824,6 +824,17 @@ func (e *expander) inferExprType(expr ast.Expr) (ast.TypeRef, bool) {
 		if !ok {
 			return ast.TypeRef{}, false
 		}
+		if template, ok := e.structTemplates[id.Name]; ok {
+			inferred, err := e.inferStructTypeArguments(template, n.Args, n.At)
+			if err != nil {
+				return ast.TypeRef{}, false
+			}
+			name, err := e.instantiateStruct(template, inferred, n.At, nil, 0)
+			if err != nil {
+				return ast.TypeRef{}, false
+			}
+			return concrete(name)
+		}
 		if _, ok := e.structFields[id.Name]; ok {
 			return concrete(id.Name)
 		}
@@ -1123,6 +1134,27 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 				}
 			}
 		}
+		if named && expected != nil {
+			if template, generic := e.structTemplates[id.Name]; generic {
+				expectedType, err := e.resolveType(substituteType(*expected, sub), n.At, depth)
+				if err == nil {
+					if info, ok := e.structInstanceInfo[expectedType.Name]; ok && info.template == template.Name {
+						fieldSub := make(map[string]ast.TypeRef, len(template.TypeParams))
+						for i, param := range template.TypeParams {
+							fieldSub[param] = cloneTypeRef(info.args[i])
+						}
+						expectedArgs = make([]*ast.TypeRef, len(template.Fields))
+						for i, field := range template.Fields {
+							typ, fieldErr := e.resolveType(substituteType(field.Type, fieldSub), field.At, depth)
+							if fieldErr == nil {
+								valueType := cloneTypeRef(typ)
+								expectedArgs[i] = &valueType
+							}
+						}
+					}
+				}
+			}
+		}
 		args := make([]ast.Expr, len(n.Args))
 		for i, arg := range n.Args {
 			var argExpected *ast.TypeRef
@@ -1276,7 +1308,7 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 					}
 				}
 			}
-			value, err := e.rewriteExpr(arm.Expr, sub, depth)
+			value, err := e.rewriteExprExpected(arm.Expr, sub, depth, expected)
 			e.variables = previousVariables
 			if err != nil {
 				return nil, err
