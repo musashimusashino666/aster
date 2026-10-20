@@ -514,7 +514,15 @@ func TestNativePrintWriteFailureMatchesVM(t *testing.T) {
 		t.Fatal("native backend should fail when stdout cannot be written")
 	}
 	nativeDiagnostic := strings.TrimSpace(nativeStderr.String())
-	if nativeDiagnostic != vmErr.Error() {
-		t.Fatalf("backend write diagnostics differ: VM=%q native=%q", vmErr.Error(), nativeDiagnostic)
+	line, column := sourceMarkerPosition(t, source, "print(", len("print"))
+	expectedPrefix := fmt.Sprintf("%d:%d: runtime error: write output:", line, column)
+	if !strings.HasPrefix(vmErr.Error(), expectedPrefix) {
+		t.Fatalf("VM diagnostic should start with %q, got %q", expectedPrefix, vmErr.Error())
+	}
+	if !strings.HasPrefix(nativeDiagnostic, expectedPrefix) {
+		t.Fatalf("native diagnostic should start with %q, got %q", expectedPrefix, nativeDiagnostic)
+	}
+	if !strings.Contains(vmErr.Error(), "no space left on device") || !strings.Contains(nativeDiagnostic, "no space left on device") {
+		t.Fatalf("both backends should report the failed write reason: VM=%q native=%q", vmErr.Error(), nativeDiagnostic)
 	}
 }
