@@ -8,6 +8,7 @@ import (
 
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/checker"
+	"github.com/aster-lang/aster/internal/ir"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/limits"
 	"github.com/aster-lang/aster/internal/parser"
@@ -30,6 +31,34 @@ func TestGenerateTypedUsesCheckerMetadata(t *testing.T) {
 		t.Fatalf("generated source does not use expected typed arithmetic helper:\n%s", source)
 	}
 }
+func TestGenerateTypedRejectsExcessiveEnumMetadata(t *testing.T) {
+	tests := []struct {
+		name      string
+		enumTypes []ir.EnumType
+		want      string
+	}{
+		{name: "enum type count", enumTypes: make([]ir.EnumType, limits.MaxEnumTypes+1), want: "enum type metadata exceeds"},
+		{name: "variant count", enumTypes: []ir.EnumType{{Name: "ManyVariants", Variants: make([]ir.EnumVariant, limits.MaxEnumVariants+1)}}, want: "enum variant metadata exceeds"},
+		{name: "payload field count", enumTypes: []ir.EnumType{{Name: "ManyPayloads", Variants: []ir.EnumVariant{{Name: "Values", Payload: make([]ir.Type, limits.MaxEnumPayloadFields+1)}}}}, want: "enum payload metadata exceeds"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tree, err := parser.Parse(`enum State { Ready, } let state = State::Ready;`, "enum-limit.ast")
+			if err != nil {
+				t.Fatal(err)
+			}
+			typed, err := checker.Analyze(tree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			typed.IR.EnumTypes = tt.enumTypes
+			if _, err := GenerateTyped(typed); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected native enum metadata limit %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
 func TestGenerateRejectsUnknownExpressionType(t *testing.T) {
 	tests := []struct {
 		name   string

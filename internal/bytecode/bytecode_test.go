@@ -255,6 +255,77 @@ func TestPreflightRejectsOversizedInstructionArray(t *testing.T) {
 	}
 }
 
+func TestPreflightRejectsOversizedEnumTypeCount(t *testing.T) {
+	dec := json.NewDecoder(strings.NewReader(`[{}]`))
+	state := &bytecodePreflight{enumTypeEntries: maxEnumTypeCount}
+	if err := preflightEnumTypes(dec, state); err == nil || !strings.Contains(err.Error(), "enum type metadata") {
+		t.Fatalf("expected enum type preflight limit error, got %v", err)
+	}
+}
+
+func TestPreflightRejectsOversizedEnumVariantCount(t *testing.T) {
+	dec := json.NewDecoder(strings.NewReader(`[{}]`))
+	state := &bytecodePreflight{enumVariantEntries: maxEnumVariantCount}
+	if err := preflightEnumVariants(dec, state); err == nil || !strings.Contains(err.Error(), "enum variant metadata") {
+		t.Fatalf("expected enum variant preflight limit error, got %v", err)
+	}
+}
+
+func TestPreflightRejectsOversizedEnumPayloadCount(t *testing.T) {
+	dec := json.NewDecoder(strings.NewReader(`["i64"]`))
+	state := &bytecodePreflight{enumPayloadEntries: maxEnumPayloadCount}
+	if err := preflightEnumPayloadTypes(dec, state); err == nil || !strings.Contains(err.Error(), "enum payload metadata") {
+		t.Fatalf("expected enum payload preflight limit error, got %v", err)
+	}
+}
+
+func TestPreflightRejectsOversizedMatchTableCount(t *testing.T) {
+	dec := json.NewDecoder(strings.NewReader(`[{}]`))
+	state := &bytecodePreflight{matchTableEntries: maxMatchTableCount}
+	if err := preflightMatchTables(dec, state); err == nil || !strings.Contains(err.Error(), "program match tables") {
+		t.Fatalf("expected match table preflight limit error, got %v", err)
+	}
+}
+
+func TestPreflightRejectsOversizedMatchTableCountPerFunction(t *testing.T) {
+	input := "[" + strings.Repeat("{},", maxMatchTablesPerFunction) + "{}]"
+	dec := json.NewDecoder(strings.NewReader(input))
+	if err := preflightMatchTables(dec, &bytecodePreflight{}); err == nil || !strings.Contains(err.Error(), "function match tables") {
+		t.Fatalf("expected per-function match table preflight limit error, got %v", err)
+	}
+}
+
+func TestPreflightRejectsOversizedMatchTableTargets(t *testing.T) {
+	dec := json.NewDecoder(strings.NewReader(`[{"targets":[0]}]`))
+	state := &bytecodePreflight{matchTableTargetEntries: maxMatchTableTargets}
+	if err := preflightMatchTables(dec, state); err == nil || !strings.Contains(err.Error(), "match-table targets") {
+		t.Fatalf("expected match table target preflight limit error, got %v", err)
+	}
+}
+
+func TestValidateRejectsExcessiveEnumMetadataCounts(t *testing.T) {
+	tests := []struct {
+		name  string
+		types []EnumType
+		want  string
+	}{
+		{name: "enum types", types: make([]EnumType, maxEnumTypeCount+1), want: "enum type metadata exceeds"},
+		{name: "variants", types: []EnumType{{Name: "ManyVariants", Variants: make([]EnumVariant, maxEnumVariantCount+1)}}, want: "enum variant metadata exceeds"},
+		{name: "payload fields", types: []EnumType{{Name: "ManyPayloads", Variants: []EnumVariant{{Name: "Values", PayloadTypes: make([]string, maxEnumPayloadCount+1)}}}}, want: "enum payload metadata exceeds"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := stackVerifierProgram(0, nil, Function{
+				Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}},
+			})
+			p.EnumTypes = tt.types
+			if err := p.Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected enum metadata safety limit %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
 func TestValidateRejectsWrongArithmeticTypes(t *testing.T) {
 	p := stackVerifierProgram(0, []Value{Bool(true), I64(1)},
 		Function{

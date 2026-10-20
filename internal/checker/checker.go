@@ -9,6 +9,7 @@ import (
 	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/ir"
 	"github.com/aster-lang/aster/internal/langtypes"
+	"github.com/aster-lang/aster/internal/limits"
 	"github.com/aster-lang/aster/internal/token"
 )
 
@@ -184,6 +185,9 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 			functionNames[f.Name] = struct{}{}
 		}
 	}
+	enumTypeCount := 0
+	enumVariantCount := 0
+	enumPayloadCount := 0
 	// Register every enum name before resolving any payload type, so enums and
 	// structs can refer forward to one another in the same source file.
 	for _, d := range program.Decls {
@@ -191,7 +195,11 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 		if !ok {
 			continue
 		}
-		if !langtypes.ValidName(e.Name) || builtinName(e.Name) || e.Name == "Array" {
+		enumTypeCount++
+		if enumTypeCount > limits.MaxEnumTypes {
+			return typeError(e.Pos(), diagnostic.TypeResourceLimit, "program exceeds enum type limit (%d)", limits.MaxEnumTypes)
+		}
+		if !langtypes.ValidName(e.Name) || builtinName(e.Name) || builtinTypeName(e.Name) {
 			return typeError(e.Pos(), diagnostic.TypeDuplicateEnum, "invalid or reserved enum name '%s'", e.Name)
 		}
 		if _, exists := functionNames[e.Name]; exists {
@@ -203,6 +211,14 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 		info := EnumInfo{Name: e.Name, Decl: e}
 		seen := make(map[string]struct{})
 		for _, variant := range e.Variants {
+			enumVariantCount++
+			if enumVariantCount > limits.MaxEnumVariants {
+				return typeError(variant.At, diagnostic.TypeResourceLimit, "program exceeds enum variant limit (%d)", limits.MaxEnumVariants)
+			}
+			enumPayloadCount += len(variant.Payload)
+			if enumPayloadCount > limits.MaxEnumPayloadFields {
+				return typeError(variant.At, diagnostic.TypeResourceLimit, "program exceeds enum payload-field limit (%d)", limits.MaxEnumPayloadFields)
+			}
 			if len(variant.Name) == 0 || len(variant.Name) > langtypes.MaxTypeNameBytes || !langtypes.ValidName(variant.Name) {
 				return typeError(variant.At, diagnostic.TypeDuplicateEnumVariant, "invalid variant name '%s' in enum '%s'", variant.Name, e.Name)
 			}
@@ -228,7 +244,7 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 		if _, exists := c.enums[s.Name]; exists {
 			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' conflicts with an enum", s.Name)
 		}
-		if builtinName(s.Name) || s.Name == "Array" {
+		if builtinName(s.Name) || builtinTypeName(s.Name) {
 			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' is reserved", s.Name)
 		}
 		if _, exists := functionNames[s.Name]; exists {
@@ -376,6 +392,15 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 }
 func builtinName(n string) bool {
 	return n == "print" || n == "len" || n == "assert" || n == "i64" || n == "f64"
+}
+
+func builtinTypeName(n string) bool {
+	switch n {
+	case "i64", "f64", "bool", "string", "unit", "Array":
+		return true
+	default:
+		return false
+	}
 }
 
 // typeFromRef preserves the package-level helper used by primitive/Array

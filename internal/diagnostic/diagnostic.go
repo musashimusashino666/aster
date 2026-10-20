@@ -294,6 +294,7 @@ const (
 	TypeMatchArmTypeMismatch  = "TYP075"
 	TypeMatchDuplicateBinding = "TYP076"
 	TypeRecursiveEnumLayout   = "TYP077"
+	TypeResourceLimit         = "TYP078"
 )
 
 const (
