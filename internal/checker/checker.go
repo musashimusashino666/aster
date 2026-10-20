@@ -931,6 +931,9 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			return Bool, nil
 		}
 	case *ast.CallExpr:
+		if len(n.TypeArgs) > 0 {
+			return "", typeError(n.Pos(), diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit type arguments are not supported for this call")
+		}
 		id, ok := n.Callee.(*ast.IdentifierExpr)
 		if !ok {
 			return "", typeError(n.Pos(), diagnostic.TypeCallTarget, "only named functions can be called")

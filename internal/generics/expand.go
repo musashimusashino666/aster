@@ -62,6 +62,13 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 		}
 	}
 
+	// Preserve AST node identity for programs that do not use generic templates.
+	// Existing TypedProgram.TypeOf callers may retain expression pointers from the
+	// parsed program, so avoid cloning the AST when expansion is unnecessary.
+	if len(e.templates) == 0 {
+		return program, nil
+	}
+
 	out := &ast.Program{SourceName: program.SourceName}
 	for _, decl := range program.Decls {
 		switch n := decl.(type) {
