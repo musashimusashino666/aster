@@ -50,11 +50,17 @@ func TestVMRejectsIntegerOverflow(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "overflow") {
 		t.Fatalf("expected overflow error, got %v", err)
 	}
+	if !strings.Contains(err.Error(), "test.ast:1:") || !strings.Contains(err.Error(), "[RUN002]") {
+		t.Fatalf("runtime diagnostic is missing source location or stable code: %v", err)
+	}
 }
 func TestVMRejectsDivisionByZero(t *testing.T) {
 	_, err := runSource(t, `print(10 / 0);`)
 	if err == nil || !strings.Contains(err.Error(), "division by zero") {
 		t.Fatalf("expected division error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "test.ast:1:") || !strings.Contains(err.Error(), "[RUN003]") {
+		t.Fatalf("runtime diagnostic is missing source location or stable code: %v", err)
 	}
 }
 func TestVMRejectsMalformedProgram(t *testing.T) {
