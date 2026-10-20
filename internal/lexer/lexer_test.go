@@ -75,3 +75,53 @@ func TestLexSkipsUnicodeWhitespace(t *testing.T) {
 		t.Fatalf("unexpected token stream after Unicode whitespace: %#v", got)
 	}
 }
+
+
+func TestTokenEndPositionsAreExclusive(t *testing.T) {
+	source := "let value = 12;\nprint(\"a\\nλ\");"
+	got, err := New(source).Lex()
+	if err != nil {
+		t.Fatalf("lex source: %v", err)
+	}
+	if len(got) == 0 || got[len(got)-1].Kind != token.EOF {
+		t.Fatalf("expected EOF token, got %#v", got)
+	}
+
+	for i, tok := range got {
+		if tok.End.Offset < tok.Pos.Offset {
+			t.Errorf("token %d has reversed offsets: start=%+v end=%+v", i, tok.Pos, tok.End)
+			continue
+		}
+		if tok.Kind == token.EOF {
+			if tok.Pos != tok.End || tok.Pos.Offset != len(source) {
+				t.Errorf("EOF must have a zero-width span at end of source: pos=%+v end=%+v", tok.Pos, tok.End)
+			}
+			continue
+		}
+		if tok.Pos.Offset < 0 || tok.End.Offset > len(source) {
+			t.Errorf("token %d span falls outside source: start=%+v end=%+v", i, tok.Pos, tok.End)
+			continue
+		}
+		raw := source[tok.Pos.Offset:tok.End.Offset]
+		if raw != tok.Raw {
+			t.Errorf("token %d (%s) source slice = %q, raw = %q", i, tok.Kind, raw, tok.Raw)
+		}
+		if tok.End.Offset != tok.Pos.Offset+len(tok.Raw) {
+			t.Errorf("token %d end offset = %d, want exclusive byte offset %d", i, tok.End.Offset, tok.Pos.Offset+len(tok.Raw))
+		}
+	}
+
+	if got[0].Pos != (token.Position{Offset: 0, Line: 1, Column: 1}) ||
+		got[0].End != (token.Position{Offset: 3, Line: 1, Column: 4}) {
+		t.Fatalf("keyword span = %+v..%+v, want 0:1:1..3:1:4", got[0].Pos, got[0].End)
+	}
+	for _, tok := range got {
+		if tok.Kind == token.Ident && tok.Lexeme == "print" {
+			if tok.Pos.Line != 2 || tok.Pos.Column != 1 || tok.End.Line != 2 || tok.End.Column != 6 {
+				t.Fatalf("print span = %+v..%+v, want line 2 columns 1..6", tok.Pos, tok.End)
+			}
+			return
+		}
+	}
+	t.Fatal("print identifier token not found")
+}
