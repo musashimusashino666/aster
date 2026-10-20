@@ -327,7 +327,7 @@ func sourceMarkerPosition(t *testing.T, source, marker string, offset int) (int,
 func TestStringGrowthLimitMatchesBackends(t *testing.T) {
 	source := `let mut s: string = "x"; while len(s) < 16777216 { s=s+s; } s = s + s;`
 	line, column := sourceMarkerPosition(t, source, "s = s + s;", len("s = s "))
-	expected := fmt.Sprintf("%d:%d: runtime error: string length limit exceeded (maximum 16777216 UTF-8 bytes)", line, column)
+	expected := fmt.Sprintf("string-growth-limit.ast:%d:%d: runtime error: string length limit exceeded (maximum 16777216 UTF-8 bytes) [RUN009]", line, column)
 
 	tree, err := parser.Parse(source, "string-growth-limit.ast")
 	if err != nil {
@@ -366,7 +366,7 @@ func TestStringGrowthLimitMatchesBackends(t *testing.T) {
 func TestPrintedArrayOutputLimitMatchesBackends(t *testing.T) {
 	source := `let mut s: string = "x"; while len(s) < 8388608 { s=s+s; } let xs = [s, s]; print(xs);`
 	line, column := sourceMarkerPosition(t, source, "print(xs)", len("print"))
-	expected := fmt.Sprintf("%d:%d: runtime error: printed value exceeds 16777216-byte output limit", line, column)
+	expected := fmt.Sprintf("printed-array-limit.ast:%d:%d: runtime error: printed value exceeds 16777216-byte output limit [RUN010]", line, column)
 
 	tree, err := parser.Parse(source, "printed-array-limit.ast")
 	if err != nil {
@@ -408,7 +408,7 @@ func TestPrintedArrayOutputLimitMatchesBackends(t *testing.T) {
 func TestCallDepthLimitMatchesBackends(t *testing.T) {
 	source := `fn recurse(n: i64) -> i64 { return recurse(n + 1); } print(recurse(0));`
 	line, column := sourceMarkerPosition(t, source, "recurse(n + 1)", len("recurse"))
-	expected := fmt.Sprintf("%d:%d: runtime error: call depth limit exceeded (maximum 4096)", line, column)
+	expected := fmt.Sprintf("call-depth-limit.ast:%d:%d: runtime error: call depth limit exceeded (maximum 4096) [RUN012]", line, column)
 
 	tree, err := parser.Parse(source, "call-depth-limit.ast")
 	if err != nil {
@@ -449,25 +449,26 @@ func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 		name       string
 		source     string
 		diagnostic string
+		code       string
 		marker     string
 		offset     int
 	}{
-		{name: "division_by_zero", source: "print(10 / 0);", diagnostic: "division by zero", marker: "/"},
-		{name: "integer_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum + 1);", diagnostic: "overflow", marker: "+"},
-		{name: "integer_subtraction_overflow", source: "let minimum: i64 = -9223372036854775808; print(minimum - 1);", diagnostic: "overflow", marker: "minimum - 1", offset: len("minimum ")},
-		{name: "integer_multiplication_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum * 2);", diagnostic: "overflow", marker: "maximum * 2", offset: len("maximum ")},
-		{name: "integer_division_overflow", source: "let minimum: i64 = -9223372036854775808; print(minimum / -1);", diagnostic: "overflow", marker: "minimum / -1", offset: len("minimum ")},
-		{name: "integer_negation_overflow", source: "let minimum: i64 = -9223372036854775808; print(-minimum);", diagnostic: "integer overflow in unary '-'", marker: "print(-minimum)", offset: len("print(")},
-		{name: "remainder_by_zero", source: "print(10 % 0);", diagnostic: "remainder by zero", marker: "%"},
-		{name: "assertion_failure", source: "assert(false);", diagnostic: "assertion failed", marker: "assert(", offset: len("assert")},
-		{name: "float_division_by_zero", source: "print(1.0 / 0.0);", diagnostic: "division by zero", marker: "/"},
-		{name: "float_non_finite", source: "fn grow(n: i64) -> f64 { if n == 0 { return 1.0; } else { return grow(n - 1) * 10.0; } } print(grow(400));", diagnostic: "non-finite floating-point result", marker: "*"},
-		{name: "array_index_out_of_bounds", source: "let xs: Array<i64> = [1]; print(xs[1]);", diagnostic: "out of bounds", marker: "xs[1]", offset: len("xs")},
+		{name: "division_by_zero", source: "print(10 / 0);", code: "RUN003", diagnostic: "division by zero", marker: "/"},
+		{name: "integer_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum + 1);", code: "RUN002", diagnostic: "overflow", marker: "+"},
+		{name: "integer_subtraction_overflow", source: "let minimum: i64 = -9223372036854775808; print(minimum - 1);", code: "RUN002", diagnostic: "overflow", marker: "minimum - 1", offset: len("minimum ")},
+		{name: "integer_multiplication_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum * 2);", code: "RUN002", diagnostic: "overflow", marker: "maximum * 2", offset: len("maximum ")},
+		{name: "integer_division_overflow", source: "let minimum: i64 = -9223372036854775808; print(minimum / -1);", code: "RUN002", diagnostic: "overflow", marker: "minimum / -1", offset: len("minimum ")},
+		{name: "integer_negation_overflow", source: "let minimum: i64 = -9223372036854775808; print(-minimum);", code: "RUN002", diagnostic: "integer overflow in unary '-'", marker: "print(-minimum)", offset: len("print(")},
+		{name: "remainder_by_zero", source: "print(10 % 0);", code: "RUN004", diagnostic: "remainder by zero", marker: "%"},
+		{name: "assertion_failure", source: "assert(false);", code: "RUN001", diagnostic: "assertion failed", marker: "assert(", offset: len("assert")},
+		{name: "float_division_by_zero", source: "print(1.0 / 0.0);", code: "RUN003", diagnostic: "division by zero", marker: "/"},
+		{name: "float_non_finite", source: "fn grow(n: i64) -> f64 { if n == 0 { return 1.0; } else { return grow(n - 1) * 10.0; } } print(grow(400));", code: "RUN005", diagnostic: "non-finite floating-point result", marker: "*"},
+		{name: "array_index_out_of_bounds", source: "let xs: Array<i64> = [1]; print(xs[1]);", code: "RUN006", diagnostic: "out of bounds", marker: "xs[1]", offset: len("xs")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			line, column := sourceMarkerPosition(t, tt.source, tt.marker, tt.offset)
-			expectedPrefix := fmt.Sprintf("%d:%d: runtime error:", line, column)
+			expectedPrefix := fmt.Sprintf("%s:%d:%d: runtime error:", tt.name+".ast", line, column)
 			tree, err := parser.Parse(tt.source, tt.name+".ast")
 			if err != nil {
 				t.Fatal(err)
@@ -484,8 +485,8 @@ func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 			if vmErr == nil || !strings.Contains(vmErr.Error(), tt.diagnostic) {
 				t.Fatalf("VM should report %q, got output=%q error=%v", tt.diagnostic, vmOutput.String(), vmErr)
 			}
-			if !strings.HasPrefix(vmErr.Error(), expectedPrefix) {
-				t.Fatalf("VM error should start with %q, got %q", expectedPrefix, vmErr.Error())
+			if !strings.HasPrefix(vmErr.Error(), expectedPrefix) || !strings.HasSuffix(vmErr.Error(), "["+tt.code+"]") {
+				t.Fatalf("VM error should include source location %q and code %q, got %q", expectedPrefix, tt.code, vmErr.Error())
 			}
 
 			goSource, err := codegen.Generate(tree)
@@ -503,8 +504,9 @@ func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 			if !strings.Contains(string(nativeOutput), tt.diagnostic) {
 				t.Fatalf("native backend should report %q, got %q", tt.diagnostic, nativeOutput)
 			}
-			if !strings.HasPrefix(strings.TrimSpace(string(nativeOutput)), expectedPrefix) {
-				t.Fatalf("native error should start with %q, got %q", expectedPrefix, nativeOutput)
+			if !strings.HasPrefix(strings.TrimSpace(string(nativeOutput)), expectedPrefix) ||
+				!strings.HasSuffix(strings.TrimSpace(string(nativeOutput)), "["+tt.code+"]") {
+				t.Fatalf("native error should include source location %q and code %q, got %q", expectedPrefix, tt.code, nativeOutput)
 			}
 			if got := strings.TrimSpace(string(nativeOutput)); got != vmErr.Error() {
 				t.Fatalf("backend diagnostics differ: VM=%q native=%q", vmErr.Error(), got)
@@ -681,12 +683,15 @@ func TestNativePrintWriteFailureMatchesVM(t *testing.T) {
 	}
 	nativeDiagnostic := strings.TrimSpace(nativeStderr.String())
 	line, column := sourceMarkerPosition(t, source, "print(", len("print"))
-	expectedPrefix := fmt.Sprintf("%d:%d: runtime error: write output:", line, column)
+	expectedPrefix := fmt.Sprintf("print-write-error.ast:%d:%d: runtime error: write output:", line, column)
 	if !strings.HasPrefix(vmErr.Error(), expectedPrefix) {
 		t.Fatalf("VM diagnostic should start with %q, got %q", expectedPrefix, vmErr.Error())
 	}
-	if !strings.HasPrefix(nativeDiagnostic, expectedPrefix) {
-		t.Fatalf("native diagnostic should start with %q, got %q", expectedPrefix, nativeDiagnostic)
+	if !strings.HasPrefix(nativeDiagnostic, expectedPrefix) || !strings.HasSuffix(nativeDiagnostic, "[RUN016]") {
+		t.Fatalf("native diagnostic should include source location %q and code RUN016, got %q", expectedPrefix, nativeDiagnostic)
+	}
+	if !strings.HasSuffix(vmErr.Error(), "[RUN016]") {
+		t.Fatalf("VM diagnostic should include code RUN016, got %q", vmErr.Error())
 	}
 	if !strings.Contains(vmErr.Error(), "no space left on device") || !strings.Contains(nativeDiagnostic, "no space left on device") {
 		t.Fatalf("both backends should report the failed write reason: VM=%q native=%q", vmErr.Error(), nativeDiagnostic)
@@ -906,7 +911,7 @@ print(i64(-9223372036854775808.0));`
 func TestExplicitFloatToIntegerRangeMatchesBackends(t *testing.T) {
 	source := "print(i64(9223372036854775808.0));"
 	line, column := sourceMarkerPosition(t, source, "i64(", len("i64"))
-	expected := fmt.Sprintf("%d:%d: runtime error: f64 value out of range for i64 conversion", line, column)
+	expected := fmt.Sprintf("numeric-cast-parity.ast:%d:%d: runtime error: f64 value out of range for i64 conversion [RUN008]", line, column)
 
 	vmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
 	if vmErr == nil || vmErr.Error() != expected {
