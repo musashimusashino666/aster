@@ -67,24 +67,24 @@ print(matrix);`
 
 	vmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
 	if vmErr != nil {
-		t.Fatalf("VM execution failed: %v\\noutput: %q", vmErr, vmOutput)
+		t.Fatalf("VM execution failed: %v\noutput: %q", vmErr, vmOutput)
 	}
 	if nativeErr != nil {
-		t.Fatalf("native execution failed: %v\\noutput: %q", nativeErr, nativeOutput)
+		t.Fatalf("native execution failed: %v\noutput: %q", nativeErr, nativeOutput)
 	}
 
-	const want = "[[1 2] [3 4]]\\n" +
-		"[1 20]\\n" +
-		"[[1 2] [3 4]]\\n" +
-		"[30 4]\\n" +
-		"[[1 11] [3 4]]\\n"
+	const want = "[[1 2] [3 4]]\n" +
+		"[1 20]\n" +
+		"[[1 2] [3 4]]\n" +
+		"[30 4]\n" +
+		"[[1 11] [3 4]]\n"
 	if vmOutput != want {
-		t.Errorf("unexpected VM output:\\n got: %q\\nwant: %q", vmOutput, want)
+		t.Errorf("unexpected VM output:\n got: %q\nwant: %q", vmOutput, want)
 	}
 	if nativeOutput != want {
-		t.Errorf("unexpected native output:\\n got: %q\\nwant: %q", nativeOutput, want)
+		t.Errorf("unexpected native output:\n got: %q\nwant: %q", nativeOutput, want)
 	}
 	if nativeOutput != vmOutput {
-		t.Errorf("backend output differs:\\nVM: %q\\nNative: %q", vmOutput, nativeOutput)
+		t.Errorf("backend output differs:\nVM: %q\nNative: %q", vmOutput, nativeOutput)
 	}
 }
