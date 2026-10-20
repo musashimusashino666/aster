@@ -122,7 +122,7 @@ func seededCOWAliasSequence(seed int64, prefix string) string {
 }
 
 func TestSeededCOWAliasSequencesMatchBackends(t *testing.T) {
-	seeds := []int64{0xC0A, 0xA11A5, 0x5EEDC0W, 20261020, 0xBADC0DE, 0xD1FF, 0xA57E, 0xF00D}
+	seeds := []int64{0xC0A, 0xA11A5, 0x5EEDC0, 20261020, 0xBADC0DE, 0xD1FF, 0xA57E, 0xF00D}
 	var combined strings.Builder
 	for i, seed := range seeds {
 		prefix := fmt.Sprintf("s%02d_", i)
