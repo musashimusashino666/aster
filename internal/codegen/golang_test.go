@@ -120,6 +120,7 @@ func TestNativeRuntimePreambleLimitsMatchSharedDefinitions(t *testing.T) {
 		{name: "asterMaxStringBytes", value: limits.MaxStringBytes},
 		{name: "asterMaxArrayNestingDepth", value: limits.MaxArrayNestingDepth},
 		{name: "asterMaxCallDepth", value: limits.MaxCallDepth},
+		{name: "asterMaxStdoutBytes", value: limits.MaxStdoutBytes},
 	}
 	for _, limit := range limits {
 		expected := "const " + limit.name + " = " + strconv.Itoa(limit.value)

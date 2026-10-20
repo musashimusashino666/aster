@@ -11,19 +11,28 @@ import (
 )
 
 const asterMaxStringBytes = 16777216
+const asterMaxStdoutBytes = 67108864
 const asterMaxArrayNestingDepth = 256
 const asterMaxCallDepth = 4096
 const asterMaxI64 int64 = 1<<63 - 1
 const asterMinI64 int64 = -1 << 63
 
 var asterCallDepth int
+var asterStdoutBytes int64
 
 func asterPrint(v any, line, column int) struct{} {
 	var out strings.Builder
 	asterFormatValue(reflect.ValueOf(v), &out, line, column, 0)
-	if _, err := fmt.Fprintln(os.Stdout, out.String()); err != nil {
+	text := out.String()
+	printBytes := int64(len(text)) + 1 // Include the newline emitted by Fprintln.
+	if printBytes > int64(asterMaxStdoutBytes)-asterStdoutBytes {
+		asterRuntimeError(line, column, fmt.Sprintf("stdout byte limit exceeded (maximum %d bytes)", asterMaxStdoutBytes))
+	}
+	n, err := fmt.Fprintln(os.Stdout, text)
+	if err != nil {
 		asterRuntimeError(line, column, fmt.Sprintf("write output: %v", err))
 	}
+	asterStdoutBytes += int64(n)
 	return struct{}{}
 }
 

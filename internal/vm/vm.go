@@ -33,6 +33,7 @@ type VM struct {
 	stack            []bytecode.Value
 	frames           []frame
 	activeLocalSlots int
+	stdoutBytes      int64
 	out              io.Writer
 }
 
@@ -414,9 +415,15 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			if err != nil {
 				return v.fault(i, "%v", err)
 			}
-			if _, writeErr := fmt.Fprintln(v.out, text); writeErr != nil {
+			printBytes := int64(len(text)) + 1 // Include the newline emitted by Fprintln.
+			if printBytes > limits.MaxStdoutBytes-v.stdoutBytes {
+				return v.fault(i, "stdout byte limit exceeded (maximum %d bytes)", limits.MaxStdoutBytes)
+			}
+			n, writeErr := fmt.Fprintln(v.out, text)
+			if writeErr != nil {
 				return v.fault(i, "write output: %v", writeErr)
 			}
+			v.stdoutBytes += int64(n)
 			push(bytecode.Unit())
 		case 1:
 			if len(args) != 1 {
