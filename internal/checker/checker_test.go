@@ -388,3 +388,40 @@ print(len(leaf.children));`
 		t.Fatalf("array-indirected recursive struct should be accepted: %v", err)
 	}
 }
+
+func TestAcceptsEnumPayloadAndExhaustiveMatch(t *testing.T) {
+	source := `enum Result { Ok(i64), Err(string), }
+fn value(result: Result) -> i64 {
+	return match result {
+		Result::Ok(number) => number,
+		Result::Err(message) => 0,
+	};
+}
+print(value(Result::Ok(7))); `
+	if err := checkSource(t, source); err != nil { t.Fatal(err) }
+}
+
+func TestRejectsNonExhaustiveEnumMatch(t *testing.T) {
+	err := checkSource(t, `enum State { Ready, Busy, } let status = match State::Ready { State::Ready => 1, };`)
+	if err == nil || !strings.Contains(err.Error(), "TYP074") {
+		t.Fatalf("expected TYP074 non-exhaustive match diagnostic, got %v", err)
+	}
+}
+
+func TestRejectsEnumMatchResultTypeMismatch(t *testing.T) {
+	err := checkSource(t, `enum State { Ready, Busy, } let status = match State::Ready { State::Ready => 1, State::Busy => false, };`)
+	if err == nil || !strings.Contains(err.Error(), "TYP075") {
+		t.Fatalf("expected TYP075 match result type diagnostic, got %v", err)
+	}
+}
+
+func TestRejectsDuplicateAndUnreachableMatchArms(t *testing.T) {
+	duplicate := checkSource(t, `enum State { Ready, Busy, } let status = match State::Ready { State::Ready => 1, State::Ready => 2, State::Busy => 3, };`)
+	if duplicate == nil || !strings.Contains(duplicate.Error(), "TYP072") {
+		t.Fatalf("expected TYP072 duplicate-arm diagnostic, got %v", duplicate)
+	}
+	unreachable := checkSource(t, `enum State { Ready, Busy, } let status = match State::Ready { _ => 1, State::Busy => 2, };`)
+	if unreachable == nil || !strings.Contains(unreachable.Error(), "TYP073") {
+		t.Fatalf("expected TYP073 unreachable-arm diagnostic, got %v", unreachable)
+	}
+}
