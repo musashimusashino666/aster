@@ -28,7 +28,7 @@ Aster 0.1 is a prototype. It has not undergone an independent security audit and
 
 1. Define formal safety invariants for the VM and native backend.
 2. Extend regression coverage for verifier invariants and cumulative resource limits; the current control-flow, stack-height, type, call-signature, return-type, and local-initialization analyses are implemented.
-3. Run sustained lexer/parser/compiler/bytecode fuzzing and expand differential backend tests to cover outputs, failure classes, and exit status.
+3. Review the scheduled fuzz campaign results and saved failure corpora; increase fuzz duration and expand lexer/parser/compiler/bytecode targets as the implementation grows. Continue expanding differential backend tests for outputs, failure classes, and exit status.
 4. Audit unsafe assumptions at every FFI and host-runtime boundary.
 5. Establish vulnerability reporting, patched-release policy, and signed artifacts.
 6. Clearly distinguish memory safety from application-level correctness and sandboxing.
