@@ -629,8 +629,12 @@ fn unwrap<T>(value: Option<T>) -> T {
 }
 let value: Option<i64> = Option::Some(42);
 print(unwrap(value));
-let empty: Option<i64> = Option::<i64>::None;
-print(match empty { Option::Some(item) => item, Option::None => 0, });`
+let empty: Option<i64> = Option::None;
+let nested: Option<Option<i64>> = Option::Some(Option::None);
+let values: Array<Option<i64>> = [Option::None];
+print(match empty { Option::Some(item) => item, Option::None => 0, });
+print(match nested { Option::Some(inner) => match inner { Option::Some(item) => item, Option::None => 0, }, Option::None => 0, });
+print(match values[0] { Option::Some(item) => item, Option::None => 0, });`
 	if err := checkSource(t, source); err != nil {
 		t.Fatal(err)
 	}
