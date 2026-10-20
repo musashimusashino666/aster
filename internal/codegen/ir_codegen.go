@@ -64,7 +64,9 @@ func (g *generator) irEnumType(enumType ir.EnumType) error {
 		if !langtypes.ValidName(variant.Name) {
 			return fmt.Errorf("codegen: invalid IR variant name %q in enum %q", variant.Name, enumType.Name)
 		}
-		if len(variant.Payload) == 0 { continue }
+		if len(variant.Payload) == 0 {
+			continue
+		}
 		g.line("type asterPayload_" + enumType.Name + "_" + strconv.Itoa(i) + " struct {")
 		g.indent++
 		for j, typ := range variant.Payload {
@@ -91,7 +93,9 @@ func (g *generator) irEnumType(enumType ir.EnumType) error {
 	g.line("switch v.tag {")
 	g.indent++
 	for i, variant := range enumType.Variants {
-		if len(variant.Payload) == 0 { continue }
+		if len(variant.Payload) == 0 {
+			continue
+		}
 		g.line(fmt.Sprintf("case %d:", i))
 		g.indent++
 		for j, typ := range variant.Payload {
@@ -108,7 +112,6 @@ func (g *generator) irEnumType(enumType ir.EnumType) error {
 	g.line("")
 	return nil
 }
-
 
 func irPositionArgs(node ir.Node) string {
 	pos := node.Pos()
@@ -308,31 +311,43 @@ func (g *generator) irEnumExpression(n *ir.EnumExpr) (string, error) {
 	arguments := make([]string, len(n.Args))
 	for i, arg := range n.Args {
 		value, err := g.irExpression(arg)
-		if err != nil { return "", err }
-		if isAggregateType(string(arg.ExprType())) { value = "asterShareValue(" + value + ")" }
+		if err != nil {
+			return "", err
+		}
+		if isAggregateType(string(arg.ExprType())) {
+			value = "asterShareValue(" + value + ")"
+		}
 		arguments[i] = value
 	}
 	if len(arguments) == 0 {
 		return fmt.Sprintf("%s{tag: %d}", irStructTypeName(enumName), n.VariantIndex), nil
 	}
 	fields := make([]string, len(arguments))
-	for i, arg := range arguments { fields[i] = fmt.Sprintf("p_%d: %s", i, arg) }
+	for i, arg := range arguments {
+		fields[i] = fmt.Sprintf("p_%d: %s", i, arg)
+	}
 	return fmt.Sprintf("%s{tag: %d, v_%d: asterPayload_%s_%d{%s}}",
 		irStructTypeName(enumName), n.VariantIndex, n.VariantIndex, enumName, n.VariantIndex, strings.Join(fields, ", ")), nil
 }
 
 func (g *generator) irMatchExpression(n *ir.MatchExpr) (string, error) {
 	subject, err := g.irExpression(n.Subject)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	if isAggregateType(string(n.Subject.ExprType())) && needsArrayShareAtBoundary(n.Subject) {
 		subject = "asterShareValue(" + subject + ")"
 	}
 	subjectName := irLocalName(n.SubjectLocal.ID)
 	parts := []string{"func() " + goType(string(n.ExprType())) + " {", subjectName + " := " + subject, "switch " + subjectName + ".tag {"}
 	for _, arm := range n.Arms {
-		if len(arm.VariantIndexes) == 0 { return "", fmt.Errorf("codegen: empty match arm target list") }
+		if len(arm.VariantIndexes) == 0 {
+			return "", fmt.Errorf("codegen: empty match arm target list")
+		}
 		variantIndex := -1
-		if len(arm.VariantIndexes) == 1 { variantIndex = arm.VariantIndexes[0] }
+		if len(arm.VariantIndexes) == 1 {
+			variantIndex = arm.VariantIndexes[0]
+		}
 		for _, target := range arm.VariantIndexes {
 			parts = append(parts, fmt.Sprintf("case %d:", target))
 			if len(arm.Bindings) > 0 && variantIndex != target {
@@ -340,11 +355,15 @@ func (g *generator) irMatchExpression(n *ir.MatchExpr) (string, error) {
 			}
 			for payloadIndex, binding := range arm.Bindings {
 				value := fmt.Sprintf("%s.v_%d.p_%d", subjectName, target, payloadIndex)
-				if isAggregateType(string(binding.Type)) { value = "asterShareValue(" + value + ")" }
+				if isAggregateType(string(binding.Type)) {
+					value = "asterShareValue(" + value + ")"
+				}
 				parts = append(parts, irLocalName(binding.ID)+" := "+value)
 			}
 			value, err := g.irExpression(arm.Expr)
-			if err != nil { return "", err }
+			if err != nil {
+				return "", err
+			}
 			parts = append(parts, "return "+value)
 		}
 	}
