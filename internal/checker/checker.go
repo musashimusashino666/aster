@@ -780,6 +780,9 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		}
 		return arrayType, nil
 	case *ast.EnumVariantExpr:
+		if len(n.TypeArgs) > 0 {
+			return "", typeError(n.Pos(), diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit type arguments on enum '%s' were not resolved; only generic enum templates accept them", n.EnumName)
+		}
 		info, ok := c.enums[n.EnumName]
 		if !ok {
 			return "", typeError(n.Pos(), diagnostic.TypeUnknownEnumVariant, "unknown enum '%s'", n.EnumName)
