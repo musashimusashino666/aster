@@ -84,7 +84,7 @@ VMとネイティブの実行経路を直接切り替えることもできます
 ./bin/aster run --engine native examples/arrays.ast
 ```
 
-ネイティブバックエンドは、現時点ではAsterのASTからGoコードを生成し、ホスト側のGoコンパイラーを呼び出します。Aster独自の機械語コード生成器やLLVMバックエンドはまだありません。そのため、ネイティブ実行ファイルのビルドにはGoのツールチェーンが必要です。 VMの命令数・呼び出し深さの制限は、生成されたネイティブ実行ファイルには現時点で適用されません。ネイティブ実行は呼び出し元と同じOS権限で動作します。
+ネイティブバックエンドは、型検査器が生成した型付きIRからGoコードを生成し、ホスト側のGoコンパイラーを呼び出します。Aster独自の機械語コード生成器やLLVMバックエンドはまだないため、ネイティブ実行ファイルのビルドにはGoのツールチェーンが必要です。呼び出し深度、文字列サイズ、配列サイズ、出力サイズの上限はVMとNativeの双方に適用されます。一方、VM固有の命令数、オペランドスタック、アクティブローカル枠の制限はNativeには適用されません。ネイティブ単体ビルドの既定期限は2分、`aster run --engine native` のビルドと実行を合わせた既定期限は5分です。ネイティブ実行は呼び出し元と同じOS権限で動作し、サンドボックスではありません。
 
 ## Asterのコード例
 
@@ -124,8 +124,9 @@ cmd/aster/             CLI
 internal/ast/          AST
 internal/lexer/        字句解析と字句テスト・ファズテスト
 internal/parser/       構文解析とファズテスト
-internal/checker/      静的型検査
-internal/bytecode/     バイトコード形式・検証・コンパイラー
+internal/checker/      静的型検査と型付きIRの生成
+internal/ir/           共通の型付き中間表現
+internal/bytecode/     バイトコード形式・検証・IRコンパイラー
 internal/vm/           仮想マシン・テスト・ベンチマーク
 internal/codegen/      ネイティブ向けGoコード生成
 internal/toolchain/    Goツールチェーン呼び出し
