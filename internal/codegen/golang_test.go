@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -107,5 +108,22 @@ func TestGenerateRejectsOversizedArrayLiteral(t *testing.T) {
 	}}
 	if _, err := Generate(tree); err == nil || !strings.Contains(err.Error(), "array literal has") {
 		t.Fatalf("expected oversized array literal rejection, got %v", err)
+	}
+}
+
+func TestNativeRuntimePreambleLimitsMatchSharedDefinitions(t *testing.T) {
+	limits := []struct {
+		name  string
+		value int
+	}{
+		{name: "asterMaxStringBytes", value: limits.MaxStringBytes},
+		{name: "asterMaxArrayNestingDepth", value: limits.MaxArrayNestingDepth},
+		{name: "asterMaxCallDepth", value: limits.MaxCallDepth},
+	}
+	for _, limit := range limits {
+		expected := "const " + limit.name + " = " + strconv.Itoa(limit.value)
+		if !strings.Contains(nativePreamble, expected) {
+			t.Errorf("runtime preamble does not contain %q", expected)
+		}
 	}
 }
