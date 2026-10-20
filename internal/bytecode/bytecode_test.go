@@ -199,7 +199,7 @@ func FuzzValidateInstructionOperandsNeverPanics(f *testing.F) {
 					{Op: OpHalt},
 				},
 			}},
-			Entry: 0,
+			Entry:     0,
 		}
 		_ = program.Validate()
 	})
@@ -1063,7 +1063,7 @@ func TestRejectsBytecodeVersionSevenAfterSourceSpanSchemaBump(t *testing.T) {
 	p := &Program{
 		Format: "aster-bytecode", Version: 7, Constants: []Value{},
 		Functions: []Function{{Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}}}},
-		Entry: 0,
+		Entry:     0,
 	}
 	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported bytecode version") {
 		t.Fatalf("expected version 7 to be rejected, got %v", err)
