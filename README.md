@@ -23,6 +23,7 @@
 | Lexer and recursive-descent / Pratt parser | Implemented |
 | Source formatter | Implemented; preserves comments and raw literal spellings |
 | Static types (`i64`, `f64`, `bool`, `string`, `unit`) | Implemented |
+| Explicit numeric casts (`i64(value)`, `f64(value)`) | Implemented; checked `f64`-to-`i64` truncation and range limits |
 | Type inference for local variables | Implemented |
 | Functions, recursion, conditionals, loops, return | Implemented |
 | Immutable bindings by default; `let mut` for assignment | Implemented |
@@ -148,7 +149,7 @@ Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
 
 Logical: `&&`, `||` (short-circuiting)
 
-Numeric operands must have matching types; there is no implicit `i64`/`f64` conversion in 0.1. Array element assignment requires a mutable root binding, for example `let mut values = [1, 2]; values[0] = 9;`. Nested indexed assignments preserve array value semantics. Slicing uses `values[start:end]` with an inclusive start and exclusive end; both bounds are required and the result is an independent array value.
+Numeric operands must have matching types; there is no implicit `i64`/`f64` conversion. Use `i64(value)` or `f64(value)` for explicit casts. `f64(i64_value)` follows IEEE-754 binary64 conversion and may lose precision; `i64(f64_value)` truncates toward zero and rejects values outside `[-2^63, 2^63)`. Array element assignment requires a mutable root binding, for example `let mut values = [1, 2]; values[0] = 9;`. Nested indexed assignments preserve array value semantics. Slicing uses `values[start:end]` with an inclusive start and exclusive end; both bounds are required and the result is an independent array value.
 
 ## CLI reference
 

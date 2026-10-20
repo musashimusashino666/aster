@@ -849,3 +849,74 @@ print(original[2:2]);`
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
+
+
+func runTypedOnBothBackends(t *testing.T, source string) (string, error, string, error) {
+	t.Helper()
+	tree, err := parser.Parse(source, "numeric-cast-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	vmErr := vm.Run(program, &vmOutput)
+
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-numeric-cast-parity")
+	if err = toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, nativeErr := exec.Command(bin).CombinedOutput()
+	return vmOutput.String(), vmErr, string(nativeOutput), nativeErr
+}
+
+func TestExplicitNumericCastParity(t *testing.T) {
+	source := `let large: i64 = 9007199254740993;
+print(i64(7));
+print(f64(1.25));
+print(f64(large) == 9007199254740992.0);
+print(i64(3.9));
+print(i64(-3.9));
+print(i64(-0.9));
+print(i64(-9223372036854775808.0));`
+	vmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
+	if vmErr != nil {
+		t.Fatalf("VM execution failed: %v", vmErr)
+	}
+	if nativeErr != nil {
+		t.Fatalf("native execution failed: %v\n%s", nativeErr, nativeOutput)
+	}
+	if got, want := vmOutput, "7\n1.25\ntrue\n3\n-3\n0\n-9223372036854775808\n"; got != want {
+		t.Fatalf("unexpected VM output: got %q want %q", got, want)
+	}
+	if nativeOutput != vmOutput {
+		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput, nativeOutput)
+	}
+}
+
+func TestExplicitFloatToIntegerRangeMatchesBackends(t *testing.T) {
+	source := "print(i64(9223372036854775808.0));"
+	line, column := sourceMarkerPosition(t, source, "i64(", 0)
+	expected := fmt.Sprintf("%d:%d: runtime error: f64 value out of range for i64 conversion", line, column)
+
+	vmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
+	if vmErr == nil || vmErr.Error() != expected {
+		t.Fatalf("VM error = %v, want %q (output=%q)", vmErr, expected, vmOutput)
+	}
+	if nativeErr == nil {
+		t.Fatalf("native backend should reject out-of-range conversion, output=%q", nativeOutput)
+	}
+	if got := strings.TrimSpace(nativeOutput); got != expected {
+		t.Fatalf("native error = %q, want %q", got, expected)
+	}
+}
