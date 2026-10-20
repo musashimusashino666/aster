@@ -61,12 +61,12 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 			text := l.source[start:l.offset]
 			if kind == token.Int {
 				if _, err := strconv.ParseInt(text, 10, 64); err != nil && text != "9223372036854775808" {
-					return nil, l.errorAt(pos, "integer literal is outside the i64 range")
+					return nil, l.errorAt(pos, diagnostic.LexerIntegerOutOfRange, "integer literal is outside the i64 range")
 				}
 			}
 			if kind == token.Float {
 				if _, err := strconv.ParseFloat(text, 64); err != nil {
-					return nil, l.errorAt(pos, "invalid floating-point literal")
+					return nil, l.errorAt(pos, diagnostic.LexerInvalidFloat, "invalid floating-point literal")
 				}
 			}
 			out = append(out, token.Token{Kind: kind, Lexeme: text, Pos: pos})
@@ -82,7 +82,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 					break
 				}
 				if c == '\n' {
-					return nil, l.errorAt(pos, "newline in string literal")
+					return nil, l.errorAt(pos, diagnostic.LexerNewlineInString, "newline in string literal")
 				}
 				if c == '\\' {
 					if l.atEnd() {
@@ -103,14 +103,14 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 					case '"':
 						b.WriteByte('"')
 					default:
-						return nil, l.errorAt(pos, fmt.Sprintf("unsupported escape sequence \\%c", esc))
+						return nil, l.errorAt(pos, diagnostic.LexerUnsupportedEscape, fmt.Sprintf("unsupported escape sequence \\%c", esc))
 					}
 				} else {
 					b.WriteByte(c)
 				}
 			}
 			if !closed {
-				return nil, l.errorAt(pos, "unterminated string literal")
+				return nil, l.errorAt(pos, diagnostic.LexerUnterminatedString, "unterminated string literal")
 			}
 			out = append(out, token.Token{Kind: token.String, Lexeme: b.String(), Pos: pos})
 			continue
@@ -183,7 +183,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 			}
 		}
 		if kind == token.Illegal {
-			return nil, l.errorAt(pos, fmt.Sprintf("unexpected character %q", ch))
+			return nil, l.errorAt(pos, diagnostic.LexerUnexpectedCharacter, fmt.Sprintf("unexpected character %q", ch))
 		}
 		out = append(out, token.Token{Kind: kind, Lexeme: l.source[start:l.offset], Pos: pos})
 	}
@@ -250,24 +250,7 @@ func (l *Lexer) match(expected byte) bool {
 func (l *Lexer) position() token.Position {
 	return token.Position{Offset: l.offset, Line: l.line, Column: l.column}
 }
-func (l *Lexer) errorAt(p token.Position, message string) error {
-	code := diagnostic.LexerGeneric
-	switch {
-	case message == "integer literal is outside the i64 range":
-		code = diagnostic.LexerIntegerOutOfRange
-	case message == "invalid floating-point literal":
-		code = diagnostic.LexerInvalidFloat
-	case message == "newline in string literal":
-		code = diagnostic.LexerNewlineInString
-	case strings.HasPrefix(message, "unsupported escape sequence"):
-		code = diagnostic.LexerUnsupportedEscape
-	case message == "unterminated string literal":
-		code = diagnostic.LexerUnterminatedString
-	case strings.HasPrefix(message, "unexpected character"):
-		code = diagnostic.LexerUnexpectedCharacter
-	case message == "unterminated block comment":
-		code = diagnostic.LexerUnterminatedBlockComment
-	}
+func (l *Lexer) errorAt(p token.Position, code, message string) error {
 	return diagnostic.New(code, "lexer", p, message)
 }
 func (l *Lexer) skipTrivia() error {
@@ -304,7 +287,7 @@ func (l *Lexer) skipTrivia() error {
 				l.advance()
 			}
 			if depth != 0 {
-				return l.errorAt(pos, "unterminated block comment")
+				return l.errorAt(pos, diagnostic.LexerUnterminatedBlockComment, "unterminated block comment")
 			}
 			continue
 		}
