@@ -24,23 +24,23 @@ print(returned);`
 
 	vmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
 	if vmErr != nil {
-		t.Fatalf("VM execution failed: %v\\noutput: %q", vmErr, vmOutput)
+		t.Fatalf("VM execution failed: %v\noutput: %q", vmErr, vmOutput)
 	}
 	if nativeErr != nil {
-		t.Fatalf("native execution failed: %v\\noutput: %q", nativeErr, nativeOutput)
+		t.Fatalf("native execution failed: %v\noutput: %q", nativeErr, nativeOutput)
 	}
 
-	const want = "[[1 2] [3 4]]\\n" +
-		"[[90 2]]\\n" +
-		"[[5 6] [7 8]]\\n" +
-		"[5 60]\\n"
+	const want = "[[1 2] [3 4]]\n" +
+		"[[90 2]]\n" +
+		"[[5 6] [7 8]]\n" +
+		"[5 60]\n"
 	if vmOutput != want {
-		t.Errorf("unexpected VM output:\\n got: %q\\nwant: %q", vmOutput, want)
+		t.Errorf("unexpected VM output:\n got: %q\nwant: %q", vmOutput, want)
 	}
 	if nativeOutput != want {
-		t.Errorf("unexpected native output:\\n got: %q\\nwant: %q", nativeOutput, want)
+		t.Errorf("unexpected native output:\n got: %q\nwant: %q", nativeOutput, want)
 	}
 	if nativeOutput != vmOutput {
-		t.Errorf("backend output differs:\\nVM:     %q\\nNative: %q", vmOutput, nativeOutput)
+		t.Errorf("backend output differs:\nVM:     %q\nNative: %q", vmOutput, nativeOutput)
 	}
 }
