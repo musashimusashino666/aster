@@ -1140,6 +1140,8 @@ print(match Packet::Empty { Packet::Empty => 7, _ => 9, });
 func TestGenericEnumVMAndNativeBackendParity(t *testing.T) {
 	source := `enum Option<T> { None, Some(T), }
 enum Result<T, E> { Ok(T), Err(E), }
+enum Pair<T> { Item(Option<T>, T), }
+fn identity<T>(value: T) -> T { return value; }
 fn unwrap<T>(value: Option<T>) -> T {
 	return match value { Option::Some(item) => item, Option::None => 0, };
 }
@@ -1154,10 +1156,16 @@ print(match wrapped { Option::Some(values) => values[0], Option::None => 0, });
 print(unwrap(Option::Some(42)));
 let result: Result<i64, string> = Result::Ok(7);
 print(match result { Result::Ok(value) => value, Result::Err(message) => errorCode(message), });
+let failed: Result<i64, string> = Result::Err("error");
+print(match failed { Result::Ok(value) => value, Result::Err(message) => errorCode(message), });
 let empty: Option<i64> = Option::None;
 let nested: Option<Option<i64>> = Option::Some(Option::None);
+let peerInferred = Pair::Item(Option::None, 7);
+let throughCall = Option::Some(identity(42));
 print(match empty { Option::Some(value) => value, Option::None => 0, });
 print(match nested { Option::Some(inner) => match inner { Option::Some(value) => value, Option::None => 0, }, Option::None => 0, });
+print(match peerInferred { Pair::Item(inner, value) => value + match inner { Option::Some(item) => item, Option::None => 0, }, });
+print(match throughCall { Option::Some(value) => value, Option::None => 0, });
 `
 	tree, err := parser.Parse(source, "generic-enum-parity.ast")
 	if err != nil {
@@ -1190,7 +1198,7 @@ print(match nested { Option::Some(inner) => match inner { Option::Some(value) =>
 	if err != nil {
 		t.Fatalf("Native generic enum program failed: %v\n%s", err, nativeOutput)
 	}
-	want := "1\n42\n7\n0\n0\n"
+	want := "1\n42\n7\n1\n0\n0\n7\n42\n"
 	if got := vmOutput.String(); got != want {
 		t.Fatalf("unexpected generic enum VM output: got %q want %q", got, want)
 	}
