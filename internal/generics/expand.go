@@ -446,6 +446,14 @@ func (e *expander) instantiateEnum(template *ast.EnumDecl, args []ast.TypeRef, a
 }
 
 func (e *expander) inferEnumTypeArguments(template *ast.EnumDecl, variantName string, args []ast.Expr, at token.Position) ([]ast.TypeRef, error) {
+	return e.inferEnumTypeArgumentsWithContext(template, variantName, args, at, nil, 0)
+}
+
+// inferEnumTypeArgumentsWithContext allows one payload to establish type parameters
+// that disambiguate another payload, such as Pair::Item(Option::None, 7).
+// Payloads that cannot yet be typed are retried after other payloads have supplied
+// enough information to construct their expected concrete types.
+func (e *expander) inferEnumTypeArgumentsWithContext(template *ast.EnumDecl, variantName string, args []ast.Expr, at token.Position, callerSub map[string]ast.TypeRef, depth int) ([]ast.TypeRef, error) {
 	var variant *ast.EnumVariant
 	for i := range template.Variants {
 		if template.Variants[i].Name == variantName {
@@ -464,18 +472,61 @@ func (e *expander) inferEnumTypeArguments(template *ast.EnumDecl, variantName st
 		parameters[param] = true
 	}
 	inferred := make(map[string]ast.TypeRef, len(template.TypeParams))
+	pending := make([]int, 0, len(args))
 	for i, pattern := range variant.Payload {
 		if !containsParameter(pattern, parameters) {
 			continue
 		}
 		actual, ok := e.inferExprType(args[i])
+		if !ok && callerSub != nil {
+			// Resolve explicit inner generic calls against the enclosing concrete
+			// substitution before deciding that this payload is ambiguous.
+			if normalized, err := e.rewriteExprExpected(args[i], callerSub, depth+1, nil); err == nil {
+				actual, ok = e.inferExprType(normalized)
+			}
+		}
 		if !ok {
-			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericEnumInference, "cannot infer type arguments for %s::%s from payload %d; use %s::<...>::%s", template.Name, variantName, i+1, template.Name, variantName)
+			pending = append(pending, i)
+			continue
 		}
 		if err := e.unifyType(pattern, actual, parameters, inferred); err != nil {
 			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericEnumInference, "cannot infer type arguments for '%s' consistently: %v", template.Name, err)
 		}
 	}
+
+	for len(pending) > 0 {
+		nextPending := make([]int, 0, len(pending))
+		progress := false
+		for _, i := range pending {
+			pattern := variant.Payload[i]
+			if !typePatternResolved(pattern, parameters, inferred) {
+				nextPending = append(nextPending, i)
+				continue
+			}
+			expected, err := e.resolveType(substituteType(pattern, inferred), args[i].Pos(), depth+1)
+			if err != nil {
+				return nil, err
+			}
+			rewritten, err := e.rewriteExprExpected(args[i], callerSub, depth+1, &expected)
+			if err != nil {
+				return nil, err
+			}
+			actual, ok := e.inferExprType(rewritten)
+			if !ok {
+				nextPending = append(nextPending, i)
+				continue
+			}
+			if err := e.unifyType(pattern, actual, parameters, inferred); err != nil {
+				return nil, typeError(args[i].Pos(), diagnostic.TypeGenericEnumInference, "cannot infer type arguments for '%s' consistently: %v", template.Name, err)
+			}
+			progress = true
+		}
+		if !progress {
+			break
+		}
+		pending = nextPending
+	}
+
 	out := make([]ast.TypeRef, len(template.TypeParams))
 	for i, param := range template.TypeParams {
 		typ, ok := inferred[param]
@@ -485,6 +536,22 @@ func (e *expander) inferEnumTypeArguments(template *ast.EnumDecl, variantName st
 		out[i] = typ
 	}
 	return out, nil
+}
+
+func typePatternResolved(pattern ast.TypeRef, parameters map[string]bool, inferred map[string]ast.TypeRef) bool {
+	if pattern.Element != nil {
+		return typePatternResolved(*pattern.Element, parameters, inferred)
+	}
+	if len(pattern.Args) == 0 && parameters[pattern.Name] {
+		_, ok := inferred[pattern.Name]
+		return ok
+	}
+	for _, arg := range pattern.Args {
+		if !typePatternResolved(arg, parameters, inferred) {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *expander) rewriteEnum(template *ast.EnumDecl, sub map[string]ast.TypeRef, depth int) (*ast.EnumDecl, error) {
@@ -845,6 +912,30 @@ func (e *expander) inferExprType(expr ast.Expr) (ast.TypeRef, bool) {
 			return concrete("i64")
 		case "f64":
 			return concrete("f64")
+		}
+		if template, generic := e.templates[id.Name]; generic {
+			var typeArgs []ast.TypeRef
+			if len(n.TypeArgs) > 0 {
+				typeArgs = cloneTypeArgs(n.TypeArgs)
+			} else {
+				var err error
+				typeArgs, err = e.inferCallTypeArguments(template, n.Args, n.At)
+				if err != nil {
+					return ast.TypeRef{}, false
+				}
+			}
+			if len(typeArgs) != len(template.TypeParams) || template.ReturnType == nil {
+				return ast.TypeRef{}, false
+			}
+			sub := make(map[string]ast.TypeRef, len(template.TypeParams))
+			for i, param := range template.TypeParams {
+				sub[param] = typeArgs[i]
+			}
+			ret, err := e.resolveType(substituteType(*template.ReturnType, sub), n.At, 0)
+			if err != nil {
+				return ast.TypeRef{}, false
+			}
+			return ret, true
 		}
 		fn, ok := e.functions[id.Name]
 		if !ok || fn.ReturnType == nil {
@@ -1232,7 +1323,7 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 			}
 			if len(args) == 0 {
 				var err error
-				args, err = e.inferEnumTypeArguments(template, n.VariantName, n.Args, n.At)
+				args, err = e.inferEnumTypeArgumentsWithContext(template, n.VariantName, n.Args, n.At, sub, depth)
 				if err != nil {
 					return nil, err
 				}
