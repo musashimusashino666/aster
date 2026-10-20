@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"math"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/bytecode"
@@ -12,7 +13,7 @@ func TestNegativeZeroSurvivesBytecodeRoundTripAndExecution(t *testing.T) {
 	program := &bytecode.Program{
 		Format:    "aster-bytecode",
 		Version:   bytecode.FormatVersion,
-		Constants: []bytecode.Value{{Kind: bytecode.ValueF64, F64: -0.0}},
+		Constants: []bytecode.Value{{Kind: bytecode.ValueF64, F64: math.Copysign(0, -1)}},
 		Functions: []bytecode.Function{{
 			Name:   "main",
 			Return: "unit",
