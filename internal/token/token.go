@@ -15,6 +15,8 @@ const (
 
 	Fn     Kind = "fn"
 	Struct Kind = "struct"
+	Enum   Kind = "enum"
+	Match  Kind = "match"
 	Let    Kind = "let"
 	Mut    Kind = "mut"
 	If     Kind = "if"
@@ -32,6 +34,8 @@ const (
 	RBrace    Kind = "}"
 	Comma     Kind = ","
 	Colon     Kind = ":"
+	DoubleColon Kind = "::"
+	FatArrow Kind = "=>"
 	Semicolon Kind = ";"
 	Dot       Kind = "."
 	Arrow     Kind = "->"
