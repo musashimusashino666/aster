@@ -300,6 +300,36 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 			return false, fmt.Errorf("function %q instruction %d: INDEX requires Array<T>, got %s", fn.Name, pc, collectionType)
 		}
 		push(elementType)
+	case OpSetIndexPath:
+		valueType, err := pop()
+		if err != nil {
+			return false, err
+		}
+		for index := 0; index < ins.A; index++ {
+			indexType, err := pop()
+			if err != nil {
+				return false, err
+			}
+			if err := requireAbstractType(fn.Name, pc, ins.Op, indexType, "i64"); err != nil {
+				return false, err
+			}
+		}
+		collectionType, err := pop()
+		if err != nil {
+			return false, err
+		}
+		elementType := collectionType
+		for depth := 0; depth < ins.A; depth++ {
+			nextType, ok := abstractArrayElementType(elementType)
+			if !ok {
+				return false, fmt.Errorf("function %q instruction %d: indexed assignment path requires Array<T>, got %s", fn.Name, pc, elementType)
+			}
+			elementType = nextType
+		}
+		if valueType != elementType {
+			return false, fmt.Errorf("function %q instruction %d: indexed assignment value has type %s; expected %s", fn.Name, pc, valueType, elementType)
+		}
+		push(collectionType)
 	case OpPop:
 		if _, err := pop(); err != nil {
 			return false, err
