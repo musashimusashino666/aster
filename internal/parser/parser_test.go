@@ -301,3 +301,60 @@ func TestParserDiagnosticsRetainOffendingTokenSpan(t *testing.T) {
 		t.Fatalf("diagnostic code = %q, want %q", got.Code, diagnostic.ParserExpectedExpression)
 	}
 }
+
+
+func TestParserPopulatesASTEndPositions(t *testing.T) {
+	source := "fn identity(value: i64) -> i64 { return value + 1; }\nlet answer = identity(41);"
+	program, err := Parse(source, "spans.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fn, ok := program.Decls[0].(*ast.Function)
+	if !ok {
+		t.Fatalf("first declaration = %T, want *ast.Function", program.Decls[0])
+	}
+	wantFunctionEnd := strings.Index(source, "}\n") + 1
+	if fn.Pos().Offset != 0 || fn.EndPos().Offset != wantFunctionEnd {
+		t.Fatalf("function span = %+v..%+v, want offsets 0..%d", fn.Pos(), fn.EndPos(), wantFunctionEnd)
+	}
+	if fn.Body.EndPos() != fn.EndPos() {
+		t.Fatalf("function body end = %+v, function end = %+v", fn.Body.EndPos(), fn.EndPos())
+	}
+
+	param := fn.Params[0]
+	wantParamTypeEnd := strings.Index(source, "i64") + len("i64")
+	if param.EndPos().Offset != wantParamTypeEnd || param.Type.EndPos().Offset != wantParamTypeEnd {
+		t.Fatalf("parameter/type ends = %+v / %+v, want offset %d", param.EndPos(), param.Type.EndPos(), wantParamTypeEnd)
+	}
+
+	ret, ok := fn.Body.Statements[0].(*ast.ReturnStmt)
+	if !ok {
+		t.Fatalf("body statement = %T, want *ast.ReturnStmt", fn.Body.Statements[0])
+	}
+	wantReturnEnd := strings.Index(source, ";") + 1
+	if ret.EndPos().Offset != wantReturnEnd {
+		t.Fatalf("return end = %+v, want offset %d", ret.EndPos(), wantReturnEnd)
+	}
+	binary, ok := ret.Value.(*ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("return expression = %T, want *ast.BinaryExpr", ret.Value)
+	}
+	wantBinaryEnd := strings.Index(source, "1;") + 1
+	if binary.EndPos().Offset != wantBinaryEnd {
+		t.Fatalf("binary expression end = %+v, want offset %d", binary.EndPos(), wantBinaryEnd)
+	}
+
+	topLevel := program.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	if topLevel.EndPos().Offset != len(source) {
+		t.Fatalf("top-level let end = %+v, want end-of-source offset %d", topLevel.EndPos(), len(source))
+	}
+	call, ok := topLevel.Value.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("initializer = %T, want *ast.CallExpr", topLevel.Value)
+	}
+	wantCallEnd := strings.LastIndex(source, ")") + 1
+	if call.EndPos().Offset != wantCallEnd {
+		t.Fatalf("call end = %+v, want offset %d", call.EndPos(), wantCallEnd)
+	}
+}
