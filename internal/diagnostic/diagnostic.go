@@ -9,16 +9,15 @@ import (
 	"github.com/aster-lang/aster/internal/token"
 )
 
-// Diagnostic is a source-front-end error with a stable code and source position.
+// Diagnostic is an error with a stable code and source position. When
+// HasEndPosition is true, EndPosition is an exclusive source position.
 // Error preserves the traditional message prefix and appends the code in brackets.
 type Diagnostic struct {
 	Code           string
 	Phase          string
 	Message        string
-	Position token.Position
-	// EndPosition is exclusive when HasEndPosition is true.
-	EndPosition token.Position
-	// HasEndPosition distinguishes unavailable span metadata from a zero value.
+	Position       token.Position
+	EndPosition    token.Position
 	HasEndPosition bool
 	Source         string
 	Cause          error
