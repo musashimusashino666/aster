@@ -508,15 +508,16 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		argsStart := len(v.stack) - i.B
 		args := append([]bytecode.Value(nil), v.stack[argsStart:]...)
 		for index := range args {
-			if args[index].Kind != bytecode.ValueArray {
-				continue
-			}
-			args[index].EnsureArrayStorage()
-			if args[index].IsArrayBorrowed() {
-				// The caller may retain an owner after this argument is passed.
+			if args[index].Kind == bytecode.ValueArray {
+				args[index].EnsureArrayStorage()
+				if args[index].IsArrayBorrowed() {
+					// The caller may retain an owner after this argument is passed.
+					args[index].MarkArrayShared()
+				}
+				args[index].ClearArrayBorrowed()
+			} else if args[index].Kind == bytecode.ValueStruct || args[index].Kind == bytecode.ValueEnum {
 				args[index].MarkArrayShared()
 			}
-			args[index].ClearArrayBorrowed()
 		}
 		v.stack = v.stack[:argsStart]
 		locals := make([]bytecode.Value, target.Locals)
