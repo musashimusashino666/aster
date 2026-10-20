@@ -755,6 +755,28 @@ func TestValidateRejectsNonArraySlice(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsIndexOperands(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b, c int
+	}{
+		{name: "operand A", a: 1},
+		{name: "operand B", b: 1},
+		{name: "operand C", c: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := stackVerifierProgram(0, nil, Function{Name: "main", Return: "unit", Code: []Instruction{
+				{Op: OpIndex, A: tt.a, B: tt.b, C: tt.c},
+				{Op: OpHalt},
+			}})
+			if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "invalid index operands") {
+				t.Fatalf("expected INDEX operands to be rejected, got %v", err)
+			}
+		})
+	}
+}
+
 func TestValidateAcceptsTypedNumericCasts(t *testing.T) {
 	p := stackVerifierProgram(0, []Value{
 		I64(9007199254740993),
