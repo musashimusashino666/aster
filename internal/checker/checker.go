@@ -43,6 +43,18 @@ type StructInfo struct {
 	Decl   *ast.StructDecl
 }
 
+type EnumVariantInfo struct {
+	Name    string
+	Payload []Type
+	Decl    ast.EnumVariant
+}
+
+type EnumInfo struct {
+	Name     string
+	Variants []EnumVariantInfo
+	Decl     *ast.EnumDecl
+}
+
 // TypedProgram is the checked view of an AST. Expression types and function
 // signatures are produced by the checker and consumed by backend generators;
 // backends must not independently infer these semantic facts.
@@ -52,6 +64,7 @@ type TypedProgram struct {
 	expressionTypes map[ast.Expr]Type
 	functions       map[string]FunctionInfo
 	structs         map[string]StructInfo
+	enums           map[string]EnumInfo
 }
 
 // TypeOf returns the checker's resolved type for expr.
@@ -106,6 +119,7 @@ func (s *scope) define(name string, v Variable) bool {
 type Checker struct {
 	functions       map[string]FunctionInfo
 	structs         map[string]StructInfo
+	enums           map[string]EnumInfo
 	expressionTypes map[ast.Expr]Type
 	currentReturn   Type
 	inFunction      bool
@@ -114,7 +128,7 @@ type Checker struct {
 
 // Check validates program without retaining expression-type metadata.
 func Check(program *ast.Program) error {
-	c := &Checker{functions: map[string]FunctionInfo{}, structs: map[string]StructInfo{}}
+	c := &Checker{functions: map[string]FunctionInfo{}, structs: map[string]StructInfo{}, enums: map[string]EnumInfo{}}
 	return c.checkProgram(program)
 }
 
@@ -124,6 +138,7 @@ func Analyze(program *ast.Program) (*TypedProgram, error) {
 	c := &Checker{
 		functions:       map[string]FunctionInfo{},
 		structs:         map[string]StructInfo{},
+		enums:           map[string]EnumInfo{},
 		expressionTypes: map[ast.Expr]Type{},
 	}
 	if err := c.checkProgram(program); err != nil {
@@ -133,6 +148,7 @@ func Analyze(program *ast.Program) (*TypedProgram, error) {
 		Tree:            program,
 		expressionTypes: c.expressionTypes,
 		functions:       c.functions,
+		enums:           c.enums,
 	}
 	normalized, err := ir.Lower(
 		program,
@@ -168,6 +184,34 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 			functionNames[f.Name] = struct{}{}
 		}
 	}
+	// Register every enum name before resolving any payload type, so enums and
+	// structs can refer forward to one another in the same source file.
+	for _, d := range program.Decls {
+		e, ok := d.(*ast.EnumDecl)
+		if !ok { continue }
+		if !langtypes.ValidName(e.Name) || builtinName(e.Name) || e.Name == "Array" {
+			return typeError(e.Pos(), diagnostic.TypeDuplicateEnum, "invalid or reserved enum name '%s'", e.Name)
+		}
+		if _, exists := functionNames[e.Name]; exists {
+			return typeError(e.Pos(), diagnostic.TypeDuplicateEnum, "enum name '%s' conflicts with a function", e.Name)
+		}
+		if _, exists := c.enums[e.Name]; exists {
+			return typeError(e.Pos(), diagnostic.TypeDuplicateEnum, "enum '%s' is already declared", e.Name)
+		}
+		info := EnumInfo{Name: e.Name, Decl: e}
+		seen := make(map[string]struct{})
+		for _, variant := range e.Variants {
+			if _, duplicate := seen[variant.Name]; duplicate {
+				return typeError(variant.At, diagnostic.TypeDuplicateEnumVariant, "variant '%s' is duplicated in enum '%s'", variant.Name, e.Name)
+			}
+			seen[variant.Name] = struct{}{}
+			info.Variants = append(info.Variants, EnumVariantInfo{Name: variant.Name, Decl: variant})
+		}
+		if len(info.Variants) == 0 {
+			return typeError(e.Pos(), diagnostic.TypeDuplicateEnumVariant, "enum '%s' must declare at least one variant", e.Name)
+		}
+		c.enums[e.Name] = info
+	}
 	for _, d := range program.Decls {
 		s, ok := d.(*ast.StructDecl)
 		if !ok {
@@ -175,6 +219,9 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 		}
 		if !langtypes.ValidName(s.Name) {
 			return typeError(s.Pos(), diagnostic.TypeInvalidStructName, "invalid or reserved struct name '%s'", s.Name)
+		}
+		if _, exists := c.enums[s.Name]; exists {
+			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' conflicts with an enum", s.Name)
 		}
 		if builtinName(s.Name) || s.Name == "Array" {
 			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' is reserved", s.Name)
@@ -186,6 +233,25 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct '%s' is already declared", s.Name)
 		}
 		c.structs[s.Name] = StructInfo{Name: s.Name, Decl: s}
+	}
+	// Resolve enum payload types after all nominal names have been registered.
+	for _, d := range program.Decls {
+		e, ok := d.(*ast.EnumDecl)
+		if !ok { continue }
+		info := c.enums[e.Name]
+		for i, variant := range e.Variants {
+			payload := make([]Type, 0, len(variant.Payload))
+			for _, payloadRef := range variant.Payload {
+				typ, err := c.typeFromRef(payloadRef)
+				if err != nil || typ == Unit {
+					if err == nil { err = fmt.Errorf("enum payloads cannot have type unit") }
+					return typeError(payloadRef.At, diagnostic.TypeInvalidEnumPayload, "invalid payload type for %s::%s: %v", e.Name, variant.Name, err)
+				}
+				payload = append(payload, typ)
+			}
+			info.Variants[i].Payload = payload
+		}
+		c.enums[e.Name] = info
 	}
 	// Populate field metadata now that all nominal names are known.
 	for _, d := range program.Decls {
@@ -348,43 +414,58 @@ func (c *Checker) typeFromRefDepth(r ast.TypeRef, depth int) (Type, error) {
 		if _, ok := c.structs[r.Name]; ok {
 			return Type(r.Name), nil
 		}
+		if _, ok := c.enums[r.Name]; ok {
+			return Type(r.Name), nil
+		}
 		return "", fmt.Errorf("unknown type '%s'", r.Name)
 	}
 }
 
-// validateStructLayoutCycles rejects direct by-value recursive layouts. Arrays
-// are an indirection boundary and therefore do not add a layout dependency.
+// validateStructLayoutCycles rejects direct by-value recursive nominal layouts
+// across structs and enums. Arrays are an indirection boundary.
 func (c *Checker) validateStructLayoutCycles() error {
 	state := make(map[string]uint8)
 	var visit func(string) error
 	visit = func(name string) error {
 		switch state[name] {
 		case 1:
-			info := c.structs[name]
-			return typeError(info.Decl.Pos(), diagnostic.TypeRecursiveStruct, "struct '%s' has a recursive by-value layout", name)
+			if info, ok := c.structs[name]; ok {
+				return typeError(info.Decl.Pos(), diagnostic.TypeRecursiveStruct, "struct '%s' has a recursive by-value layout", name)
+			}
+			info := c.enums[name]
+			return typeError(info.Decl.Pos(), diagnostic.TypeRecursiveEnumLayout, "enum '%s' has a recursive by-value layout", name)
 		case 2:
 			return nil
 		}
 		state[name] = 1
-		info := c.structs[name]
-		for _, field := range info.Fields {
-			if _, isArray := arrayElement(field.Type); isArray {
-				continue
+		if info, ok := c.structs[name]; ok {
+			for _, field := range info.Fields {
+				if _, isArray := arrayElement(field.Type); isArray { continue }
+				target := string(field.Type)
+				if _, isStruct := c.structs[target]; isStruct {
+					if err := visit(target); err != nil { return err }
+				} else if _, isEnum := c.enums[target]; isEnum {
+					if err := visit(target); err != nil { return err }
+				}
 			}
-			if _, isStruct := c.structs[string(field.Type)]; isStruct {
-				if err := visit(string(field.Type)); err != nil {
-					return err
+		} else if info, ok := c.enums[name]; ok {
+			for _, variant := range info.Variants {
+				for _, payloadType := range variant.Payload {
+					if _, isArray := arrayElement(payloadType); isArray { continue }
+					target := string(payloadType)
+					if _, isStruct := c.structs[target]; isStruct {
+						if err := visit(target); err != nil { return err }
+					} else if _, isEnum := c.enums[target]; isEnum {
+						if err := visit(target); err != nil { return err }
+					}
 				}
 			}
 		}
 		state[name] = 2
 		return nil
 	}
-	for name := range c.structs {
-		if err := visit(name); err != nil {
-			return err
-		}
-	}
+	for name := range c.structs { if err := visit(name); err != nil { return err } }
+	for name := range c.enums { if err := visit(name); err != nil { return err } }
 	return nil
 }
 
@@ -634,6 +715,32 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			return "", typeError(n.Pos(), diagnostic.TypeNestingLimit, "type nesting exceeds limit %d", langtypes.MaxNestingDepth)
 		}
 		return arrayType, nil
+	case *ast.EnumVariantExpr:
+		info, ok := c.enums[n.EnumName]
+		if !ok {
+			return "", typeError(n.Pos(), diagnostic.TypeUnknownEnumVariant, "unknown enum '%s'", n.EnumName)
+		}
+		variantIndex := -1
+		variant := EnumVariantInfo{}
+		for i, candidate := range info.Variants {
+			if candidate.Name == n.VariantName { variantIndex, variant = i, candidate; break }
+		}
+		if variantIndex < 0 {
+			return "", typeError(n.Pos(), diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", n.EnumName, n.VariantName)
+		}
+		if n.HasPayload != (len(variant.Payload) > 0) || len(n.Args) != len(variant.Payload) {
+			return "", typeError(n.Pos(), diagnostic.TypeEnumConstructorArity, "variant %s::%s requires %d payload arguments", n.EnumName, n.VariantName, len(variant.Payload))
+		}
+		for i, arg := range n.Args {
+			got, err := c.checkExprExpected(arg, variant.Payload[i])
+			if err != nil { return "", err }
+			if got != variant.Payload[i] {
+				return "", typeError(arg.Pos(), diagnostic.TypeEnumPayloadMismatch, "payload %d of %s::%s expects %s, got %s", i+1, n.EnumName, n.VariantName, variant.Payload[i], got)
+			}
+		}
+		return Type(n.EnumName), nil
+	case *ast.MatchExpr:
+		return c.checkMatchExpr(n)
 	case *ast.FieldExpr:
 		objectType, err := c.checkExpr(n.Object)
 		if err != nil {
@@ -855,6 +962,92 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		return fn.Return, nil
 	}
 	return "", typeError(e.Pos(), diagnostic.TypeUnsupportedExpression, "unsupported expression node %T", e)
+}
+
+func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
+	subjectType, err := c.checkExpr(n.Subject)
+	if err != nil { return "", err }
+	enumInfo, ok := c.enums[string(subjectType)]
+	if !ok {
+		return "", typeError(n.Subject.Pos(), diagnostic.TypeMatchNonEnum, "match subject must have an enum type, got %s", subjectType)
+	}
+	if len(n.Arms) == 0 {
+		return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match expression requires at least one arm")
+	}
+	covered := make(map[int]bool, len(enumInfo.Variants))
+	wildcardSeen := false
+	var resultType Type
+	haveResult := false
+	for _, arm := range n.Arms {
+		pattern := arm.Pattern
+		var bindings []Variable
+		if pattern.Wildcard {
+			if wildcardSeen || len(covered) == len(enumInfo.Variants) {
+				return "", typeError(pattern.At, diagnostic.TypeMatchUnreachableArm, "wildcard arm cannot match any remaining variant")
+			}
+			wildcardSeen = true
+		} else {
+			if wildcardSeen {
+				return "", typeError(pattern.At, diagnostic.TypeMatchUnreachableArm, "arm for %s::%s is unreachable after wildcard", pattern.EnumName, pattern.VariantName)
+			}
+			if pattern.EnumName != enumInfo.Name {
+				return "", typeError(pattern.At, diagnostic.TypeMatchVariantEnum, "pattern %s::%s does not belong to matched enum %s", pattern.EnumName, pattern.VariantName, enumInfo.Name)
+			}
+			variantIndex := -1
+			variant := EnumVariantInfo{}
+			for i, candidate := range enumInfo.Variants {
+				if candidate.Name == pattern.VariantName { variantIndex, variant = i, candidate; break }
+			}
+			if variantIndex < 0 {
+				return "", typeError(pattern.At, diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", pattern.EnumName, pattern.VariantName)
+			}
+			if covered[variantIndex] {
+				return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateArm, "variant %s::%s is matched more than once", pattern.EnumName, pattern.VariantName)
+			}
+			covered[variantIndex] = true
+			if pattern.HasPayload != (len(variant.Payload) > 0) || len(pattern.Bindings) != len(variant.Payload) {
+				return "", typeError(pattern.At, diagnostic.TypeMatchPayloadArity, "pattern %s::%s requires %d payload bindings", pattern.EnumName, pattern.VariantName, len(variant.Payload))
+			}
+			seenNames := make(map[string]struct{}, len(pattern.Bindings))
+			for i, name := range pattern.Bindings {
+				if _, duplicate := seenNames[name]; duplicate {
+					return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateBinding, "payload binding '%s' is repeated", name)
+				}
+				seenNames[name] = struct{}{}
+				if builtinName(name) {
+					return "", typeError(pattern.At, diagnostic.TypeReservedBinding, "payload binding '%s' is reserved", name)
+				}
+				bindings = append(bindings, Variable{Type: variant.Payload[i]})
+			}
+		}
+		oldScope := c.scopes
+		c.scopes = newScope(oldScope)
+		if !pattern.Wildcard {
+			for i, name := range pattern.Bindings {
+				if !c.scopes.define(name, bindings[i]) {
+					c.scopes = oldScope
+					return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateBinding, "payload binding '%s' is repeated", name)
+				}
+			}
+		}
+		armType, armErr := c.checkExpr(arm.Expr)
+		c.scopes = oldScope
+		if armErr != nil { return "", armErr }
+		if !haveResult {
+			resultType, haveResult = armType, true
+		} else if resultType != armType {
+			return "", typeError(arm.At, diagnostic.TypeMatchArmTypeMismatch, "match arms must have one result type; expected %s, got %s", resultType, armType)
+		}
+	}
+	if !wildcardSeen && len(covered) != len(enumInfo.Variants) {
+		var missing []string
+		for i, variant := range enumInfo.Variants {
+			if !covered[i] { missing = append(missing, variant.Name) }
+		}
+		return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match on %s is missing variants: %s", enumInfo.Name, strings.Join(missing, ", "))
+	}
+	if !haveResult { return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match expression has no reachable arms") }
+	return resultType, nil
 }
 
 func indexedAssignmentRoot(expr ast.Expr) (*ast.IdentifierExpr, bool) {
