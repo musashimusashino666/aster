@@ -226,7 +226,9 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		}
 		start := len(v.stack) - i.C
 		payload := append([]bytecode.Value(nil), v.stack[start:]...)
-		for index := range payload { payload[index].EnsureAggregateStorage() }
+		for index := range payload {
+			payload[index].EnsureAggregateStorage()
+		}
 		v.stack = v.stack[:start]
 		push(bytecode.EnumValue(i.A, i.B, payload))
 	case bytecode.OpMatchEnum:
