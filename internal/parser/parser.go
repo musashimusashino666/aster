@@ -510,22 +510,43 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 
 func (p *Parser) finishIndex(collection ast.Expr, collectionDepth int) (ast.Expr, int, error) {
 	start := p.advance()
-	index, indexDepth, err := p.parseExpression(0)
+	lower, lowerDepth, err := p.parseExpression(0)
 	if err != nil {
 		return nil, 0, err
+	}
+	if p.match(token.Colon) {
+		upper, upperDepth, err := p.parseExpression(0)
+		if err != nil {
+			return nil, 0, err
+		}
+		if _, err = p.consume(token.RBracket, "expected ']' after slice bounds"); err != nil {
+			return nil, 0, err
+		}
+		depth := collectionDepth
+		if lowerDepth > depth {
+			depth = lowerDepth
+		}
+		if upperDepth > depth {
+			depth = upperDepth
+		}
+		depth++
+		if depth > maxSyntaxNestingDepth {
+			return nil, 0, p.errorAtCode(start, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+		}
+		return &ast.SliceExpr{At: start.Pos, Collection: collection, Start: lower, End: upper}, depth, nil
 	}
 	if _, err = p.consume(token.RBracket, "expected ']' after index"); err != nil {
 		return nil, 0, err
 	}
 	depth := collectionDepth
-	if indexDepth > depth {
-		depth = indexDepth
+	if lowerDepth > depth {
+		depth = lowerDepth
 	}
 	depth++
 	if depth > maxSyntaxNestingDepth {
 		return nil, 0, p.errorAtCode(start, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
 	}
-	return &ast.IndexExpr{At: start.Pos, Collection: collection, Index: index}, depth, nil
+	return &ast.IndexExpr{At: start.Pos, Collection: collection, Index: lower}, depth, nil
 }
 
 func (p *Parser) finishCall(callee ast.Expr, calleeDepth int) (ast.Expr, int, error) {
