@@ -246,7 +246,11 @@ func (p *Program) Validate() error {
 				if ins.B != 1 {
 					return fmt.Errorf("function %q instruction %d passes invalid argument count %d to builtin", f.Name, pc, ins.B)
 				}
-			case OpPop, OpNeg, OpNot, OpToI64, OpToF64, OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
+			case OpToI64, OpToF64:
+				if ins.A != 0 || ins.B != 0 {
+					return fmt.Errorf("function %q instruction %d has invalid numeric cast operands", f.Name, pc)
+				}
+			case OpPop, OpNeg, OpNot, OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual, OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual:
 			case OpReturn:
 				if fi == p.Entry {
 					return fmt.Errorf("RETURN is invalid in the entry function")
