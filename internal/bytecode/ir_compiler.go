@@ -165,6 +165,15 @@ func (c *irFunctionCompiler) compileStmt(stmt ir.Stmt) error {
 		c.emit(OpPop, 0, 0, pos.Line, pos.Column)
 		return nil
 	case *ir.IfStmt:
+		if condition, constant := ir.BoolLiteral(n.Condition); constant {
+			if condition {
+				return c.compileBlock(n.Then)
+			}
+			if n.Else != nil {
+				return c.compileStmt(n.Else)
+			}
+			return nil
+		}
 		if err := c.compileExpr(n.Condition); err != nil {
 			return err
 		}
@@ -177,7 +186,7 @@ func (c *irFunctionCompiler) compileStmt(stmt ir.Stmt) error {
 			return nil
 		}
 		jumpEnd := -1
-		if !ir.AlwaysReturns(n.Then) {
+		if !ir.CannotFallThrough(n.Then) {
 			jumpEnd = c.emit(OpJump, -1, 0, pos.Line, pos.Column)
 		}
 		c.patch(jumpFalse, len(c.code))
@@ -189,6 +198,17 @@ func (c *irFunctionCompiler) compileStmt(stmt ir.Stmt) error {
 		}
 		return nil
 	case *ir.WhileStmt:
+		if condition, constant := ir.BoolLiteral(n.Condition); constant {
+			if !condition {
+				return nil
+			}
+			start := len(c.code)
+			if err := c.compileBlock(n.Body); err != nil {
+				return err
+			}
+			c.emit(OpJump, start, 0, pos.Line, pos.Column)
+			return nil
+		}
 		start := len(c.code)
 		if err := c.compileExpr(n.Condition); err != nil {
 			return err
