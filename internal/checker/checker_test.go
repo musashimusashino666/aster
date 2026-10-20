@@ -313,3 +313,34 @@ func TestChecksArraySliceExpressions(t *testing.T) {
 		})
 	}
 }
+
+func TestChecksExplicitNumericCasts(t *testing.T) {
+	valid := []string{
+		"print(i64(3.9));",
+		"print(i64(-3.9));",
+		"print(f64(42));",
+		"print(i64(i64(7)));",
+		"print(f64(f64(2.5)));",
+	}
+	for _, source := range valid {
+		if err := checkSource(t, source); err != nil {
+			t.Errorf("expected numeric cast to type-check for %q: %v", source, err)
+		}
+	}
+
+	invalid := []struct {
+		name, source, want string
+	}{
+		{"boolean argument", "print(i64(true));", "conversion requires i64 or f64"},
+		{"wrong arity", "print(i64(1, 2));", "expects exactly one argument"},
+		{"boolean f64 argument", "print(f64(false));", "conversion requires i64 or f64"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkSource(t, tt.source)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
