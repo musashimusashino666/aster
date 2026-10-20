@@ -56,9 +56,9 @@ func TestFormatGenericNominalTypesWithoutOperatorSpacing(t *testing.T) {
 	input := "struct Box<T>{value:T,} " +
 		"struct Pair<K,V>{first:K,second:V,} " +
 		"enum Option<T>{None,Some(T),} " +
-		"let b:Box<i64>=Box::<i64>(42); " +
-		"let pair:Pair<string,i64>=Pair::<string,i64>(\"x\",42); " +
-		"let none:Option<i64>=Option::<i64>::None; " +
+		"let b:Box<i64> = Box::<i64>(42); " +
+		"let pair:Pair<string,i64> = Pair::<string,i64>(\"x\",42); " +
+		"let none:Option<i64> = Option::<i64>::None; " +
 		"let a:i64=1;let z:i64=2;print(a<z);"
 	got, err := Format(input)
 	if err != nil {
