@@ -101,6 +101,22 @@ Codes are intended for tests, editor integrations, and bug reports. A code ident
 | `TYP060` | Struct printing is not yet supported |
 | `TYP061` | Invalid or reserved struct type name |
 | `TYP062` | Invalid struct field name
+| `TYP063` | Duplicate, reserved, or conflicting enum declaration |
+| `TYP064` | Invalid or duplicate enum variant |
+| `TYP065` | Enum payload has an invalid or unsupported type |
+| `TYP066` | Unknown enum type or variant |
+| `TYP067` | Enum variant constructor has the wrong payload arity |
+| `TYP068` | Enum constructor payload type mismatch |
+| `TYP069` | Match subject does not have an enum type |
+| `TYP070` | Match pattern belongs to a different enum than its subject |
+| `TYP071` | Enum match pattern has the wrong payload-binding count |
+| `TYP072` | Duplicate enum match arm |
+| `TYP073` | Unreachable enum match arm |
+| `TYP074` | Non-exhaustive enum match |
+| `TYP075` | Match arm result types do not agree |
+| `TYP076` | Duplicate or invalid match payload binding |
+| `TYP077` | Recursive by-value enum/nominal layout |
+
 
 ## Runtime
 
