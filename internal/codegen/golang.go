@@ -6,7 +6,6 @@ package codegen
 import (
 	"bytes"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -102,6 +101,7 @@ func (g *generator) writePreamble() {
 	g.line("\"fmt\"")
 	g.line("\"math\"")
 	g.line("\"os\"")
+	g.line("\"reflect\"")
 	g.line("\"strings\"")
 	g.line("\"unicode/utf8\"")
 	g.indent--
