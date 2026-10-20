@@ -22,7 +22,6 @@ func validIdentifier(s string) bool {
 	return true
 }
 
-
 // MaxNestingDepth limits syntactic nesting of type names such as
 // Array<Array<i64>>. It is distinct from limits.MaxArrayNestingDepth, which
 // bounds runtime array-value traversal and display. Keeping this in a
