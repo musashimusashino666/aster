@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/aster-lang/aster/internal/diagnostic"
 )
 
 const nativeBuildTimeout = 2 * time.Minute
@@ -25,7 +27,8 @@ func BuildNative(goSource, output string) error {
 
 // BuildNativeContext performs a native build using ctx to bound gofmt and go
 // build. A canceled or expired build leaves the previous output untouched.
-func BuildNativeContext(ctx context.Context, goSource, output string) error {
+func BuildNativeContext(ctx context.Context, goSource, output string) (resultErr error) {
+	defer func() { resultErr = diagnostic.WrapToolchain(resultErr) }()
 	if ctx == nil {
 		return fmt.Errorf("native build requires a non-nil context")
 	}
@@ -97,7 +100,8 @@ func RunNative(goSource string) error {
 }
 
 // RunNativeContext bounds both the native build and executable run with ctx.
-func RunNativeContext(ctx context.Context, goSource string) error {
+func RunNativeContext(ctx context.Context, goSource string) (resultErr error) {
+	defer func() { resultErr = diagnostic.WrapToolchain(resultErr) }()
 	if ctx == nil {
 		return fmt.Errorf("native run requires a non-nil context")
 	}
