@@ -204,6 +204,7 @@ func commandCompile(args []string) error {
 	fmt.Printf("compiled %s -> %s\n", fs.Arg(0), path)
 	return nil
 }
+
 // writeBytecodeAtomically commits a fully encoded bytecode file only after
 // validation, encoding, syncing, and closing have all succeeded.
 func writeBytecodeAtomically(path string, program *bytecode.Program) error {
