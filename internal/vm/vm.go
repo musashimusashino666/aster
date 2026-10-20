@@ -169,6 +169,28 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		items := make([]bytecode.Value, int(end.I64-start.I64))
 		copy(items, collection.Array[int(start.I64):int(end.I64)])
 		push(bytecode.Value{Kind: bytecode.ValueArray, Array: items})
+	case bytecode.OpToI64:
+		value, err := pop()
+		if err != nil {
+			return err
+		}
+		if value.Kind != bytecode.ValueF64 {
+			return v.fault(i, "i64 conversion requires f64, got %s", value.Kind)
+		}
+		limit := math.Ldexp(1, 63)
+		if math.IsNaN(value.F64) || math.IsInf(value.F64, 0) || value.F64 < -limit || value.F64 >= limit {
+			return v.fault(i, "f64 value out of range for i64 conversion")
+		}
+		push(bytecode.Value{Kind: bytecode.ValueI64, I64: int64(value.F64)})
+	case bytecode.OpToF64:
+		value, err := pop()
+		if err != nil {
+			return err
+		}
+		if value.Kind != bytecode.ValueI64 {
+			return v.fault(i, "f64 conversion requires i64, got %s", value.Kind)
+		}
+		push(bytecode.Value{Kind: bytecode.ValueF64, F64: float64(value.I64)})
 	case bytecode.OpSetIndexPath:
 		replacement, err := pop()
 		if err != nil {
