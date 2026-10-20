@@ -569,6 +569,31 @@ func (c *Checker) checkExpr(e ast.Expr) (Type, error) {
 	return t, err
 }
 
+// checkExprExpected checks an expression using a known expected type. In particular,
+// an empty array literal is well-typed when its element type is supplied by the
+// surrounding struct field; the same context is propagated to nested arrays.
+func (c *Checker) checkExprExpected(e ast.Expr, expected Type) (Type, error) {
+	array, ok := e.(*ast.ArrayExpr)
+	elemType, isArray := arrayElement(expected)
+	if !ok || !isArray {
+		return c.checkExpr(e)
+	}
+	for _, item := range array.Elements {
+		got, err := c.checkExprExpected(item, elemType)
+		if err != nil {
+			return "", err
+		}
+		if got != elemType {
+			return "", typeError(item.Pos(), diagnostic.TypeHeterogeneousArray,
+				"array elements must have one type; expected %s, got %s", elemType, got)
+		}
+	}
+	if c.expressionTypes != nil {
+		c.expressionTypes[e] = expected
+	}
+	return expected, nil
+}
+
 // checkExprImpl performs type inference/checking. Recursive children are routed
 // through checkExpr so every successfully checked expression is recorded.
 func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
@@ -800,7 +825,7 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 				return "", typeError(n.Pos(), diagnostic.TypeStructConstructorArity, "struct '%s' expects %d fields, got %d", id.Name, len(structInfo.Fields), len(args))
 			}
 			for i, arg := range args {
-				got, err := c.checkExpr(arg)
+				got, err := c.checkExprExpected(arg, structInfo.Fields[i].Type)
 				if err != nil {
 					return "", err
 				}
