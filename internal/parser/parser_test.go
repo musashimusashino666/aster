@@ -245,3 +245,34 @@ func TestRejectsEmptyEnumPayloadList(t *testing.T) {
 		t.Fatalf("expected empty enum payload list to be rejected, got %v", err)
 	}
 }
+
+func TestParsesGenericEnumDeclarationsAndConstructors(t *testing.T) {
+	program, err := Parse(`enum Option<T> { None, Some(T), }
+let value: Option<i64> = Option::Some(7);
+let empty: Option<i64> = Option::<i64>::None;
+let inferred = Option::Some("aster");`, "generic-enum.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decl, ok := program.Decls[0].(*ast.EnumDecl)
+	if !ok || len(decl.TypeParams) != 1 || decl.TypeParams[0] != "T" || len(decl.Variants) != 2 {
+		t.Fatalf("generic enum declaration = %#v", program.Decls[0])
+	}
+	value := program.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	constructor, ok := value.Value.(*ast.EnumVariantExpr)
+	if !ok || constructor.EnumName != "Option" || constructor.VariantName != "Some" || len(constructor.TypeArgs) != 0 || len(constructor.Args) != 1 {
+		t.Fatalf("inferred enum constructor = %#v", value.Value)
+	}
+	empty := program.Decls[2].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	constructor, ok = empty.Value.(*ast.EnumVariantExpr)
+	if !ok || constructor.VariantName != "None" || len(constructor.TypeArgs) != 1 || constructor.TypeArgs[0].Name != "i64" {
+		t.Fatalf("explicit enum constructor = %#v", empty.Value)
+	}
+}
+
+func TestRejectsEmptyGenericEnumTypeArguments(t *testing.T) {
+	_, err := Parse(`enum Option<T> { None, Some(T) } let value = Option::<>::None;`, "generic-enum.ast")
+	if err == nil {
+		t.Fatal("expected empty enum type argument list to be rejected")
+	}
+}
