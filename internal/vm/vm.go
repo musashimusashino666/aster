@@ -144,6 +144,31 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			return v.fault(i, "array index %d out of bounds for length %d", index.I64, len(collection.Array))
 		}
 		push(collection.Array[int(index.I64)])
+	case bytecode.OpSlice:
+		end, err := pop()
+		if err != nil {
+			return err
+		}
+		start, err := pop()
+		if err != nil {
+			return err
+		}
+		collection, err := pop()
+		if err != nil {
+			return err
+		}
+		if collection.Kind != bytecode.ValueArray {
+			return v.fault(i, "slicing requires an array, got %s", collection.Kind)
+		}
+		if start.Kind != bytecode.ValueI64 || end.Kind != bytecode.ValueI64 {
+			return v.fault(i, "slice bounds must be i64")
+		}
+		if start.I64 < 0 || end.I64 < start.I64 || end.I64 > int64(len(collection.Array)) {
+			return v.fault(i, "slice bounds [%d:%d] out of bounds for length %d", start.I64, end.I64, len(collection.Array))
+		}
+		items := make([]bytecode.Value, int(end.I64-start.I64))
+		copy(items, collection.Array[int(start.I64):int(end.I64)])
+		push(bytecode.Value{Kind: bytecode.ValueArray, Array: items})
 	case bytecode.OpSetIndexPath:
 		replacement, err := pop()
 		if err != nil {
