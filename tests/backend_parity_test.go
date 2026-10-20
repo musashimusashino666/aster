@@ -83,6 +83,87 @@ len(data);
 	}
 }
 
+func TestF64DisplayFormattingMatchesBackends(t *testing.T) {
+	tree, err := parser.Parse("print(1000000.0);", "f64-display.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-f64-display")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("Native program failed: %v\n%s", err, nativeOutput)
+	}
+	if got, want := vmOutput.String(), "1e+06\n"; got != want {
+		t.Fatalf("VM f64 display = %q, want %q", got, want)
+	}
+	if got := string(nativeOutput); got != vmOutput.String() {
+		t.Fatalf("f64 display differs: VM=%q Native=%q", vmOutput.String(), got)
+	}
+}
+
+func TestPayloadFreeEnumAssignmentUsesTargetTypeAcrossBackends(t *testing.T) {
+	source := `enum Option<T> { None, Some(T), }
+let mut current: Option<i64> = Option::Some(42);
+current = Option::None;
+print(match current { Option::None => 0, Option::Some(value) => value });
+`
+	tree, err := parser.Parse(source, "option-assignment.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-option-assignment")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("Native program failed: %v\n%s", err, nativeOutput)
+	}
+	if got, want := vmOutput.String(), "0\n"; got != want {
+		t.Fatalf("VM output = %q, want %q", got, want)
+	}
+	if got := string(nativeOutput); got != vmOutput.String() {
+		t.Fatalf("enum assignment differs: VM=%q Native=%q", vmOutput.String(), got)
+	}
+}
+
 func TestGenericFunctionVMAndNativeBackendParity(t *testing.T) {
 	source := `fn identity<T>(value: T) -> T { return value; }
 fn select<T>(left: T, right: T, choose_left: bool) -> T {
