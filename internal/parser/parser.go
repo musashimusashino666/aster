@@ -4,7 +4,6 @@ package parser
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/diagnostic"
@@ -23,7 +22,7 @@ type Parser struct {
 
 func (p *Parser) enterNesting(at token.Token, context string) (func(), error) {
 	if p.nestingDepth >= maxSyntaxNestingDepth {
-		return nil, p.errorAt(at, fmt.Sprintf("syntax nesting exceeds limit %d while parsing %s", maxSyntaxNestingDepth, context))
+		return nil, p.errorAtCode(at, diagnostic.ParserSyntaxNesting, fmt.Sprintf("syntax nesting exceeds limit %d while parsing %s", maxSyntaxNestingDepth, context))
 	}
 	p.nestingDepth++
 	return func() { p.nestingDepth-- }, nil
@@ -44,7 +43,7 @@ func Parse(source, sourceName string) (*ast.Program, error) {
 		}
 		program.Decls = append(program.Decls, d)
 		if p.current == before {
-			return nil, p.errorAt(p.peek(), "parser made no progress")
+			return nil, p.errorAtCode(p.peek(), diagnostic.ParserNoProgress, "parser made no progress")
 		}
 	}
 	return program, nil
@@ -65,10 +64,10 @@ func (p *Parser) function(start token.Token) (ast.Decl, error) {
 		return nil, err
 	}
 	if len(name.Lexeme) >= 2 && name.Lexeme[0] == '_' && name.Lexeme[1] == '_' {
-		return nil, p.errorAt(name, "function names beginning with '__' are reserved for compiler internals")
+		return nil, p.errorAtCode(name, diagnostic.ParserReservedInternalName, "function names beginning with '__' are reserved for compiler internals")
 	}
 	if name.Lexeme == "main" {
-		return nil, p.errorAt(name, "'main' is reserved for the top-level program")
+		return nil, p.errorAtCode(name, diagnostic.ParserReservedMainName, "'main' is reserved for the top-level program")
 	}
 	if _, err = p.consume(token.LParen, "expected '(' after function name"); err != nil {
 		return nil, err
@@ -122,7 +121,7 @@ func (p *Parser) typeRefDepth(depth int) (ast.TypeRef, error) {
 	ref := ast.TypeRef{Name: t.Lexeme, At: t.Pos}
 	if p.match(token.Less) {
 		if depth >= langtypes.MaxNestingDepth {
-			return ast.TypeRef{}, p.errorAt(t, fmt.Sprintf("type nesting exceeds limit %d", langtypes.MaxNestingDepth))
+			return ast.TypeRef{}, p.errorAtCode(t, diagnostic.ParserTypeNesting, fmt.Sprintf("type nesting exceeds limit %d", langtypes.MaxNestingDepth))
 		}
 		element, e := p.typeRefDepth(depth + 1)
 		if e != nil {
@@ -152,7 +151,7 @@ func (p *Parser) statement() (ast.Stmt, error) {
 		return p.returnStatement(p.previous())
 	}
 	if p.indexedAssignmentAhead() {
-		return nil, p.errorAt(p.peek(), "array element assignment is not supported in Aster 0.1")
+		return nil, p.errorAtCode(p.peek(), diagnostic.ParserArrayAssignmentUnsupported, "array element assignment is not supported in Aster 0.1")
 	}
 	if p.check(token.Ident) && p.checkNext(token.Assign) {
 		id := p.advance()
@@ -297,7 +296,7 @@ func (p *Parser) blockAfterOpen(start token.Token) (*ast.BlockStmt, error) {
 		}
 		b.Statements = append(b.Statements, s)
 		if before == p.current {
-			return nil, p.errorAt(p.peek(), "parser made no progress in block")
+			return nil, p.errorAtCode(p.peek(), diagnostic.ParserNoProgress, "parser made no progress in block")
 		}
 	}
 	if _, err := p.consume(token.RBrace, "expected '}' to close block"); err != nil {
@@ -359,16 +358,16 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		n, err := strconv.ParseInt(t.Lexeme, 10, 64)
 		if err != nil {
 			if t.Lexeme == "9223372036854775808" {
-				return nil, 0, p.errorAt(t, "integer literal out of range; this magnitude is valid only immediately after unary '-' (write -9223372036854775808)")
+				return nil, 0, p.errorAtCode(t, diagnostic.ParserIntegerOutOfRange, "integer literal out of range; this magnitude is valid only immediately after unary '-' (write -9223372036854775808)")
 			}
-			return nil, 0, p.errorAt(t, "integer literal out of range")
+			return nil, 0, p.errorAtCode(t, diagnostic.ParserIntegerOutOfRange, "integer literal out of range")
 		}
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "i64", Text: t.Lexeme, Int: n}
 		leftDepth = 1
 	case token.Float:
 		n, err := strconv.ParseFloat(t.Lexeme, 64)
 		if err != nil {
-			return nil, 0, p.errorAt(t, "invalid float")
+			return nil, 0, p.errorAtCode(t, diagnostic.ParserInvalidFloat, "invalid float")
 		}
 		left = &ast.LiteralExpr{At: t.Pos, Kind: "f64", Text: t.Lexeme, Float: n}
 		leftDepth = 1
@@ -441,11 +440,11 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		left = e
 		leftDepth = expressionDepth
 	default:
-		return nil, 0, p.errorAt(t, fmt.Sprintf("expected expression, got %s", t.Kind))
+		return nil, 0, p.errorAtCode(t, diagnostic.ParserExpectedExpression, fmt.Sprintf("expected expression, got %s", t.Kind))
 	}
 
 	if leftDepth > maxSyntaxNestingDepth {
-		return nil, 0, p.errorAt(t, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+		return nil, 0, p.errorAtCode(t, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
 	}
 	for {
 		if p.check(token.LBracket) && precCall >= min {
@@ -478,7 +477,7 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		}
 		leftDepth++
 		if leftDepth > maxSyntaxNestingDepth {
-			return nil, 0, p.errorAt(op, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+			return nil, 0, p.errorAtCode(op, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
 		}
 		left = &ast.BinaryExpr{At: op.Pos, Left: left, Op: string(op.Kind), Right: right}
 	}
@@ -500,7 +499,7 @@ func (p *Parser) finishIndex(collection ast.Expr, collectionDepth int) (ast.Expr
 	}
 	depth++
 	if depth > maxSyntaxNestingDepth {
-		return nil, 0, p.errorAt(start, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+		return nil, 0, p.errorAtCode(start, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
 	}
 	return &ast.IndexExpr{At: start.Pos, Collection: collection, Index: index}, depth, nil
 }
@@ -529,7 +528,7 @@ func (p *Parser) finishCall(callee ast.Expr, calleeDepth int) (ast.Expr, int, er
 	}
 	depth := maxChildDepth + 1
 	if depth > maxSyntaxNestingDepth {
-		return nil, 0, p.errorAt(start, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+		return nil, 0, p.errorAtCode(start, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
 	}
 	return &ast.CallExpr{At: start.Pos, Callee: callee, Args: args}, depth, nil
 }
@@ -560,28 +559,9 @@ func (p *Parser) advance() token.Token {
 func (p *Parser) peek() token.Token     { return p.tokens[p.current] }
 func (p *Parser) previous() token.Token { return p.tokens[p.current-1] }
 func (p *Parser) errorAt(t token.Token, msg string) error {
-	code := diagnostic.ParserGeneric
-	switch {
-	case strings.HasPrefix(msg, "syntax nesting exceeds limit"):
-		code = diagnostic.ParserSyntaxNesting
-	case strings.HasPrefix(msg, "expression nesting exceeds limit"):
-		code = diagnostic.ParserExpressionNesting
-	case msg == "parser made no progress" || msg == "parser made no progress in block":
-		code = diagnostic.ParserNoProgress
-	case strings.HasPrefix(msg, "function names beginning with '__' are reserved"):
-		code = diagnostic.ParserReservedInternalName
-	case msg == "'main' is reserved for the top-level program":
-		code = diagnostic.ParserReservedMainName
-	case strings.HasPrefix(msg, "type nesting exceeds limit"):
-		code = diagnostic.ParserTypeNesting
-	case msg == "array element assignment is not supported in Aster 0.1":
-		code = diagnostic.ParserArrayAssignmentUnsupported
-	case strings.HasPrefix(msg, "integer literal out of range"):
-		code = diagnostic.ParserIntegerOutOfRange
-	case msg == "invalid float":
-		code = diagnostic.ParserInvalidFloat
-	case strings.HasPrefix(msg, "expected expression"):
-		code = diagnostic.ParserExpectedExpression
-	}
+	return p.errorAtCode(t, diagnostic.ParserGeneric, msg)
+}
+
+func (p *Parser) errorAtCode(t token.Token, code, msg string) error {
 	return diagnostic.New(code, "parser", t.Pos, msg)
 }
