@@ -479,11 +479,12 @@ func TestExpandPreservesASTEndPositions(t *testing.T) {
 	if instance.EndPos() != template.EndPos() {
 		t.Fatalf("instance end = %+v, template end = %+v", instance.EndPos(), template.EndPos())
 	}
+	wantConcreteTypeEnd := strings.LastIndex(source, "i64") + len("i64")
 	if instance.Params[0].EndPos() != template.Params[0].EndPos() ||
-		instance.Params[0].Type.EndPos() != template.Params[0].Type.EndPos() {
-		t.Fatalf("parameter/type ends were not preserved: got %+v / %+v, want %+v / %+v",
+		instance.Params[0].Type.EndPos().Offset != wantConcreteTypeEnd {
+		t.Fatalf("specialized parameter/type ends = %+v / %+v, want parameter end %+v and concrete type end offset %d",
 			instance.Params[0].EndPos(), instance.Params[0].Type.EndPos(),
-			template.Params[0].EndPos(), template.Params[0].Type.EndPos())
+			template.Params[0].EndPos(), wantConcreteTypeEnd)
 	}
 	gotReturn := instance.Body.Statements[0].(*ast.ReturnStmt)
 	if gotReturn.EndPos() != templateReturn.EndPos() {
