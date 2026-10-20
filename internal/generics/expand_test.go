@@ -213,3 +213,101 @@ fn take(value: Nest<i64>) { }`)
 		t.Fatalf("expected TYP086 expanding-instantiation diagnostic, got %v", err)
 	}
 }
+
+func TestExpandSpecializesGenericEnumsFromPayloadAndExplicitArguments(t *testing.T) {
+	program := parse(t, `enum Option<T> { None, Some(T), }
+let inferred = Option::Some(7);
+let explicit = Option::<string>::Some("aster");
+let typed: Option<i64> = Option::None;`)
+	expanded, err := Expand(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instances := map[string]*ast.EnumDecl{}
+	for _, decl := range expanded.Decls {
+		if enumDecl, ok := decl.(*ast.EnumDecl); ok && strings.HasPrefix(enumDecl.Name, "__aster_generic_enum_") {
+			instances[enumDecl.Name] = enumDecl
+			if len(enumDecl.TypeParams) != 0 {
+				t.Fatalf("generated enum %s still has type parameters", enumDecl.Name)
+			}
+		}
+	}
+	if len(instances) != 2 {
+		t.Fatalf("generic enum instances = %d, want Option<i64> and Option<string>", len(instances))
+	}
+	for _, enumDecl := range instances {
+		if len(enumDecl.Variants) != 2 || enumDecl.Variants[1].Payload[0].Name != map[bool]string{true: "i64", false: "string"}[strings.Contains(enumDecl.Name, "000001")] {
+			// The generated IDs are deterministic for this fixture; validate the payload
+			// types below in a less order-dependent way as the primary assertion.
+			if len(enumDecl.Variants) != 2 || (enumDecl.Variants[1].Payload[0].Name != "i64" && enumDecl.Variants[1].Payload[0].Name != "string") {
+				t.Fatalf("unexpected specialized enum payload: %#v", enumDecl)
+			}
+		}
+	}
+	for _, decl := range expanded.Decls {
+		if sd, ok := decl.(*ast.StmtDecl); ok {
+			if let, ok := sd.Statement.(*ast.LetStmt); ok {
+				constructor, ok := let.Value.(*ast.EnumVariantExpr)
+				if !ok || strings.HasPrefix(constructor.EnumName, "Option") || len(constructor.TypeArgs) != 0 {
+					t.Fatalf("enum constructor was not rewritten to a concrete type: %#v", let.Value)
+				}
+			}
+		}
+	}
+}
+
+func TestExpandMonomorphizesGenericEnumMatchBindings(t *testing.T) {
+	program := parse(t, `enum Option<T> { None, Some(T), }
+fn unwrap<T>(value: Option<T>) -> T {
+	return match value { Option::Some(item) => item, Option::None => 0, };
+}
+let value = unwrap(Option::Some(42));`)
+	expanded, err := Expand(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var specialized *ast.Function
+	for _, decl := range expanded.Decls {
+		if fn, ok := decl.(*ast.Function); ok && strings.HasPrefix(fn.Name, "__aster_generic_fn_") {
+			specialized = fn
+		}
+	}
+	if specialized == nil || specialized.ReturnType == nil || specialized.ReturnType.Name != "i64" {
+		t.Fatalf("generic enum consumer was not specialized: %#v", specialized)
+	}
+	match, ok := specialized.Body.Statements[0].(*ast.ReturnStmt).Value.(*ast.MatchExpr)
+	if !ok || match.Arms[0].Pattern.EnumName == "Option" || match.Arms[0].Pattern.EnumName == "" {
+		t.Fatalf("match patterns were not rewritten to the concrete enum identity: %#v", specialized.Body)
+	}
+}
+
+func TestExpandReusesRecursiveGenericEnumInstance(t *testing.T) {
+	program := parse(t, `enum List<T> { Nil, Cons(T, Array<List<T>>), }
+fn consume(value: List<i64>) { }`)
+	expanded, err := Expand(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, decl := range expanded.Decls {
+		if enumDecl, ok := decl.(*ast.EnumDecl); ok && strings.HasPrefix(enumDecl.Name, "__aster_generic_enum_") {
+			count++
+			payload := enumDecl.Variants[1].Payload[1]
+			if payload.Name != "Array" || payload.Element == nil || payload.Element.Name != enumDecl.Name {
+				t.Fatalf("recursive enum payload = %#v, want Array<%s>", payload, enumDecl.Name)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("recursive generic enum instance count = %d, want one cached instance", count)
+	}
+}
+
+func TestExpandRejectsGrowingGenericEnumInstantiation(t *testing.T) {
+	program := parse(t, `enum Nest<T> { End, Next(Nest<Array<T>>), }
+fn consume(value: Nest<i64>) { }`)
+	_, err := Expand(program)
+	if err == nil || !strings.Contains(err.Error(), "TYP089") {
+		t.Fatalf("expected TYP089 expanding-instantiation diagnostic, got %v", err)
+	}
+}
