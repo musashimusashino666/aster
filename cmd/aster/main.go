@@ -67,6 +67,11 @@ Usage:
   aster build [--target native] [-o output] <file.ast>  Build a native executable
   aster version                          Print version
 
+Security:
+  Native execution runs with host privileges and is not a sandbox. Do not
+  execute untrusted Aster source with --engine native or run untrusted native
+  binaries built from Aster source.
+
 Examples:
   aster run examples/hello.ast
   aster check examples/fibonacci.ast

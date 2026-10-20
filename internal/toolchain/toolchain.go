@@ -2,14 +2,36 @@
 package toolchain
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
+const nativeBuildTimeout = 2 * time.Minute
+const nativeRunTimeout = 5 * time.Minute
+
+// BuildNative formats and compiles goSource, atomically replacing output on
+// success. The host Go toolchain is bounded by nativeBuildTimeout.
 func BuildNative(goSource, output string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), nativeBuildTimeout)
+	defer cancel()
+	return BuildNativeContext(ctx, goSource, output)
+}
+
+// BuildNativeContext performs a native build using ctx to bound gofmt and go
+// build. A canceled or expired build leaves the previous output untouched.
+func BuildNativeContext(ctx context.Context, goSource, output string) error {
+	if ctx == nil {
+		return fmt.Errorf("native build requires a non-nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("native build canceled: %w", err)
+	}
 	goPath, err := exec.LookPath("go")
 	if err != nil {
 		return fmt.Errorf("native backend requires Go 1.23 or newer; executable %q was not found in PATH", "go")
@@ -36,10 +58,13 @@ func BuildNative(goSource, output string) error {
 	if err = os.WriteFile(filepath.Join(dir, "main.go"), []byte(goSource), 0o644); err != nil {
 		return err
 	}
-	fmtcmd := exec.Command(gofmtPath, "-w", "main.go")
+	fmtcmd := exec.CommandContext(ctx, gofmtPath, "-w", "main.go")
 	fmtcmd.Dir = dir
 	if out, err := fmtcmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("format generated code: %w\n%s", err, strings.TrimSpace(string(out)))
+		return commandFailure(ctx, "format generated code", err, out)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("native build canceled: %w", err)
 	}
 	outputDir, err := os.MkdirTemp(filepath.Dir(abs), "."+filepath.Base(abs)+".tmp-*")
 	if err != nil {
@@ -48,18 +73,37 @@ func BuildNative(goSource, output string) error {
 	defer os.RemoveAll(outputDir)
 	tempOutput := filepath.Join(outputDir, filepath.Base(abs))
 
-	cmd := exec.Command(goPath, "build", "-trimpath", "-ldflags=-s -w", "-o", tempOutput, ".")
+	cmd := exec.CommandContext(ctx, goPath, "build", "-trimpath", "-ldflags=-s -w", "-o", tempOutput, ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOPROXY=off", "GOSUMDB=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("native build failed: %w\n%s", err, strings.TrimSpace(string(out)))
+		return commandFailure(ctx, "native build", err, out)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("native build canceled: %w", err)
 	}
 	if err := os.Rename(tempOutput, abs); err != nil {
 		return fmt.Errorf("replace native output %s: %w", abs, err)
 	}
 	return nil
 }
+
+// RunNative builds and executes goSource with a five-minute total deadline.
+// Native programs execute with host privileges and are not sandboxed.
 func RunNative(goSource string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), nativeRunTimeout)
+	defer cancel()
+	return RunNativeContext(ctx, goSource)
+}
+
+// RunNativeContext bounds both the native build and executable run with ctx.
+func RunNativeContext(ctx context.Context, goSource string) error {
+	if ctx == nil {
+		return fmt.Errorf("native run requires a non-nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("native run canceled: %w", err)
+	}
 	dir, err := os.MkdirTemp("", "aster-run-*")
 	if err != nil {
 		return err
@@ -69,15 +113,35 @@ func RunNative(goSource string) error {
 	if os.PathSeparator == '\\' {
 		bin += ".exe"
 	}
-	if err = BuildNative(goSource, bin); err != nil {
+	if err = BuildNativeContext(ctx, goSource, bin); err != nil {
 		return err
 	}
-	cmd := exec.Command(bin)
+	cmd := exec.CommandContext(ctx, bin)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
-		return fmt.Errorf("native program failed: %w", err)
+		return commandFailure(ctx, "native program", err, nil)
 	}
 	return nil
+}
+
+func commandFailure(ctx context.Context, operation string, err error, output []byte) error {
+	message := strings.TrimSpace(string(output))
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if message == "" {
+			return fmt.Errorf("%s timed out: %w", operation, ctx.Err())
+		}
+		return fmt.Errorf("%s timed out: %w\n%s", operation, ctx.Err(), message)
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		if message == "" {
+			return fmt.Errorf("%s canceled: %w", operation, ctx.Err())
+		}
+		return fmt.Errorf("%s canceled: %w\n%s", operation, ctx.Err(), message)
+	}
+	if message == "" {
+		return fmt.Errorf("%s failed: %w", operation, err)
+	}
+	return fmt.Errorf("%s failed: %w\n%s", operation, err, message)
 }
