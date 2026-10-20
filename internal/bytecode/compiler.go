@@ -5,7 +5,6 @@ import (
 
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/checker"
-	"github.com/aster-lang/aster/internal/ir"
 )
 
 // Compile type-checks an Aster AST and lowers its normalized IR to portable
@@ -27,4 +26,3 @@ func CompileTyped(typed *checker.TypedProgram) (*Program, error) {
 	return compileIR(typed.IR)
 }
 
-var _ = ir.Type("")
