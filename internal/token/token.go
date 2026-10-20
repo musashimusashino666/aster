@@ -64,9 +64,9 @@ type Position struct {
 }
 
 type Token struct {
-	Kind          Kind     `json:"kind"`
-	Lexeme        string   `json:"lexeme"`
-	Pos           Position `json:"pos"`
+	Kind   Kind     `json:"kind"`
+	Lexeme string   `json:"lexeme"`
+	Pos    Position `json:"pos"`
 	// End is the exclusive end position of the token. Offset and column values
 	// count UTF-8 bytes, matching Position's existing source-location contract.
 	End           Position `json:"end"`
