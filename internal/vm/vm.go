@@ -208,7 +208,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		if value.Kind == bytecode.ValueArray {
 			value.MarkArrayShared()
 			value.SetArrayBorrowed(true)
-		} else if value.Kind == bytecode.ValueStruct {
+		} else if value.Kind == bytecode.ValueStruct || value.Kind == bytecode.ValueEnum {
 			value.MarkArrayShared()
 		}
 		push(value)
@@ -399,7 +399,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			push(value)
 		} else {
 			value := *local
-			if value.Kind == bytecode.ValueStruct {
+			if value.Kind == bytecode.ValueStruct || value.Kind == bytecode.ValueEnum {
 				value.MarkArrayShared()
 			}
 			push(value)
