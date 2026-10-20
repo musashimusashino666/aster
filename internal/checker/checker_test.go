@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/parser"
 )
 
@@ -15,6 +16,44 @@ func checkSource(t *testing.T, src string) error {
 	}
 	return Check(p)
 }
+
+func TestAnalyzeExposesExpressionTypesAndFunctionSignatures(t *testing.T) {
+	tree, err := parser.Parse(`fn identity(value: i64) -> i64 { return value; } let result = identity(1 + 2);`, "typed.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, ok := typed.Function("identity")
+	if !ok {
+		t.Fatal("checker result is missing identity signature")
+	}
+	if info.Return != I64 || len(info.Params) != 1 || info.Params[0] != I64 {
+		t.Fatalf("unexpected identity signature: %#v", info)
+	}
+
+	stmt := tree.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	call, ok := stmt.Value.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("initializer should be a call, got %T", stmt.Value)
+	}
+	if got, ok := typed.TypeOf(call); !ok || got != I64 {
+		t.Fatalf("call type = %q, present=%v; want i64", got, ok)
+	}
+	add, ok := call.Args[0].(*ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("call argument should be binary expression, got %T", call.Args[0])
+	}
+	if got, ok := typed.TypeOf(add); !ok || got != I64 {
+		t.Fatalf("binary expression type = %q, present=%v; want i64", got, ok)
+	}
+	if got, ok := typed.TypeOf(add.Left); !ok || got != I64 {
+		t.Fatalf("left literal type = %q, present=%v; want i64", got, ok)
+	}
+}
+
 func TestAcceptsRecursionAndTypeInference(t *testing.T) {
 	src := `fn fact(n: i64) -> i64 { if n <= 1 { return 1; } else { return n * fact(n - 1); } } let mut result = fact(5); result = result + 1; print(result);`
 	if err := checkSource(t, src); err != nil {
