@@ -4,6 +4,25 @@ package langtypes
 
 import "strings"
 
+func validIdentifier(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_') {
+				return false
+			}
+			continue
+		}
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+
 // MaxNestingDepth limits syntactic nesting of type names such as
 // Array<Array<i64>>. It is distinct from limits.MaxArrayNestingDepth, which
 // bounds runtime array-value traversal and display. Keeping this in a
@@ -34,6 +53,8 @@ func ValidName(s string) bool {
 	case "i64", "f64", "bool", "string", "unit":
 		return true
 	default:
-		return false
+		// Nominal type names are validated against the declaration table by
+		// the checker and bytecode verifier. This package validates spelling.
+		return validIdentifier(s) && s != "Array"
 	}
 }
