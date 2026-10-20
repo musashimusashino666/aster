@@ -33,6 +33,7 @@ type VM struct {
 	stack            []bytecode.Value
 	frames           []frame
 	activeLocalSlots int
+	stdoutBytes      int64
 	out              io.Writer
 }
 
