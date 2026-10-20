@@ -1143,13 +1143,17 @@ enum Result<T, E> { Ok(T), Err(E), }
 fn unwrap<T>(value: Option<T>) -> T {
 	return match value { Option::Some(item) => item, Option::None => 0, };
 }
+fn errorCode(message: string) -> i64 {
+	if message == "error" { return 1; }
+	return 0;
+}
 let mut original: Array<i64> = [1, 2];
 let wrapped: Option<Array<i64>> = Option::Some(original);
 original[0] = 9;
 print(match wrapped { Option::Some(values) => values[0], Option::None => 0, });
 print(unwrap(Option::Some(42)));
 let result: Result<i64, string> = Result::Ok(7);
-print(match result { Result::Ok(value) => value, Result::Err(message) => 0, });
+print(match result { Result::Ok(value) => value, Result::Err(message) => errorCode(message), });
 let empty: Option<i64> = Option::<i64>::None;
 print(match empty { Option::Some(value) => value, Option::None => 0, });
 `
