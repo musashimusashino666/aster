@@ -206,10 +206,14 @@ func validateFunctionTypes(p *Program, fi int, constantTypes []string, structTyp
 
 			switch ins.Op {
 			case OpJump:
-				if err := enqueue(ins.A); err != nil { return err }
+				if err := enqueue(ins.A); err != nil {
+					return err
+				}
 			case OpMatchEnum:
 				for _, target := range fn.MatchTables[ins.B].Targets {
-					if err := enqueue(target); err != nil { return err }
+					if err := enqueue(target); err != nil {
+						return err
+					}
 				}
 			case OpJumpIfFalse, OpJumpIfTrue:
 				if err := enqueue(ins.A); err != nil {
@@ -294,7 +298,7 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		enumType := p.EnumTypes[ins.A]
 		variant := enumType.Variants[ins.B]
 		cursor := s.stack
-		for payloadIndex := len(variant.PayloadTypes)-1; payloadIndex >= 0; payloadIndex-- {
+		for payloadIndex := len(variant.PayloadTypes) - 1; payloadIndex >= 0; payloadIndex-- {
 			if cursor == nil {
 				return false, fmt.Errorf("function %q instruction %d: abstract stack underflow while building enum %s::%s", fn.Name, pc, enumType.Name, variant.Name)
 			}
@@ -311,7 +315,9 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		if !local.initialized {
 			return false, fmt.Errorf("function %q instruction %d: match subject local %d may be read before initialization", fn.Name, pc, ins.A)
 		}
-		if local.typ == "" { return false, fmt.Errorf("function %q instruction %d: match subject local %d has no type", fn.Name, pc, ins.A) }
+		if local.typ == "" {
+			return false, fmt.Errorf("function %q instruction %d: match subject local %d has no type", fn.Name, pc, ins.A)
+		}
 		table := fn.MatchTables[ins.B]
 		enumType := p.EnumTypes[table.EnumTypeID]
 		if local.typ != enumType.Name {
@@ -322,10 +328,15 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		if !local.initialized {
 			return false, fmt.Errorf("function %q instruction %d: enum payload subject local %d may be read before initialization", fn.Name, pc, ins.A)
 		}
-		if local.typ == "" { return false, fmt.Errorf("function %q instruction %d: enum payload subject local %d has no type", fn.Name, pc, ins.A) }
+		if local.typ == "" {
+			return false, fmt.Errorf("function %q instruction %d: enum payload subject local %d has no type", fn.Name, pc, ins.A)
+		}
 		enumIndex := -1
 		for i, candidate := range p.EnumTypes {
-			if candidate.Name == local.typ { enumIndex = i; break }
+			if candidate.Name == local.typ {
+				enumIndex = i
+				break
+			}
 		}
 		if enumIndex < 0 {
 			return false, fmt.Errorf("function %q instruction %d: GET_ENUM_PAYLOAD requires enum local, got %s", fn.Name, pc, local.typ)
