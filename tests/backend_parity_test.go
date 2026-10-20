@@ -693,7 +693,6 @@ func TestNativePrintWriteFailureMatchesVM(t *testing.T) {
 	}
 }
 
-
 func TestConstantConditionFlowBackendParity(t *testing.T) {
 	source := "fn truth() -> i64 { if true { return 11; } }\n" +
 		"fn falsity() -> i64 { if false { return 99; } else { return 22; } }\n" +
