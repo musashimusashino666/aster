@@ -18,6 +18,7 @@ Asterは、静的型検査を持つ独自言語と、複数の実行方式を統
 |---|---|
 | レキサー、位置情報、入れ子のブロックコメント | 実装済み |
 | 再帰下降パーサーとPratt式パーサー | 実装済み |
+| ソースフォーマッター | 実装済み（コメントと文字列リテラルの原表記を保持） |
 | `i64`、`f64`、`bool`、`string`、`unit` の型検査 | 実装済み |
 | 型推論、関数、再帰、条件分岐、`while`、`return` | 実装済み |
 | 不変バインディング、`let mut`、配列 `Array<T>` | 実装済み |
@@ -62,6 +63,15 @@ go build -o ./bin/aster ./cmd/aster
 ```bash
 ./bin/aster check examples/fibonacci.ast
 ```
+
+### ソースの整形
+
+```bash
+./bin/aster fmt examples/hello.ast
+./bin/aster fmt --check examples/hello.ast
+```
+
+aster fmt は構文を検証してから整形し、コメントと文字列リテラルのエスケープ表記を保持します。--check はファイルを変更せず、整形済みかどうかを検証します。
 
 ### バイトコードへコンパイルして再実行
 
