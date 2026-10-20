@@ -40,6 +40,22 @@ type Function struct {
 func (n *Function) Pos() token.Position { return n.At }
 func (*Function) declNode()             {}
 
+// StructDecl declares a nominal, non-generic record type.
+type StructDecl struct {
+	At     token.Position
+	Name   string
+	Fields []StructField
+}
+
+func (n *StructDecl) Pos() token.Position { return n.At }
+func (*StructDecl) declNode()             {}
+
+type StructField struct {
+	At   token.Position
+	Name string
+	Type TypeRef
+}
+
 type Param struct {
 	At   token.Position
 	Name string
@@ -130,6 +146,16 @@ type IdentifierExpr struct {
 
 func (n *IdentifierExpr) Pos() token.Position { return n.At }
 func (*IdentifierExpr) exprNode()             {}
+
+// FieldExpr reads a declared field from a struct value.
+type FieldExpr struct {
+	At     token.Position
+	Object Expr
+	Name   string
+}
+
+func (n *FieldExpr) Pos() token.Position { return n.At }
+func (*FieldExpr) exprNode()             {}
 
 type LiteralExpr struct {
 	At     token.Position
