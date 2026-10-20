@@ -2,6 +2,8 @@ package vm
 
 import (
 	"io"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/bytecode"
@@ -9,7 +11,7 @@ import (
 	"github.com/aster-lang/aster/internal/parser"
 )
 
-func benchmarkBytecode(b *testing.B, source string) *bytecode.Program {
+func benchmarkBytecode(b testing.TB, source string) *bytecode.Program {
 	b.Helper()
 	tree, err := parser.Parse(source, "benchmark.ast")
 	if err != nil {
@@ -42,5 +44,100 @@ func BenchmarkVMRecursiveFibonacci(b *testing.B) {
 		if err := Run(program, io.Discard); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func BenchmarkVMFunctionCallLoop(b *testing.B) {
+	program := benchmarkBytecode(b, benchmarkFunctionCallLoopSource())
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := Run(program, io.Discard); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkVMArrayTraversal(b *testing.B) {
+	program := benchmarkBytecode(b, benchmarkArrayTraversalSource())
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := Run(program, io.Discard); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+func BenchmarkVMStringConcatAndUnicodeLen(b *testing.B) {
+	program := benchmarkBytecode(b, benchmarkStringConcatAndUnicodeLenSource())
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := Run(program, io.Discard); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+func BenchmarkVMFormattedArrayPrint(b *testing.B) {
+	program := benchmarkBytecode(b, benchmarkFormattedArrayPrintSource())
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := Run(program, io.Discard); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+func benchmarkFunctionCallLoopSource() string {
+	return `fn increment(value: i64) -> i64 { return value + 1; } let mut i: i64 = 0; let mut total: i64 = 0; while i < 1000 { total = increment(total); i = i + 1; } print(total);`
+}
+
+func benchmarkArrayTraversalSource() string {
+	var source strings.Builder
+	source.WriteString("let values: Array<i64> = [")
+	for i := 0; i < 256; i++ {
+		if i != 0 {
+			source.WriteString(", ")
+		}
+		source.WriteString(strconv.Itoa(i))
+	}
+	source.WriteString("]; let mut i: i64 = 0; let mut total: i64 = 0; while i < len(values) { total = total + values[i]; i = i + 1; } print(total);")
+	return source.String()
+}
+
+func benchmarkStringConcatAndUnicodeLenSource() string {
+	return `let base: string = "Aster界"; let mut value: string = base; let mut i: i64 = 0; let mut total: i64 = 0; while i < 64 { total = total + len(value); value = value + base; i = i + 1; } print(total);`
+}
+
+func benchmarkFormattedArrayPrintSource() string {
+	var source strings.Builder
+	source.WriteString("let values: Array<i64> = [")
+	for i := 0; i < 128; i++ {
+		if i != 0 {
+			source.WriteString(", ")
+		}
+		source.WriteString(strconv.Itoa(i))
+	}
+	source.WriteString("]; print(values);")
+	return source.String()
+}
+
+func TestVMExtendedBenchmarkWorkloads(t *testing.T) {
+	workloads := []struct {
+		name   string
+		source string
+	}{
+		{name: "function_call_loop", source: benchmarkFunctionCallLoopSource()},
+		{name: "array_traversal", source: benchmarkArrayTraversalSource()},
+		{name: "string_concat_unicode_len", source: benchmarkStringConcatAndUnicodeLenSource()},
+		{name: "formatted_array_print", source: benchmarkFormattedArrayPrintSource()},
+	}
+	for _, workload := range workloads {
+		t.Run(workload.name, func(t *testing.T) {
+			program := benchmarkBytecode(t, workload.source)
+			if err := Run(program, io.Discard); err != nil {
+				t.Fatalf("benchmark workload failed: %v", err)
+			}
+		})
 	}
 }

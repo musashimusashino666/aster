@@ -1,37 +1,40 @@
 # Benchmarking Aster
 
-No performance claim is made from the current prototype. Benchmark numbers need to be measured on a documented host and compared with equivalent workloads and optimization settings.
+No performance claim is made from the current prototype. Benchmark numbers depend on the host and Go toolchain; compare repeated measurements on the same machine before considering representation changes.
 
 ## In-process VM baselines
 
-Run:
+Run the fixed-workload benchmarks from the repository root:
 
 ```bash
+go version
+git rev-parse HEAD
 go test ./internal/vm -run '^$' -bench '^BenchmarkVM' -benchmem -count=5
 ```
 
-The current Go benchmarks cover a numeric loop and recursive Fibonacci after one-time parse, type-check, and bytecode compilation. Their measurements are execution-only for the VM, not end-to-end compile times.
+The benchmarks parse, type-check, and compile their Aster source once before timing the VM execution loop. They report allocations as well as elapsed time. Current workloads are:
+
+- `BenchmarkVMNumericLoop`: integer arithmetic and branch-heavy loop.
+- `BenchmarkVMRecursiveFibonacci`: recursive function calls and integer arithmetic.
+- `BenchmarkVMFunctionCallLoop`: repeated calls with one `i64` argument and result.
+- `BenchmarkVMArrayTraversal`: reads and sums 256 array elements using indexed access.
+- `BenchmarkVMStringConcatAndUnicodeLen`: string concatenation and Unicode code-point counting.
+- `BenchmarkVMFormattedArrayPrint`: construction and formatting of a 128-element array, with the writer set to `io.Discard` so terminal throughput does not dominate.
+
+These are execution-focused microbenchmarks, not end-to-end compile measurements. Use the same Go version, commit, benchmark flags, and host when comparing revisions. Record OS/kernel, CPU, Go version, commit, compiler flags, warm/cold cache conditions, repetitions, median, and dispersion. Do not compare single-run results or interpret a microbenchmark as a general language-performance claim.
 
 ## Native comparison
 
-Build an executable first, then measure repeated runs separately:
+Build an executable before timing repeated runs:
 
 ```bash
 mkdir -p ./bin
 go build -o ./bin/aster ./cmd/aster
-./bin/aster build -o ./bench/loop examples/data_processing.ast
+./bin/aster build -o ./bench/data_processing examples/data_processing.ast
 ```
 
-Use a tool such as `hyperfine` or a carefully controlled shell harness. Record OS/kernel, CPU, Go version, commit, compiler flags, warm/cold cache conditions, number of repetitions, median and dispersion. Compare identical outputs and check error behavior as well as elapsed time. Do not compare Aster's VM execution with another language's optimized native executable and call the result a language-level performance comparison.
+Use `hyperfine` or another controlled harness to compare repeated executions of that native binary with the VM workload. Make sure both executions perform equivalent work and produce equivalent output. Measure native build time separately from executable runtime. Record the same host/compiler metadata and report median and dispersion. Do not compare Aster's VM execution with another language's optimized native executable and call the result a language-level performance comparison.
 
-## Planned workloads
+## Further workloads
 
-- Integer arithmetic and branch-heavy loops
-- Function calls and recursion
-- Array indexing and traversal
-- String operations and Unicode length
-- Parsing/type-checking time on a fixed source corpus
-- Native build time and executable size
-- Memory allocation and peak resident memory
-
-AI/GPU, WebAssembly, game-loop latency, mobile and embedded benchmarks are deferred until those backends exist.
+Parsing/type-checking time over a fixed source corpus, native build time and executable size, and process peak resident memory still need dedicated harnesses. AI/GPU, WebAssembly, game-loop latency, mobile and embedded benchmarks are deferred until those backends exist.

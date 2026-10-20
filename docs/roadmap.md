@@ -16,10 +16,10 @@ This roadmap is a planning document, not a commitment that work is already in pr
 - [x] Bytecode control-flow, operand-stack, abstract-type, call-signature, and local-initialization verifier
 - [x] Control-flow and operand-stack-height verifier (stack underflow, merge consistency, and termination stack state)
 - [x] Fuzz targets for lexer, parser, bytecode loader, and bytecode instruction validation (broader sustained fuzz campaigns remain future work)
-- [ ] Expand differential testing between VM and native executable (current tests cover selected outputs and runtime error classes; generated-program/property-based coverage remains future work)
+- [x] Expand differential testing between VM and native executable (fixed-seed generated-program coverage compares 64 typed expressions across arithmetic, booleans, strings, and arrays; broader property-based and fuzz campaigns remain future work)
 - [ ] Formatter and stable diagnostic codes
 - [ ] More exact return-flow analysis and error spans
-- [ ] Benchmark harness with pinned workloads and reproducible methodology
+- [x] Benchmark harness with pinned VM workloads and reproducible methodology (numeric loops, recursion, function calls, array traversal, string/Unicode operations, and array formatting; end-to-end parse/build and process-memory harnesses remain future work)
 
 ## Phase 0.3 — practical language features
 
