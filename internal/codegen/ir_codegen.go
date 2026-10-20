@@ -18,6 +18,45 @@ func irFunctionName(id ir.FunctionID) string {
 	return "asterFn_" + strconv.Itoa(int(id))
 }
 
+func irStructTypeName(name string) string { return "asterType_" + name }
+
+func isAggregateType(t string) bool {
+	if _, ok := arrayElementType(t); ok {
+		return true
+	}
+	switch t {
+	case "i64", "f64", "bool", "string", "unit":
+		return false
+	default:
+		return true
+	}
+}
+
+func (g *generator) irStructType(structType ir.StructType) error {
+	if !langtypes.ValidName(structType.Name) {
+		return fmt.Errorf("codegen: invalid IR struct name %q", structType.Name)
+	}
+	g.line("type " + irStructTypeName(structType.Name) + " struct {")
+	g.indent++
+	for i, field := range structType.Fields {
+		if !langtypes.ValidName(string(field.Type)) || field.Type == "unit" {
+			return fmt.Errorf("codegen: invalid IR field type %q in struct %q", field.Type, structType.Name)
+		}
+		g.line(fmt.Sprintf("f_%d %s", i, goType(string(field.Type))))
+	}
+	g.indent--
+	g.line("}")
+	g.line("func (v " + irStructTypeName(structType.Name) + ") MarkArrayShared() {")
+	g.indent++
+	for i := range structType.Fields {
+		g.line(fmt.Sprintf("asterMarkArrayShared(v.f_%d)", i))
+	}
+	g.indent--
+	g.line("}")
+	g.line("")
+	return nil
+}
+
 func irPositionArgs(node ir.Node) string {
 	pos := node.Pos()
 	return fmt.Sprintf("%d, %d", pos.Line, pos.Column)
@@ -29,7 +68,7 @@ func irPositionArgs(node ir.Node) string {
 // result is stored or otherwise becomes independently mutable.
 func needsArrayShareAtBoundary(expr ir.Expr) bool {
 	switch expr.(type) {
-	case *ir.LocalExpr, *ir.IndexExpr:
+	case *ir.LocalExpr, *ir.IndexExpr, *ir.FieldExpr:
 		return true
 	default:
 		return false
@@ -96,7 +135,7 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 			return fmt.Errorf("codegen: invalid IR local type %q for %q", t, n.Local.Name)
 		}
 		name := irLocalName(n.Local.ID)
-		if _, isArray := arrayElementType(t); isArray && needsArrayShareAtBoundary(n.Value) {
+		if isAggregateType(t) && needsArrayShareAtBoundary(n.Value) {
 			expr = "asterShareValue(" + expr + ")"
 		}
 		g.line(name + " := " + expr)
@@ -124,7 +163,7 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		if err != nil {
 			return err
 		}
-		if _, isArray := arrayElementType(string(n.Value.ExprType())); isArray && needsArrayShareAtBoundary(n.Value) {
+		if isAggregateType(string(n.Value.ExprType())) && needsArrayShareAtBoundary(n.Value) {
 			expr = "asterShareValue(" + expr + ")"
 		}
 		g.line(irLocalName(n.Target) + " = " + expr)
@@ -201,7 +240,7 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		if err != nil {
 			return err
 		}
-		if _, isArray := arrayElementType(string(n.Value.ExprType())); isArray {
+		if isAggregateType(string(n.Value.ExprType())) {
 			expr = "asterShareValue(" + expr + ")"
 		}
 		g.line("return " + expr)
@@ -252,6 +291,15 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			return "", fmt.Errorf("codegen: invalid IR array element type for %q", t)
 		}
 		return "asterNewArray([]" + goType(elem) + "{" + strings.Join(items, ", ") + "})", nil
+	case *ir.FieldExpr:
+		object, err := g.irExpression(n.Object)
+		if err != nil {
+			return "", err
+		}
+		if n.FieldIndex < 0 {
+			return "", fmt.Errorf("codegen: invalid field index %d", n.FieldIndex)
+		}
+		return "(" + object + ").f_" + strconv.Itoa(n.FieldIndex), nil
 	case *ir.IndexExpr:
 		collection, err := g.irExpression(n.Collection)
 		if err != nil {
@@ -344,8 +392,8 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			if n.Target == ir.CallUserFunction {
-				if _, isArray := arrayElementType(string(arg.ExprType())); isArray {
+			if n.Target == ir.CallUserFunction || n.Target == ir.CallStructConstructor {
+				if isAggregateType(string(arg.ExprType())) {
 					lowered = "asterShareValue(" + lowered + ")"
 				}
 			}
@@ -353,6 +401,12 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		}
 		joined := strings.Join(args, ", ")
 		switch n.Target {
+		case ir.CallStructConstructor:
+			fields := make([]string, len(args))
+			for i, arg := range args {
+				fields[i] = fmt.Sprintf("f_%d: %s", i, arg)
+			}
+			return irStructTypeName(n.FunctionName) + "{" + strings.Join(fields, ", ") + "}", nil
 		case ir.CallPrint:
 			return "asterPrint(" + joined + ", " + irPositionArgs(n) + ")", nil
 		case ir.CallLen:
