@@ -2,12 +2,15 @@ package vm
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/bytecode"
 	"github.com/aster-lang/aster/internal/checker"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/parser"
+	"github.com/aster-lang/aster/internal/token"
 )
 
 func runSource(t *testing.T, src string) (string, error) {
@@ -298,5 +301,31 @@ print(describe(Message::Text("abc")));
 	}
 	if got, want := out, "0\n9\n3\n"; got != want {
 		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
+func TestVMRuntimeDiagnosticRetainsInstructionSpan(t *testing.T) {
+	source := "let result = 10 / 0;"
+	_, err := runSource(t, source)
+	if err == nil {
+		t.Fatal("expected division-by-zero runtime diagnostic")
+	}
+	var got *diagnostic.Diagnostic
+	if !errors.As(err, &got) {
+		t.Fatalf("runtime error type = %T, want *diagnostic.Diagnostic", err)
+	}
+	startOffset := strings.Index(source, "/")
+	endOffset := strings.Index(source, "0;") + 1
+	wantStart := token.Position{Offset: startOffset, Line: 1, Column: startOffset + 1}
+	wantEnd := token.Position{Offset: endOffset, Line: 1, Column: endOffset + 1}
+	if !got.HasEndPosition || got.Position != wantStart || got.EndPosition != wantEnd {
+		t.Fatalf("runtime diagnostic span = %+v..%+v (has=%v), want %+v..%+v",
+			got.Position, got.EndPosition, got.HasEndPosition, wantStart, wantEnd)
+	}
+	if got.Code != diagnostic.RuntimeDivisionByZero {
+		t.Fatalf("runtime diagnostic code = %q, want %q", got.Code, diagnostic.RuntimeDivisionByZero)
+	}
+	if !strings.Contains(got.Error(), "test.ast:1:") || !strings.Contains(got.Error(), "division by zero") {
+		t.Fatalf("runtime diagnostic text unexpectedly changed: %q", got.Error())
 	}
 }
