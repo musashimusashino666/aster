@@ -40,8 +40,8 @@ The per-value limits constrain individual language values and output. They do no
 
 ### 2. Specify wrapper deadlines separately from executable guarantees
 
-- `aster build` limits the build operation to two minutes; that timeout does not limit the executable it creates.
-- `aster run --engine native` applies a five-minute total deadline to the temporary build plus execution. The deadline is enforced by the host CLI process and is not a deterministic fuel budget.
+- `aster build` applies a two-minute deadline to native source generation and host Go-toolchain work; that timeout does not limit the executable it creates.
+- `aster run --engine native` applies a five-minute deadline spanning native source generation, temporary build, and execution. The deadline clock starts before source loading and analysis. Source loading, parsing, and type checking are not cooperatively preemptible, so expiry during those phases is observed immediately after the phase returns. Native source generation is context-aware, and host-toolchain child processes are canceled at the deadline. This deadline is not a deterministic fuel budget.
 - A standalone executable created by `aster build` has no Aster-provided execution timeout or comprehensive memory cap. Any limit supplied by the operating system, container, job runner, or caller is external to this contract.
 
 ### 3. Do not describe either backend as a sandbox
