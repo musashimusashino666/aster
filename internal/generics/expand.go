@@ -1150,7 +1150,12 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 		}
 		return out, nil
 	case *ast.AssignStmt:
-		value, err := e.rewriteExpr(n.Value, sub, depth)
+		var expected *ast.TypeRef
+		if variableType, ok := e.variables[n.Name]; ok {
+			valueType := cloneTypeRef(variableType)
+			expected = &valueType
+		}
+		value, err := e.rewriteExprExpected(n.Value, sub, depth, expected)
 		if err != nil {
 			return nil, err
 		}
