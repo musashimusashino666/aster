@@ -6,3 +6,6 @@ const MaxStringBytes = 16 << 20
 
 // MaxArrayLength bounds the number of elements in each array value.
 const MaxArrayLength = 1 << 18
+
+// MaxArrayNestingDepth bounds recursive array traversal and display.
+const MaxArrayNestingDepth = 256
