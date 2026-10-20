@@ -77,7 +77,7 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	}
 	g.line("func main() {")
 	g.indent++
-	g.line("defer func() { if r := recover(); r != nil { msg := strings.TrimPrefix(fmt.Sprint(r), \"runtime error: \"); fmt.Fprintln(os.Stderr, \"Aster runtime error:\", msg); os.Exit(1) } }()")
+	g.line("defer func() { if r := recover(); r != nil { msg := fmt.Sprint(r); if !strings.Contains(msg, \"runtime error:\") { msg = \"runtime error: \" + msg }; fmt.Fprintln(os.Stderr, msg); os.Exit(1) } }()")
 	for _, d := range tree.Decls {
 		sd, ok := d.(*ast.StmtDecl)
 		if !ok {
@@ -107,20 +107,21 @@ func (g *generator) writePreamble() {
 	g.line("")
 	g.line("func asterPrint(v any) struct{} { fmt.Println(v); return struct{}{} }")
 	g.line("func asterLenString(s string) int64 { return int64(utf8.RuneCountInString(s)) }")
-	g.line("func asterAssert(ok bool) struct{} { if !ok { panic(\"assertion failed\") }; return struct{}{} }")
-	g.line("func asterIndexI64[T any](s []T, i int64) T { if i < 0 || i >= int64(len(s)) { panic(fmt.Sprintf(\"array index %d out of bounds for length %d\", i, len(s))) }; return s[int(i)] }")
+	g.line("func asterRuntimeError(line, column int, message string) { if line > 0 && column > 0 { panic(fmt.Sprintf(\"%d:%d: runtime error: %s\", line, column, message)) }; panic(\"runtime error: \" + message) }")
+	g.line("func asterAssert(ok bool, line, column int) struct{} { if !ok { asterRuntimeError(line, column, \"assertion failed\") }; return struct{}{} }")
+	g.line("func asterIndexI64[T any](s []T, i int64, line, column int) T { if i < 0 || i >= int64(len(s)) { asterRuntimeError(line, column, fmt.Sprintf(\"array index %d out of bounds for length %d\", i, len(s))) }; return s[int(i)] }")
 	g.line("const asterMaxI64 int64 = 1<<63 - 1")
 	g.line("const asterMinI64 int64 = -1 << 63")
-	g.line("func asterAddI64(a,b int64) int64 { if (b>0 && a>asterMaxI64-b)||(b<0 && a<asterMinI64-b) { panic(\"i64 overflow in addition\") }; return a+b }")
-	g.line("func asterSubI64(a,b int64) int64 { if (b<0 && a>asterMaxI64+b)||(b>0 && a<asterMinI64+b) { panic(\"i64 overflow in subtraction\") }; return a-b }")
-	g.line("func asterMulI64(a,b int64) int64 { if a==0 || b==0 { return 0 }; if (a==asterMinI64 && b==-1)||(b==asterMinI64 && a==-1) { panic(\"i64 overflow in multiplication\") }; z:=a*b; if z/b!=a { panic(\"i64 overflow in multiplication\") }; return z }")
-	g.line("func asterDivI64(a,b int64) int64 { if b==0 { panic(\"division by zero\") }; if a==asterMinI64 && b==-1 { panic(\"i64 overflow in division\") }; return a/b }")
-	g.line("func asterModI64(a,b int64) int64 { if b==0 { panic(\"remainder by zero\") }; if a==asterMinI64 && b==-1 { return 0 }; return a%b }")
-	g.line("func asterNegI64(a int64) int64 { if a==asterMinI64 { panic(\"i64 overflow in unary '-'\") }; return -a }")
-	g.line("func asterAddF64(a,b float64) float64 { z:=a+b; if math.IsInf(z,0)||math.IsNaN(z) { panic(\"non-finite floating-point result\") }; return z }")
-	g.line("func asterSubF64(a,b float64) float64 { z:=a-b; if math.IsInf(z,0)||math.IsNaN(z) { panic(\"non-finite floating-point result\") }; return z }")
-	g.line("func asterMulF64(a,b float64) float64 { z:=a*b; if math.IsInf(z,0)||math.IsNaN(z) { panic(\"non-finite floating-point result\") }; return z }")
-	g.line("func asterDivF64(a,b float64) float64 { if b==0 { panic(\"division by zero\") }; z:=a/b; if math.IsInf(z,0)||math.IsNaN(z) { panic(\"non-finite floating-point result\") }; return z }")
+	g.line("func asterAddI64(a,b int64, line,column int) int64 { if (b>0 && a>asterMaxI64-b)||(b<0 && a<asterMinI64-b) { asterRuntimeError(line,column, \"i64 overflow in addition\") }; return a+b }")
+	g.line("func asterSubI64(a,b int64, line,column int) int64 { if (b<0 && a>asterMaxI64+b)||(b>0 && a<asterMinI64+b) { asterRuntimeError(line,column, \"i64 overflow in subtraction\") }; return a-b }")
+	g.line("func asterMulI64(a,b int64, line,column int) int64 { if a==0 || b==0 { return 0 }; if (a==asterMinI64 && b==-1)||(b==asterMinI64 && a==-1) { asterRuntimeError(line,column, \"i64 overflow in multiplication\") }; z:=a*b; if z/b!=a { asterRuntimeError(line,column, \"i64 overflow in multiplication\") }; return z }")
+	g.line("func asterDivI64(a,b int64, line,column int) int64 { if b==0 { asterRuntimeError(line,column, \"division by zero\") }; if a==asterMinI64 && b==-1 { asterRuntimeError(line,column, \"i64 overflow in division\") }; return a/b }")
+	g.line("func asterModI64(a,b int64, line,column int) int64 { if b==0 { asterRuntimeError(line,column, \"remainder by zero\") }; if a==asterMinI64 && b==-1 { return 0 }; return a%b }")
+	g.line("func asterNegI64(a int64, line,column int) int64 { if a==asterMinI64 { asterRuntimeError(line,column, \"integer overflow in unary '-'\") }; return -a }")
+	g.line("func asterAddF64(a,b float64, line,column int) float64 { z:=a+b; if math.IsInf(z,0)||math.IsNaN(z) { asterRuntimeError(line,column, \"non-finite floating-point result\") }; return z }")
+	g.line("func asterSubF64(a,b float64, line,column int) float64 { z:=a-b; if math.IsInf(z,0)||math.IsNaN(z) { asterRuntimeError(line,column, \"non-finite floating-point result\") }; return z }")
+	g.line("func asterMulF64(a,b float64, line,column int) float64 { z:=a*b; if math.IsInf(z,0)||math.IsNaN(z) { asterRuntimeError(line,column, \"non-finite floating-point result\") }; return z }")
+	g.line("func asterDivF64(a,b float64, line,column int) float64 { if b==0 { asterRuntimeError(line,column, \"division by zero\") }; z:=a/b; if math.IsInf(z,0)||math.IsNaN(z) { asterRuntimeError(line,column, \"non-finite floating-point result\") }; return z }")
 	g.line("")
 }
 func (g *generator) function(f *ast.Function) error {
@@ -283,7 +284,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "asterIndexI64(" + collection + ", " + index + ")", nil
+		return "asterIndexI64(" + collection + ", " + index + ", " + positionArgs(n) + ")", nil
 	case *ast.IdentifierExpr:
 		return "v_" + n.Name, nil
 	case *ast.UnaryExpr:
@@ -297,7 +298,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 				return "", err
 			}
 			if rightType == "i64" {
-				return "asterNegI64(" + r + ")", nil
+				return "asterNegI64(" + r + ", " + positionArgs(n) + ")", nil
 			}
 		}
 		if n.Op == "!" {
@@ -323,13 +324,13 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		if t == "i64" {
 			helpers := map[string]string{"+": "asterAddI64", "-": "asterSubI64", "*": "asterMulI64", "/": "asterDivI64", "%": "asterModI64"}
 			if h, ok := helpers[n.Op]; ok {
-				return h + "(" + l + ", " + r + ")", nil
+				return h + "(" + l + ", " + r + ", " + positionArgs(n) + ")", nil
 			}
 		}
 		if t == "f64" {
 			helpers := map[string]string{"+": "asterAddF64", "-": "asterSubF64", "*": "asterMulF64", "/": "asterDivF64"}
 			if h, ok := helpers[n.Op]; ok {
-				return h + "(" + l + ", " + r + ")", nil
+				return h + "(" + l + ", " + r + ", " + positionArgs(n) + ")", nil
 			}
 		}
 		return "(" + l + " " + n.Op + " " + r + ")", nil
@@ -362,7 +363,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 			}
 			return "asterLenString(" + joined + ")", nil
 		case "assert":
-			return "asterAssert(" + joined + ")", nil
+			return "asterAssert(" + joined + ", " + positionArgs(n) + ")", nil
 		default:
 			return "asterFn_" + id.Name + "(" + joined + ")", nil
 		}
@@ -375,6 +376,11 @@ func (g *generator) typeOf(e ast.Expr) (string, error) {
 		return "", fmt.Errorf("codegen: checker has no type for expression %T", e)
 	}
 	return t.String(), nil
+}
+
+func positionArgs(node ast.Node) string {
+	pos := node.Pos()
+	return fmt.Sprintf("%d, %d", pos.Line, pos.Column)
 }
 
 func goType(t string) string {
