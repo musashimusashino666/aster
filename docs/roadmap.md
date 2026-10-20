@@ -27,7 +27,7 @@ This roadmap is a planning document, not a commitment that work is already in pr
 
 - [x] Dynamically sized arrays, type checking, and bounds-safe reads
 - [x] Mutable array indexing with value semantics (checked nested assignment and copy-on-write path updates; follow [ADR 0003: Array value semantics](adr/0003-array-value-semantics.md))
-- [ ] Slices that produce independent array values
+- [x] Half-open array slices (`values[start:end]`) returning independent array values; start is inclusive and end is exclusive
 - [ ] Structs, enums, `Option<T>`, and `Result<T, E>`
 - [ ] Explicit conversion syntax and well-defined numeric promotion rules
 - [ ] Module/import system and package lockfile
