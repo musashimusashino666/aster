@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/aster-lang/aster/internal/langtypes"
+	"github.com/aster-lang/aster/internal/limits"
 )
 
 const FormatVersion = 2
@@ -17,8 +18,8 @@ const FormatVersion = 2
 // Per-value allocation limits enforced by bytecode validation and the VM.
 // String limits are measured in UTF-8 bytes, not Unicode code points.
 const (
-	MaxStringBytes              = 16 << 20
-	MaxArrayLength              = 1 << 18
+	MaxStringBytes              = limits.MaxStringBytes
+	MaxArrayLength              = limits.MaxArrayLength
 	maxBytecodeFileBytes        = 64 << 20
 	maxConstantPoolEntries      = 1 << 18
 	maxTotalInstructions        = 1 << 20
