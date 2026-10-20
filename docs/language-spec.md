@@ -57,7 +57,7 @@ The JSON bytecode format is versioned independently of source syntax. Version 2 
 - `i64` addition, subtraction, multiplication, negation, and `min_i64 / -1` overflow produce runtime errors. Integer division and remainder by zero produce runtime errors. The `%` operator accepts only `i64` operands; `min_i64 % -1` evaluates to `0` and does not trap. The minimum value can be written as `-9223372036854775808`; the corresponding positive magnitude is not a valid `i64` literal.
 - Floating-point division by zero and non-finite results are runtime errors in the current implementation. This is a deliberate prototype policy, not an inherent property of IEEE-754.
 - Strings are immutable. `len` counts Unicode code points. String literals and concatenation results are limited to 16 MiB of UTF-8 bytes in both backends; oversized literals are rejected during compilation, and concatenations that would exceed the limit fail at runtime with a source-positioned error.
-- `print`, `len`, and `assert` are reserved built-ins. Variables cannot store `unit` values, and `print` rejects a `unit` argument; a call returning `unit` can be used as an expression statement.
+- `print`, `len`, and `assert` are reserved built-ins. Variables cannot store `unit` values, and `print` rejects a `unit` argument; a call returning `unit` can be used as an expression statement. Rendering a printed value is limited to 16 MiB of UTF-8 output; an oversized rendered value raises a runtime error before any of that value is written.
 
 ## Unsupported syntax in 0.1
 
