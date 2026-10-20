@@ -11,7 +11,6 @@ import (
 
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/checker"
-	"github.com/aster-lang/aster/internal/ir"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/limits"
 )
