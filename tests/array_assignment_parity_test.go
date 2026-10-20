@@ -77,12 +77,6 @@ print(matrixSnapshot);`
 	}
 }
 
-// arrayAssignmentWorkloadSource creates a single round of indexed assignments.
-// Keep this helper for workloads that do not need repeated assignment rounds.
-func arrayAssignmentWorkloadSource(size int) string {
-	return arrayAssignmentWorkloadSourceWithRounds(size, 1)
-}
-
 // arrayAssignmentWorkloadSourceWithRounds repeatedly assigns every array element
 // and consumes the final values so that the work remains observable to both backends.
 func arrayAssignmentWorkloadSourceWithRounds(size, rounds int) string {
