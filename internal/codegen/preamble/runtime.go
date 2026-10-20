@@ -50,16 +50,26 @@ func asterDisplayWrite(out *strings.Builder, text string, line, column int) {
 }
 
 func asterFormatValue(value reflect.Value, out *strings.Builder, line, column, depth int) {
-	if value.Kind() == reflect.Slice {
-		if depth >= asterMaxArrayNestingDepth && value.Len() > 0 {
+	var items reflect.Value
+	switch value.Kind() {
+	case reflect.Slice:
+		items = value
+	case reflect.Struct:
+		field := value.FieldByName("Items")
+		if field.IsValid() && field.Kind() == reflect.Slice {
+			items = field
+		}
+	}
+	if items.IsValid() {
+		if depth >= asterMaxArrayNestingDepth && items.Len() > 0 {
 			asterRuntimeError(line, column, "printed array nesting exceeds depth limit")
 		}
 		asterDisplayWrite(out, "[", line, column)
-		for i := 0; i < value.Len(); i++ {
+		for i := 0; i < items.Len(); i++ {
 			if i > 0 {
 				asterDisplayWrite(out, " ", line, column)
 			}
-			asterFormatValue(value.Index(i), out, line, column, depth+1)
+			asterFormatValue(items.Index(i), out, line, column, depth+1)
 		}
 		asterDisplayWrite(out, "]", line, column)
 		return
@@ -92,20 +102,104 @@ func asterAssert(ok bool, line, column int) struct{} {
 	return struct{}{}
 }
 
-func asterIndexI64[T any](s []T, i int64, line, column int) T {
-	if i < 0 || i >= int64(len(s)) {
-		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", i, len(s)))
-	}
-	return s[int(i)]
+type asterArrayStorage struct {
+	shared bool
 }
 
-func asterSlice[T any](s []T, start, end int64, line, column int) []T {
-	if start < 0 || end < start || end > int64(len(s)) {
-		asterRuntimeError(line, column, fmt.Sprintf("slice bounds [%d:%d] out of bounds for length %d", start, end, len(s)))
+// asterArray is a typed value-semantic array header. Copies share storage
+// metadata until a write detaches the backing slice. The shared bit is
+// conservative and deliberately never decremented.
+type asterArray[T any] struct {
+	Items   []T
+	Storage *asterArrayStorage
+}
+
+func asterNewArray[T any](items []T) asterArray[T] {
+	copied := append([]T(nil), items...)
+	for _, item := range copied {
+		asterMarkArrayShared(item)
+	}
+	return asterArray[T]{Items: copied, Storage: &asterArrayStorage{}}
+}
+
+func (a asterArray[T]) MarkArrayShared() {
+	if a.Storage != nil {
+		a.Storage.shared = true
+	}
+}
+
+func asterMarkArrayShared(value any) {
+	if shared, ok := value.(interface{ MarkArrayShared() }); ok {
+		shared.MarkArrayShared()
+	}
+}
+
+func asterShareValue[T any](value T) T {
+	asterMarkArrayShared(value)
+	return value
+}
+
+func (a asterArray[T]) PrepareArrayWrite() any {
+	if a.Storage == nil {
+		a.Storage = &asterArrayStorage{}
+	}
+	if !a.Storage.shared {
+		return a
+	}
+	items := append([]T(nil), a.Items...)
+	for _, item := range items {
+		asterMarkArrayShared(item)
+	}
+	return asterArray[T]{Items: items, Storage: &asterArrayStorage{}}
+}
+
+func (a asterArray[T]) AsterArrayLength() int {
+	return len(a.Items)
+}
+
+func (a asterArray[T]) AsterArrayItem(index int) any {
+	return a.Items[index]
+}
+
+func (a asterArray[T]) AsterSetArrayItem(index int, value any) bool {
+	item, ok := value.(T)
+	if !ok {
+		return false
+	}
+	a.Items[index] = item
+	return true
+}
+
+type asterArrayRuntime interface {
+	PrepareArrayWrite() any
+	AsterArrayLength() int
+	AsterArrayItem(int) any
+	AsterSetArrayItem(int, any) bool
+}
+
+func asterLenArray[T any](array asterArray[T]) int64 {
+	return int64(len(array.Items))
+}
+
+func asterIndexI64[T any](s asterArray[T], i int64, line, column int) T {
+	if i < 0 || i >= int64(len(s.Items)) {
+		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", i, len(s.Items)))
+	}
+	value := s.Items[int(i)]
+	asterMarkArrayShared(value)
+	return value
+}
+
+func asterSlice[T any](s asterArray[T], start, end int64, line, column int) asterArray[T] {
+	if start < 0 || end < start || end > int64(len(s.Items)) {
+		asterRuntimeError(line, column, fmt.Sprintf("slice bounds [%d:%d] out of bounds for length %d", start, end, len(s.Items)))
 	}
 	items := make([]T, int(end-start))
-	copy(items, s[int(start):int(end)])
-	return items
+	copy(items, s.Items[int(start):int(end)])
+	for _, item := range items {
+		asterMarkArrayShared(item)
+	}
+	return asterArray[T]{Items: items, Storage: &asterArrayStorage{}}
 }
 
 func asterF64ToI64(value float64, line, column int) int64 {
@@ -129,28 +223,31 @@ func asterSetIndexPath(collection any, indices []int64, replacement any, line, c
 	if len(indices) == 0 {
 		asterRuntimeError(line, column, "indexed assignment requires at least one index")
 	}
-	source := reflect.ValueOf(collection)
-	if !source.IsValid() || source.Kind() != reflect.Slice {
+	source, ok := collection.(asterArrayRuntime)
+	if !ok {
 		asterRuntimeError(line, column, "indexed assignment requires an array value")
 	}
 	index := indices[0]
-	if index < 0 || index >= int64(source.Len()) {
-		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", index, source.Len()))
+	length := source.AsterArrayLength()
+	if index < 0 || index >= int64(length) {
+		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", index, length))
 	}
-	updated := reflect.MakeSlice(source.Type(), source.Len(), source.Len())
-	reflect.Copy(updated, source)
-	var item reflect.Value
+	writable, ok := source.PrepareArrayWrite().(asterArrayRuntime)
+	if !ok {
+		asterRuntimeError(line, column, "array value returned invalid writable storage")
+	}
+
+	var item any
 	if len(indices) == 1 {
-		item = reflect.ValueOf(replacement)
+		asterMarkArrayShared(replacement)
+		item = replacement
 	} else {
-		child := asterSetIndexPath(updated.Index(int(index)).Interface(), indices[1:], replacement, line, column)
-		item = reflect.ValueOf(child)
+		item = asterSetIndexPath(writable.AsterArrayItem(int(index)), indices[1:], replacement, line, column)
 	}
-	if !item.IsValid() || !item.Type().AssignableTo(updated.Type().Elem()) {
+	if !writable.AsterSetArrayItem(int(index), item) {
 		asterRuntimeError(line, column, "indexed assignment value has incompatible type")
 	}
-	updated.Index(int(index)).Set(item)
-	return updated.Interface()
+	return writable
 }
 
 func asterAddI64(a, b int64, line, column int) int64 {

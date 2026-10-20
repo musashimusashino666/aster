@@ -83,6 +83,11 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 			return fmt.Errorf("codegen: invalid IR local type %q for %q", t, n.Local.Name)
 		}
 		name := irLocalName(n.Local.ID)
+		if _, isArray := arrayElementType(t); isArray {
+			if _, isLocalCopy := n.Value.(*ir.LocalExpr); isLocalCopy {
+				expr = "asterShareValue(" + expr + ")"
+			}
+		}
 		g.line(name + " := " + expr)
 		g.line("_ = " + name)
 		return nil
@@ -107,6 +112,11 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		expr, err := g.irExpression(n.Value)
 		if err != nil {
 			return err
+		}
+		if _, isArray := arrayElementType(string(n.Value.ExprType())); isArray {
+			if _, isLocalCopy := n.Value.(*ir.LocalExpr); isLocalCopy {
+				expr = "asterShareValue(" + expr + ")"
+			}
 		}
 		g.line(irLocalName(n.Target) + " = " + expr)
 		return nil
@@ -182,6 +192,9 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		if err != nil {
 			return err
 		}
+		if _, isArray := arrayElementType(string(n.Value.ExprType())); isArray {
+			expr = "asterShareValue(" + expr + ")"
+		}
 		g.line("return " + expr)
 		return nil
 	default:
@@ -225,7 +238,11 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		if !langtypes.ValidName(t) {
 			return "", fmt.Errorf("codegen: invalid IR array type %q", t)
 		}
-		return goType(t) + "{" + strings.Join(items, ", ") + "}", nil
+		elem, ok := arrayElementType(t)
+		if !ok {
+			return "", fmt.Errorf("codegen: invalid IR array element type for %q", t)
+		}
+		return "asterNewArray([]" + goType(elem) + "{" + strings.Join(items, ", ") + "})", nil
 	case *ir.IndexExpr:
 		collection, err := g.irExpression(n.Collection)
 		if err != nil {
@@ -318,6 +335,11 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			if err != nil {
 				return "", err
 			}
+			if n.Target == ir.CallUserFunction {
+				if _, isArray := arrayElementType(string(arg.ExprType())); isArray {
+					lowered = "asterShareValue(" + lowered + ")"
+				}
+			}
 			args[i] = lowered
 		}
 		joined := strings.Join(args, ", ")
@@ -329,7 +351,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 				return "", fmt.Errorf("codegen: malformed IR len call")
 			}
 			if n.Args[0].ExprType() != "string" {
-				return "int64(len(" + joined + "))", nil
+				return "asterLenArray(" + joined + ")", nil
 			}
 			return "asterLenString(" + joined + ")", nil
 		case ir.CallAssert:
