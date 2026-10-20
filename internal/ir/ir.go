@@ -650,3 +650,23 @@ func binaryOperation(op string, operand Type) (RuntimeOp, bool) {
 	}
 	return "", false
 }
+
+
+// AlwaysReturns reports whether the checked control-flow shape guarantees a
+// return on all paths represented by stmt. Loops remain conservative because
+// the language does not assume that a loop executes at least once.
+func AlwaysReturns(stmt Stmt) bool {
+	switch n := stmt.(type) {
+	case *ReturnStmt:
+		return true
+	case *BlockStmt:
+		for _, child := range n.Statements {
+			if AlwaysReturns(child) {
+				return true
+			}
+		}
+	case *IfStmt:
+		return n.Else != nil && AlwaysReturns(n.Then) && AlwaysReturns(n.Else)
+	}
+	return false
+}
