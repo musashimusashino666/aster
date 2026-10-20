@@ -435,7 +435,7 @@ func TestRejectsEnumMetadataOverSharedLimits(t *testing.T) {
 			payload[i] = ast.TypeRef{Name: "i64"}
 		}
 		err := Check(&ast.Program{Decls: []ast.Decl{&ast.EnumDecl{
-			Name: "ManyPayloads",
+			Name:     "ManyPayloads",
 			Variants: []ast.EnumVariant{{Name: "Values", Payload: payload}},
 		}}})
 		if err == nil || !strings.Contains(err.Error(), "TYP078") {
