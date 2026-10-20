@@ -20,11 +20,11 @@ The checker is run before both backends. This ensures that type errors are rejec
 - `internal/lexer`: source-to-token conversion; no parser dependency.
 - `internal/ast`: syntax tree definitions.
 - `internal/parser`: recursive-descent statements and Pratt expressions.
-- `internal/checker`: two-pass function discovery, static semantic checks, and source type-depth validation.
+- `internal/checker`: two-pass function discovery, static semantic checks, source type-depth validation, and `TypedProgram` output containing expression types and resolved function signatures. `Check` remains a validation-only API; `Analyze` returns the semantic metadata.
 - `internal/langtypes`: shared source type-name validation and maximum nesting depth used across frontend and bytecode validation.
-- `internal/bytecode`: bytecode model, structural and resource validation, control-flow/stack-height/type/local-initialization verification, JSON serialization, compiler.
+- `internal/bytecode`: bytecode model, structural and resource validation, control-flow/stack-height/type/local-initialization verification, JSON serialization, compiler. The compiler shares the checker's conservative `AlwaysReturns` rule, but still lowers AST nodes directly.
 - `internal/vm`: stack-based VM, call frames, checked arithmetic, built-ins, resource limits.
-- `internal/codegen`: native Go source generation. Identifier mangling prevents Aster names from colliding with Go keywords; helper functions implement Aster arithmetic checks.
+- `internal/codegen`: native Go source generation. `GenerateTyped` consumes checker-produced expression types and function signatures instead of re-inferring them; identifier mangling prevents Aster names from colliding with Go keywords, and helper functions implement Aster arithmetic checks.
 - `internal/toolchain`: isolated temporary build directories, formatting and Go compiler invocation.
 - `cmd/aster`: user-facing CLI.
 
@@ -38,4 +38,4 @@ The current native backend does not emit machine code itself and does not use LL
 
 ## Intended future backend abstraction
 
-The next architectural step is a backend interface that consumes a typed, normalized intermediate representation rather than raw AST nodes. Migrate incrementally: (1) define IR types and source-span conventions, (2) lower checked arithmetic, indexing, and builtins into explicit IR operations, (3) port bytecode generation to consume IR while keeping existing VM parity tests, and (4) move Go code generation to the same IR before adding another backend. Each migration step should keep the AST backend temporarily available for comparison. The IR should preserve source spans, resolved function identities, normalized type metadata, and explicit overflow/error behavior; backend code generators should not independently re-infer semantic types.
+An initial typed-program bridge now exposes checker-produced expression types and function signatures, and the native Go generator consumes them. Return-flow analysis is also shared by the checker and bytecode compiler. The full typed, normalized intermediate representation remains future work: define explicit IR nodes and source-span conventions, lower checked arithmetic/indexing/builtins into explicit operations, migrate bytecode generation while preserving VM parity tests, and then move Go generation to that IR before adding another backend. The normalized IR should preserve source spans, resolved local/function identities, and explicit runtime/error behavior.
