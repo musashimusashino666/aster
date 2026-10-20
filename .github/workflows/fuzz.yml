@@ -49,6 +49,9 @@ jobs:
           - name: Structured bytecode verifier
             package: ./internal/bytecode
             target: FuzzValidateStructuredProgramsNeverPanics
+          - name: VM COW property model
+            package: ./internal/vm
+            target: FuzzVMArrayCOWMatchesReferenceModel
 
     steps:
       - name: Check out source
