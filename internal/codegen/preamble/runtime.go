@@ -108,6 +108,18 @@ func asterSlice[T any](s []T, start, end int64, line, column int) []T {
 	return items
 }
 
+func asterF64ToI64(value float64, line, column int) int64 {
+	limit := math.Ldexp(1, 63)
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < -limit || value >= limit {
+		asterRuntimeError(line, column, "f64 value out of range for i64 conversion")
+	}
+	return int64(value)
+}
+
+func asterI64ToF64(value int64) float64 {
+	return float64(value)
+}
+
 func asterSetIndexPath(collection any, indices []int64, replacement any, line, column int) any {
 	if len(indices) == 0 {
 		asterRuntimeError(line, column, "indexed assignment requires at least one index")
