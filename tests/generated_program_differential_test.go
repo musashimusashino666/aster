@@ -139,7 +139,7 @@ func seededArrayProgram(seed int64) string {
 			fmt.Fprintf(&source, "print(%s);\n", name)
 		case 2:
 			name := fmt.Sprintf("rebound%d", i)
-			fmt.Fprintf(&source, "let mut %s: Array<i64> = %s;\n", name, seededI64Row(rng, rowLength), seededI64Row(rng, rowLength))
+			fmt.Fprintf(&source, "let mut %s: Array<i64> = %s;\n", name, seededI64Row(rng, rowLength))
 			fmt.Fprintf(&source, "%s = matrix[%d];\n", name, row)
 			fmt.Fprintf(&source, "%s[%d] = %s;\n", name, column, value)
 			source.WriteString("print(matrix);\n")
