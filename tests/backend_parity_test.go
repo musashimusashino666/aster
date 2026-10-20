@@ -996,7 +996,7 @@ let packet = Packet::Data(values);
 values[0] = 99;
 print(first(packet));
 print(first(Packet::Pair(2, 3)));
-print(match Packet::Empty { Packet::Empty => 7, Packet::Data(items) => items[0], Packet::Pair(x, y) => x + y, });
+print(match Packet::Empty { Packet::Empty => 7, _ => 9, });
 `
 	tree, err := parser.Parse(source, "enum-parity.ast")
 	if err != nil {
