@@ -1,4 +1,4 @@
-// Package diagnostic defines stable identifiers for source-front-end errors.
+// Package diagnostic defines stable identifiers for source, runtime, bytecode, and toolchain errors.
 package diagnostic
 
 import (
@@ -139,7 +139,9 @@ func BytecodeCode(message string) string {
 	case strings.Contains(lower, "not an aster bytecode"), strings.Contains(lower, "invalid bytecode format"):
 		return BytecodeFormat
 	case strings.Contains(lower, "invalid json"), strings.Contains(lower, "unexpected end of json"),
-		strings.Contains(lower, "trailing json"), strings.Contains(lower, "decode"):
+		strings.Contains(lower, "trailing json"), strings.Contains(lower, "decode"),
+		strings.Contains(lower, "invalid character"), strings.Contains(lower, "unexpected eof"),
+		strings.Contains(lower, "cannot unmarshal"), strings.Contains(lower, "unexpected end of input"):
 		return BytecodeDecode
 	case strings.Contains(lower, "safety limit"), strings.Contains(lower, "exceeds limit"),
 		strings.Contains(lower, "exceeds safety"), strings.Contains(lower, "too large"):
