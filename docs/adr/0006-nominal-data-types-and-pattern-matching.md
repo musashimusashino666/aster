@@ -6,7 +6,7 @@
 
 ## Context
 
-Aster supports primitive types, `Array<T>`, and the initial non-generic-struct subset. Adding structs, enums, generics, `Option<T>`, and `Result<T, E>` at the same time would combine several independent changes: name resolution, recursive type validation, aggregate representation, bytecode verification, pattern exhaustiveness, and generic instantiation. The VM and Native backends share a typed IR, so new semantics should be resolved by the checker and carried through that IR rather than re-inferred by either backend.
+Aster supports primitive types, `Array<T>`, and the initial non-generic-struct subset. Adding enums, generics, `Option<T>`, and `Result<T, E>` together would combine several independent changes: name resolution, recursive type validation, aggregate representation, bytecode verification, pattern exhaustiveness, and generic instantiation. The VM and Native backends share a typed IR, so new semantics should be resolved by the checker and carried through that IR rather than re-inferred by either backend.
 
 Arrays already have explicit value semantics. Any aggregate that contains an array must preserve those semantics across bindings, function arguments and returns, field reads, and aggregate construction. A shallow Go-struct copy must not become an observable aliasing loophole.
 
