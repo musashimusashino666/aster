@@ -229,15 +229,15 @@ func TestArraySliceChecksBounds(t *testing.T) {
 }
 
 func TestExplicitNumericCasts(t *testing.T) {
-	out, err := runSource(t, \`print(i64(3.9));
+	out, err := runSource(t, `print(i64(3.9));
 print(i64(-3.9));
 print(i64(-0.9));
 print(f64(9007199254740993) == 9007199254740992.0);
-print(i64(-9223372036854775808.0));\`)
+print(i64(-9223372036854775808.0));`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "3\\n-3\\n0\\ntrue\\n-9223372036854775808\\n"
+	want := "3\n-3\n0\ntrue\n-9223372036854775808\n"
 	if out != want {
 		t.Fatalf("output = %q, want %q", out, want)
 	}
