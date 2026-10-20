@@ -36,7 +36,9 @@ func compileIR(tree *ir.Program) (*Program, error) {
 		variants := make([]EnumVariant, len(enumType.Variants))
 		for j, variant := range enumType.Variants {
 			payloadTypes := make([]string, len(variant.Payload))
-			for k, typ := range variant.Payload { payloadTypes[k] = string(typ) }
+			for k, typ := range variant.Payload {
+				payloadTypes[k] = string(typ)
+			}
 			variants[j] = EnumVariant{Name: variant.Name, PayloadTypes: payloadTypes}
 		}
 		p.EnumTypes[i] = EnumType{Name: enumType.Name, Variants: variants}
@@ -318,7 +320,9 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 			return fmt.Errorf("%d:%d: compiler: enum %q variant %q has wrong payload arity", pos.Line, pos.Column, enumType.Name, enumType.Variants[n.VariantIndex].Name)
 		}
 		for _, arg := range n.Args {
-			if err := c.compileExpr(arg); err != nil { return err }
+			if err := c.compileExpr(arg); err != nil {
+				return err
+			}
 		}
 		c.emitABC(OpBuildEnum, n.EnumID, n.VariantIndex, len(n.Args), pos.Line, pos.Column)
 		return nil
@@ -326,13 +330,19 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 		if n.EnumID < 0 || n.EnumID >= len(c.program.EnumTypes) {
 			return fmt.Errorf("%d:%d: compiler: invalid match enum id %d", pos.Line, pos.Column, n.EnumID)
 		}
-		if err := c.compileExpr(n.Subject); err != nil { return err }
+		if err := c.compileExpr(n.Subject); err != nil {
+			return err
+		}
 		subjectSlot, err := c.allocate(n.SubjectLocal.ID, n.SubjectLocal.Name)
-		if err != nil { return fmt.Errorf("%d:%d: %w", pos.Line, pos.Column, err) }
+		if err != nil {
+			return fmt.Errorf("%d:%d: %w", pos.Line, pos.Column, err)
+		}
 		c.emit(OpStoreLocal, subjectSlot, 0, pos.Line, pos.Column)
 		tableIndex := len(c.program.Functions[c.fnID].MatchTables)
 		targets := make([]int, len(c.program.EnumTypes[n.EnumID].Variants))
-		for i := range targets { targets[i] = -1 }
+		for i := range targets {
+			targets[i] = -1
+		}
 		c.program.Functions[c.fnID].MatchTables = append(c.program.Functions[c.fnID].MatchTables, MatchTable{EnumTypeID: n.EnumID, Targets: targets})
 		c.emit(OpMatchEnum, subjectSlot, tableIndex, 0, pos.Line, pos.Column)
 		var endJumps []int
@@ -348,25 +358,35 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 				targets[variantIndex] = armStart
 			}
 			variantIndex := -1
-			if len(arm.VariantIndexes) == 1 { variantIndex = arm.VariantIndexes[0] }
+			if len(arm.VariantIndexes) == 1 {
+				variantIndex = arm.VariantIndexes[0]
+			}
 			for payloadIndex, binding := range arm.Bindings {
 				if variantIndex < 0 {
 					return fmt.Errorf("%d:%d: compiler: wildcard arm cannot bind enum payloads", arm.At.Line, arm.At.Column)
 				}
 				c.emitABC(OpGetEnumPayload, subjectSlot, variantIndex, payloadIndex, binding.At.Line, binding.At.Column)
 				bindingSlot, bindErr := c.allocate(binding.ID, binding.Name)
-				if bindErr != nil { return fmt.Errorf("%d:%d: %w", binding.At.Line, binding.At.Column, bindErr) }
+				if bindErr != nil {
+					return fmt.Errorf("%d:%d: %w", binding.At.Line, binding.At.Column, bindErr)
+				}
 				c.emit(OpStoreLocal, bindingSlot, 0, binding.At.Line, binding.At.Column)
 			}
-			if err := c.compileExpr(arm.Expr); err != nil { return err }
+			if err := c.compileExpr(arm.Expr); err != nil {
+				return err
+			}
 			endJumps = append(endJumps, c.emit(OpJump, -1, 0, arm.At.Line, arm.At.Column))
 		}
 		for i, target := range targets {
-			if target < 0 { return fmt.Errorf("%d:%d: compiler: enum match leaves variant %d uncovered", pos.Line, pos.Column, i) }
+			if target < 0 {
+				return fmt.Errorf("%d:%d: compiler: enum match leaves variant %d uncovered", pos.Line, pos.Column, i)
+			}
 			c.program.Functions[c.fnID].MatchTables[tableIndex].Targets[i] = target
 		}
 		end := len(c.code)
-		for _, jump := range endJumps { c.patch(jump, end) }
+		for _, jump := range endJumps {
+			c.patch(jump, end)
+		}
 		return nil
 	case *ir.FieldExpr:
 		if err := c.compileExpr(n.Object); err != nil {
