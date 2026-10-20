@@ -23,7 +23,7 @@ func TestGenerateTypedUsesCheckerMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(source, "asterAddI64(v_x, int64(1))") {
+	if !strings.Contains(source, "asterAddI64(v_x, int64(1), ") {
 		t.Fatalf("generated source does not use expected typed arithmetic helper:\n%s", source)
 	}
 }
