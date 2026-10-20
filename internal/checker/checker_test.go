@@ -599,7 +599,7 @@ func TestRejectsGenericStructArityAndInferenceFailures(t *testing.T) {
 	}{
 		{"wrong argument count", `struct Pair<T, U> { first: T, second: U } let pair = Pair::<i64>(1, 2);`, "TYP084"},
 		{"missing type argument in annotation", `struct Box<T> { value: T } fn take(value: Box) { }`, "TYP084"},
-		{"uninferred type parameter", `struct Pair<T, U> { first: T, second: U } let pair = Pair(1, 2);`, "TYP085"},
+		{"uninferred type parameter", `struct Pair<T, U> { first: T, second: i64 } let pair = Pair(1, 2);`, "TYP085"},
 		{"conflicting inference", `struct Pair<T> { first: T, second: T } let pair = Pair(1, "wrong");`, "TYP085"},
 	}
 	for _, tt := range tests {
