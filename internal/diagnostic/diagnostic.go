@@ -303,6 +303,9 @@ const (
 	TypeGenericStructArgumentCount      = "TYP084"
 	TypeGenericStructInference          = "TYP085"
 	TypeGenericStructInstantiationLimit = "TYP086"
+	TypeGenericEnumArgumentCount        = "TYP087"
+	TypeGenericEnumInference            = "TYP088"
+	TypeGenericEnumInstantiationLimit   = "TYP089"
 )
 
 const (

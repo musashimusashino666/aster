@@ -1136,3 +1136,65 @@ print(match Packet::Empty { Packet::Empty => 7, _ => 9, });
 		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), got)
 	}
 }
+
+func TestGenericEnumVMAndNativeBackendParity(t *testing.T) {
+	source := `enum Option<T> { None, Some(T), }
+enum Result<T, E> { Ok(T), Err(E), }
+fn unwrap<T>(value: Option<T>) -> T {
+	return match value { Option::Some(item) => item, Option::None => 0, };
+}
+fn errorCode(message: string) -> i64 {
+	if message == "error" { return 1; }
+	return 0;
+}
+let mut original: Array<i64> = [1, 2];
+let wrapped: Option<Array<i64>> = Option::Some(original);
+original[0] = 9;
+print(match wrapped { Option::Some(values) => values[0], Option::None => 0, });
+print(unwrap(Option::Some(42)));
+let result: Result<i64, string> = Result::Ok(7);
+print(match result { Result::Ok(value) => value, Result::Err(message) => errorCode(message), });
+let empty: Option<i64> = Option::None;
+let nested: Option<Option<i64>> = Option::Some(Option::None);
+print(match empty { Option::Some(value) => value, Option::None => 0, });
+print(match nested { Option::Some(inner) => match inner { Option::Some(value) => value, Option::None => 0, }, Option::None => 0, });
+`
+	tree, err := parser.Parse(source, "generic-enum-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := program.Validate(); err != nil {
+		t.Fatalf("generic enum bytecode failed validation: %v", err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-generic-enum-parity")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("Native generic enum program failed: %v\n%s", err, nativeOutput)
+	}
+	want := "1\n42\n7\n0\n0\n"
+	if got := vmOutput.String(); got != want {
+		t.Fatalf("unexpected generic enum VM output: got %q want %q", got, want)
+	}
+	if got := string(nativeOutput); got != vmOutput.String() {
+		t.Fatalf("generic enum backend output differs: VM=%q Native=%q", vmOutput.String(), got)
+	}
+}

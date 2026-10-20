@@ -32,9 +32,9 @@ This roadmap is a planning document, not a commitment that work is already in pr
 - [x] Mutable array indexing with value semantics (checked nested assignment and copy-on-write path updates; follow [ADR 0003: Array value semantics](adr/0003-array-value-semantics.md))
 - [x] Half-open array slices (`values[start:end]`) returning independent array values; start is inclusive and end is exclusive
 - [x] Non-generic structs: nominal declarations, construction, read-only field selection, and VM/Native value-semantics parity (implemented by PR #61; direct field assignment, Struct display, and equality remain unsupported; see [ADR 0006](adr/0006-nominal-data-types-and-pattern-matching.md))
-- [x] Non-generic enums with positional payloads and exhaustive flat `match` expressions, including payload bindings, Bytecode v7 verifier support, VM/Native COW parity, and malformed-bytecode/type-checking tests (see ADR 0006; user-defined generics and Option/Result remain planned)
-- [ ] User-defined generics: implementation pending; design and acceptance criteria are recorded in [ADR 0007](adr/0007-user-defined-generics-and-monomorphization.md)
-- [ ] Core `Option<T>` and `Result<T, E>` as generic enums with exhaustive matching
+- [x] Enums with positional payloads and exhaustive flat `match` expressions, including generic enum monomorphization, payload type substitution/inference, concrete-instance exhaustiveness checks, Bytecode v7 verification, VM/Native COW parity, and malformed-bytecode/type-checking tests (see ADR 0006 and ADR 0007)
+- [x] User-defined generics for functions, structs, and enums, including canonical instance caching and compile-time expansion limits (traits, bounds, and generic operator constraints remain unsupported)
+- [x] Generic enum declarations support ordinary `Option<T>` / `Result<T, E>` definitions with exhaustive matching; they are user-defined types rather than compiler-specific built-ins
 - [x] Explicit numeric casts with `i64(value)` / `f64(value)`, defined truncation and range rules, and VM/Native parity tests (implicit numeric promotion remains unsupported)
 - [ ] Module/import system and package lockfile
 - [ ] Standard library for paths, files, JSON, time, and command-line parsing

@@ -125,6 +125,9 @@ Codes are intended for tests, editor integrations, and bug reports. A code ident
 | `TYP084` | Generic struct has the wrong number of type arguments |
 | `TYP085` | Generic struct type arguments cannot be inferred or are inconsistent |
 | `TYP086` | Generic struct monomorphization resource limit exceeded |
+| `TYP087` | Generic enum has the wrong number of type arguments |
+| `TYP088` | Generic enum type arguments cannot be inferred or are inconsistent |
+| `TYP089` | Generic enum monomorphization resource limit exceeded |
 
 
 ## Runtime
