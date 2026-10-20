@@ -508,6 +508,7 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 		}
 		program.Functions = append(program.Functions, &Function{
 			At:         decl.Pos(),
+			EndAt:      decl.EndPos(),
 			ID:         l.functionIDs[decl.Name],
 			Name:       decl.Name,
 			ReturnType: signature.Return,
@@ -522,6 +523,7 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 		for j, param := range decl.Params {
 			local := Local{
 				At:   param.At,
+				EndAt: param.EndAt,
 				ID:   l.newSymbolID(),
 				Name: param.Name,
 				Type: signature.Params[j],
@@ -566,7 +568,7 @@ func (l *lowerer) lowerBlock(block *ast.BlockStmt, pushScope bool) (*BlockStmt, 
 		l.scope = newScope(old)
 		defer func() { l.scope = old }()
 	}
-	out := &BlockStmt{At: block.Pos()}
+	out := &BlockStmt{At: block.Pos(), EndAt: block.EndPos()}
 	for _, stmt := range block.Statements {
 		lowered, err := l.lowerStmt(stmt)
 		if err != nil {
@@ -607,11 +609,11 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		local := Local{At: n.Pos(), ID: l.newSymbolID(), Name: n.Name, Type: value.ExprType(), Mutable: n.Mutable}
+		local := Local{At: n.Pos(), EndAt: n.EndPos(), ID: l.newSymbolID(), Name: n.Name, Type: value.ExprType(), Mutable: n.Mutable}
 		if !l.scope.define(local) {
 			return nil, fmt.Errorf("%d:%d: ir: duplicate local %q", n.Pos().Line, n.Pos().Column, n.Name)
 		}
-		return &LetStmt{At: n.Pos(), Local: local, Value: value}, nil
+		return &LetStmt{At: n.Pos(), EndAt: n.EndPos(), Local: local, Value: value}, nil
 	case *ast.IndexAssignStmt:
 		root, indexNodes, ok := indexAssignmentParts(n.Target)
 		if !ok {
@@ -634,7 +636,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 			return nil, err
 		}
 		return &IndexAssignStmt{
-			At: n.Pos(), Target: target.ID, Name: target.Name, RootType: target.Type,
+			At: n.Pos(), EndAt: n.EndPos(), Target: target.ID, Name: target.Name, RootType: target.Type,
 			Indices: indices, Value: value,
 		}, nil
 	case *ast.AssignStmt:
@@ -646,13 +648,13 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &AssignStmt{At: n.Pos(), Target: target.ID, Name: target.Name, Value: value}, nil
+		return &AssignStmt{At: n.Pos(), EndAt: n.EndPos(), Target: target.ID, Name: target.Name, Value: value}, nil
 	case *ast.ExprStmt:
 		expr, err := l.lowerExpr(n.Expr)
 		if err != nil {
 			return nil, err
 		}
-		return &ExprStmt{At: n.Pos(), Expr: expr}, nil
+		return &ExprStmt{At: n.Pos(), EndAt: n.EndPos(), Expr: expr}, nil
 	case *ast.IfStmt:
 		condition, err := l.lowerExpr(n.Condition)
 		if err != nil {
@@ -669,7 +671,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 				return nil, err
 			}
 		}
-		return &IfStmt{At: n.Pos(), Condition: condition, Then: thenBlock, Else: elseStmt}, nil
+		return &IfStmt{At: n.Pos(), EndAt: n.EndPos(), Condition: condition, Then: thenBlock, Else: elseStmt}, nil
 	case *ast.WhileStmt:
 		condition, err := l.lowerExpr(n.Condition)
 		if err != nil {
@@ -679,7 +681,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &WhileStmt{At: n.Pos(), Condition: condition, Body: body}, nil
+		return &WhileStmt{At: n.Pos(), EndAt: n.EndPos(), Condition: condition, Body: body}, nil
 	case *ast.ReturnStmt:
 		var value Expr
 		var err error
@@ -689,7 +691,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 				return nil, err
 			}
 		}
-		return &ReturnStmt{At: n.Pos(), Value: value}, nil
+		return &ReturnStmt{At: n.Pos(), EndAt: n.EndPos(), Value: value}, nil
 	default:
 		return nil, fmt.Errorf("%d:%d: ir: unsupported statement %T", stmt.Pos().Line, stmt.Pos().Column, stmt)
 	}
@@ -720,7 +722,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if local.Type != resolvedType {
 			return nil, fmt.Errorf("%d:%d: ir: resolved local type mismatch for %q", n.Pos().Line, n.Pos().Column, n.Name)
 		}
-		return &LocalExpr{At: n.Pos(), ResolvedType: resolvedType, Symbol: local.ID, Name: local.Name}, nil
+		return &LocalExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Symbol: local.ID, Name: local.Name}, nil
 	case *ast.UnaryExpr:
 		right, err := l.lowerExpr(n.Right)
 		if err != nil {
@@ -730,7 +732,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if !ok {
 			return nil, fmt.Errorf("%d:%d: ir: unsupported unary operator %q for %s", n.Pos().Line, n.Pos().Column, n.Op, right.ExprType())
 		}
-		return &UnaryExpr{At: n.Pos(), ResolvedType: resolvedType, Op: op, OperandType: right.ExprType(), Right: right}, nil
+		return &UnaryExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Op: op, OperandType: right.ExprType(), Right: right}, nil
 	case *ast.BinaryExpr:
 		left, err := l.lowerExpr(n.Left)
 		if err != nil {
@@ -745,7 +747,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			return nil, fmt.Errorf("%d:%d: ir: unsupported binary operator %q for %s", n.Pos().Line, n.Pos().Column, n.Op, left.ExprType())
 		}
 		return &BinaryExpr{
-			At: n.Pos(), ResolvedType: resolvedType, OperandType: left.ExprType(),
+			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, OperandType: left.ExprType(),
 			Op: op, Left: left, Right: right,
 		}, nil
 	case *ast.ArrayExpr:
@@ -757,7 +759,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			}
 			elements[i] = lowered
 		}
-		return &ArrayExpr{At: n.Pos(), ResolvedType: resolvedType, Elements: elements}, nil
+		return &ArrayExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Elements: elements}, nil
 	case *ast.EnumVariantExpr:
 		enumID, exists := l.enumIDs[n.EnumName]
 		if !exists {
@@ -781,7 +783,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			}
 			args[i] = lowered
 		}
-		return &EnumExpr{At: n.Pos(), ResolvedType: resolvedType, EnumID: enumID, VariantIndex: variantIndex, VariantName: n.VariantName, Args: args}, nil
+		return &EnumExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, EnumID: enumID, VariantIndex: variantIndex, VariantName: n.VariantName, Args: args}, nil
 	case *ast.MatchExpr:
 		subject, err := l.lowerExpr(n.Subject)
 		if err != nil {
@@ -791,11 +793,11 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if !exists {
 			return nil, fmt.Errorf("%d:%d: ir: unresolved match enum %q", n.Pos().Line, n.Pos().Column, subject.ExprType())
 		}
-		temp := Local{At: n.Pos(), ID: l.newSymbolID(), Name: "__match_subject", Type: subject.ExprType()}
+		temp := Local{At: n.Pos(), EndAt: n.EndPos(), ID: l.newSymbolID(), Name: "__match_subject", Type: subject.ExprType()}
 		arms := make([]MatchArm, 0, len(n.Arms))
 		covered := make(map[int]bool)
 		for _, arm := range n.Arms {
-			irArm := MatchArm{At: arm.At, Wildcard: arm.Pattern.Wildcard, Expr: nil}
+			irArm := MatchArm{At: arm.At, EndAt: arm.EndAt, Wildcard: arm.Pattern.Wildcard, Expr: nil}
 			var variantIndex int = -1
 			if arm.Pattern.Wildcard {
 				for i := range l.enumTypes[enumID].Variants {
@@ -824,7 +826,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 						l.scope = oldScope
 						return nil, fmt.Errorf("%d:%d: ir: too many enum pattern bindings", arm.At.Line, arm.At.Column)
 					}
-					local := Local{At: arm.Pattern.At, ID: l.newSymbolID(), Name: name, Type: variant.Payload[i]}
+					local := Local{At: arm.Pattern.At, EndAt: arm.Pattern.EndAt, ID: l.newSymbolID(), Name: name, Type: variant.Payload[i]}
 					if !l.scope.define(local) {
 						l.scope = oldScope
 						return nil, fmt.Errorf("%d:%d: ir: duplicate enum pattern binding %q", arm.At.Line, arm.At.Column, name)
@@ -850,7 +852,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			irArm.Expr = lowered
 			arms = append(arms, irArm)
 		}
-		return &MatchExpr{At: n.Pos(), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
+		return &MatchExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
 	case *ast.FieldExpr:
 		object, err := l.lowerExpr(n.Object)
 		if err != nil {
@@ -874,7 +876,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if fieldIndex < 0 {
 			return nil, fmt.Errorf("%d:%d: ir: unresolved field %q on %s", n.Pos().Line, n.Pos().Column, n.Name, object.ExprType())
 		}
-		return &FieldExpr{At: n.Pos(), ResolvedType: resolvedType, Object: object, StructID: structID, FieldIndex: fieldIndex, FieldName: n.Name}, nil
+		return &FieldExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Object: object, StructID: structID, FieldIndex: fieldIndex, FieldName: n.Name}, nil
 	case *ast.IndexExpr:
 		collection, err := l.lowerExpr(n.Collection)
 		if err != nil {
@@ -884,7 +886,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &IndexExpr{At: n.Pos(), ResolvedType: resolvedType, Collection: collection, Index: index, Op: OpIndexChecked}, nil
+		return &IndexExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Collection: collection, Index: index, Op: OpIndexChecked}, nil
 	case *ast.SliceExpr:
 		collection, err := l.lowerExpr(n.Collection)
 		if err != nil {
@@ -899,7 +901,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			return nil, err
 		}
 		return &SliceExpr{
-			At: n.Pos(), ResolvedType: resolvedType,
+			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType,
 			Collection: collection, Start: start, End: end, Op: OpSliceChecked,
 		}, nil
 	case *ast.CallExpr:
@@ -919,7 +921,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		functionID := FunctionID(-1)
 		if structID, isStruct := l.structIDs[callee.Name]; isStruct {
 			return &CallExpr{
-				At: n.Pos(), ResolvedType: resolvedType, Target: CallStructConstructor,
+				At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Target: CallStructConstructor,
 				StructID: structID, Function: FunctionID(-1), FunctionName: callee.Name, Args: args,
 			}, nil
 		}
@@ -943,7 +945,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			target = CallUserFunction
 		}
 		return &CallExpr{
-			At: n.Pos(), ResolvedType: resolvedType, Target: target,
+			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Target: target,
 			Function: functionID, FunctionName: callee.Name, Args: args,
 		}, nil
 	default:
