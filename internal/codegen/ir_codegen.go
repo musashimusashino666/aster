@@ -334,6 +334,30 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			return "asterLenString(" + joined + ")", nil
 		case ir.CallAssert:
 			return "asterAssert(" + joined + ", " + irPositionArgs(n) + ")", nil
+		case ir.CallI64Cast:
+			if len(n.Args) != 1 {
+				return "", fmt.Errorf("codegen: malformed i64 cast call")
+			}
+			switch n.Args[0].ExprType() {
+			case "i64":
+				return args[0], nil
+			case "f64":
+				return "asterF64ToI64(" + args[0] + ", " + irPositionArgs(n) + ")", nil
+			default:
+				return "", fmt.Errorf("codegen: invalid i64 cast source type %q", n.Args[0].ExprType())
+			}
+		case ir.CallF64Cast:
+			if len(n.Args) != 1 {
+				return "", fmt.Errorf("codegen: malformed f64 cast call")
+			}
+			switch n.Args[0].ExprType() {
+			case "f64":
+				return args[0], nil
+			case "i64":
+				return "asterI64ToF64(" + args[0] + ")", nil
+			default:
+				return "", fmt.Errorf("codegen: invalid f64 cast source type %q", n.Args[0].ExprType())
+			}
 		case ir.CallUserFunction:
 			callArgs := joined
 			if callArgs != "" {
