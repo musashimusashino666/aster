@@ -700,3 +700,10 @@ func TestGenericEnumReportsConstructorBoundaryDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestGenericEnumPreservesNestedConflictingInferenceDiagnostic(t *testing.T) {
+	err := checkSource(t, `enum Option<T> { None, Some(T) } enum Pair<T> { Both(T, T) } let value = Option::Some(Pair::Both(1, "wrong"));`)
+	if err == nil || !strings.Contains(err.Error(), "TYP088") || !strings.Contains(err.Error(), "consistently") {
+		t.Fatalf("expected nested conflicting inference diagnostic, got %v", err)
+	}
+}
