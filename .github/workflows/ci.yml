@@ -35,6 +35,9 @@ jobs:
       - name: Check formatting
         run: make fmt-check
 
+      - name: Check benchmark script syntax
+        run: bash -n scripts/bench-array-assignment.sh
+
       - name: Run tests
         run: go test ./...
 
