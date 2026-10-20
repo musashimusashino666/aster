@@ -64,17 +64,17 @@ type arrayStorage struct {
 }
 
 type Value struct {
-	Kind       ValueKind `json:"kind"`
-	I64        int64     `json:"i64,omitempty"`
-	F64        float64   `json:"f64,omitempty"`
-	Bool       bool      `json:"bool,omitempty"`
-	String     string    `json:"string,omitempty"`
-	Array      []Value   `json:"array,omitempty"`
-	StructName  string    `json:"struct_name,omitempty"`
-	Fields      []Value   `json:"fields,omitempty"`
-	EnumTypeID  int       `json:"enum_type_id,omitempty"`
-	VariantIndex int      `json:"variant_index,omitempty"`
-	Payload     []Value   `json:"payload,omitempty"`
+	Kind         ValueKind `json:"kind"`
+	I64          int64     `json:"i64,omitempty"`
+	F64          float64   `json:"f64,omitempty"`
+	Bool         bool      `json:"bool,omitempty"`
+	String       string    `json:"string,omitempty"`
+	Array        []Value   `json:"array,omitempty"`
+	StructName   string    `json:"struct_name,omitempty"`
+	Fields       []Value   `json:"fields,omitempty"`
+	EnumTypeID   int       `json:"enum_type_id,omitempty"`
+	VariantIndex int       `json:"variant_index,omitempty"`
+	Payload      []Value   `json:"payload,omitempty"`
 
 	arrayStorage  *arrayStorage `json:"-"`
 	arrayBorrowed bool          `json:"-"`
@@ -85,34 +85,34 @@ type Value struct {
 // +0.0 when bytecode is written and read back.
 func (v Value) MarshalJSON() ([]byte, error) {
 	type valueJSON struct {
-		Kind       ValueKind `json:"kind"`
-		I64        int64     `json:"i64,omitempty"`
-		F64        *float64  `json:"f64,omitempty"`
-		Bool       bool      `json:"bool,omitempty"`
-		String     string    `json:"string,omitempty"`
-		Array      []Value   `json:"array,omitempty"`
-		StructName  string    `json:"struct_name,omitempty"`
-		Fields      []Value   `json:"fields,omitempty"`
-		EnumTypeID  int       `json:"enum_type_id,omitempty"`
-		VariantIndex int      `json:"variant_index,omitempty"`
-		Payload     []Value   `json:"payload,omitempty"`
+		Kind         ValueKind `json:"kind"`
+		I64          int64     `json:"i64,omitempty"`
+		F64          *float64  `json:"f64,omitempty"`
+		Bool         bool      `json:"bool,omitempty"`
+		String       string    `json:"string,omitempty"`
+		Array        []Value   `json:"array,omitempty"`
+		StructName   string    `json:"struct_name,omitempty"`
+		Fields       []Value   `json:"fields,omitempty"`
+		EnumTypeID   int       `json:"enum_type_id,omitempty"`
+		VariantIndex int       `json:"variant_index,omitempty"`
+		Payload      []Value   `json:"payload,omitempty"`
 	}
 	var f64 *float64
 	if v.Kind == ValueF64 {
 		f64 = &v.F64
 	}
 	return json.Marshal(valueJSON{
-		Kind:       v.Kind,
-		I64:        v.I64,
-		F64:        f64,
-		Bool:       v.Bool,
-		String:     v.String,
-		Array:      v.Array,
-		StructName:  v.StructName,
-		Fields:      v.Fields,
-		EnumTypeID:  v.EnumTypeID,
+		Kind:         v.Kind,
+		I64:          v.I64,
+		F64:          f64,
+		Bool:         v.Bool,
+		String:       v.String,
+		Array:        v.Array,
+		StructName:   v.StructName,
+		Fields:       v.Fields,
+		EnumTypeID:   v.EnumTypeID,
 		VariantIndex: v.VariantIndex,
-		Payload:     v.Payload,
+		Payload:      v.Payload,
 	})
 }
 
@@ -267,41 +267,41 @@ func (v Value) StringValue() string {
 type Op string
 
 const (
-	OpConst        Op = "CONST"
-	OpLoadLocal    Op = "LOAD_LOCAL"
-	OpBuildArray   Op = "BUILD_ARRAY"
-	OpBuildStruct  Op = "BUILD_STRUCT"
-	OpGetField     Op = "GET_FIELD"
-	OpBuildEnum    Op = "BUILD_ENUM"
-	OpMatchEnum    Op = "MATCH_ENUM"
+	OpConst          Op = "CONST"
+	OpLoadLocal      Op = "LOAD_LOCAL"
+	OpBuildArray     Op = "BUILD_ARRAY"
+	OpBuildStruct    Op = "BUILD_STRUCT"
+	OpGetField       Op = "GET_FIELD"
+	OpBuildEnum      Op = "BUILD_ENUM"
+	OpMatchEnum      Op = "MATCH_ENUM"
 	OpGetEnumPayload Op = "GET_ENUM_PAYLOAD"
-	OpIndex        Op = "INDEX"
-	OpSlice        Op = "SLICE"
-	OpToI64        Op = "TO_I64"
-	OpToF64        Op = "TO_F64"
-	OpSetIndexPath Op = "SET_INDEX_PATH"
-	OpStoreLocal   Op = "STORE_LOCAL"
-	OpPop          Op = "POP"
-	OpNeg          Op = "NEG"
-	OpNot          Op = "NOT"
-	OpAdd          Op = "ADD"
-	OpSub          Op = "SUB"
-	OpMul          Op = "MUL"
-	OpDiv          Op = "DIV"
-	OpMod          Op = "MOD"
-	OpEqual        Op = "EQ"
-	OpNotEqual     Op = "NE"
-	OpLess         Op = "LT"
-	OpLessEqual    Op = "LE"
-	OpGreater      Op = "GT"
-	OpGreaterEqual Op = "GE"
-	OpJump         Op = "JUMP"
-	OpJumpIfFalse  Op = "JUMP_IF_FALSE"
-	OpJumpIfTrue   Op = "JUMP_IF_TRUE"
-	OpCall         Op = "CALL"
-	OpBuiltin      Op = "BUILTIN"
-	OpReturn       Op = "RETURN"
-	OpHalt         Op = "HALT"
+	OpIndex          Op = "INDEX"
+	OpSlice          Op = "SLICE"
+	OpToI64          Op = "TO_I64"
+	OpToF64          Op = "TO_F64"
+	OpSetIndexPath   Op = "SET_INDEX_PATH"
+	OpStoreLocal     Op = "STORE_LOCAL"
+	OpPop            Op = "POP"
+	OpNeg            Op = "NEG"
+	OpNot            Op = "NOT"
+	OpAdd            Op = "ADD"
+	OpSub            Op = "SUB"
+	OpMul            Op = "MUL"
+	OpDiv            Op = "DIV"
+	OpMod            Op = "MOD"
+	OpEqual          Op = "EQ"
+	OpNotEqual       Op = "NE"
+	OpLess           Op = "LT"
+	OpLessEqual      Op = "LE"
+	OpGreater        Op = "GT"
+	OpGreaterEqual   Op = "GE"
+	OpJump           Op = "JUMP"
+	OpJumpIfFalse    Op = "JUMP_IF_FALSE"
+	OpJumpIfTrue     Op = "JUMP_IF_TRUE"
+	OpCall           Op = "CALL"
+	OpBuiltin        Op = "BUILTIN"
+	OpReturn         Op = "RETURN"
+	OpHalt           Op = "HALT"
 )
 
 type Instruction struct {
@@ -337,7 +337,7 @@ type EnumType struct {
 }
 
 type EnumVariant struct {
-	Name        string   `json:"name"`
+	Name         string   `json:"name"`
 	PayloadTypes []string `json:"payload_types,omitempty"`
 }
 
@@ -432,7 +432,9 @@ func (p *Program) validateStructTypes() (map[string]StructType, error) {
 }
 
 func (p *Program) validateEnumTypes(structTypesByName map[string]StructType) (map[string]EnumType, error) {
-	if len(p.EnumTypes) > maxEnumTypeCount { return nil, fmt.Errorf("enum type metadata exceeds safety limit") }
+	if len(p.EnumTypes) > maxEnumTypeCount {
+		return nil, fmt.Errorf("enum type metadata exceeds safety limit")
+	}
 	byName := make(map[string]EnumType, len(p.EnumTypes))
 	totalVariants := 0
 	for i, enumType := range p.EnumTypes {
@@ -444,19 +446,31 @@ func (p *Program) validateEnumTypes(structTypesByName map[string]StructType) (ma
 		case "i64", "f64", "bool", "string", "unit", "Array":
 			return nil, fmt.Errorf("enum type %q uses a reserved name", name)
 		}
-		if _, exists := structTypesByName[name]; exists { return nil, fmt.Errorf("enum type %q conflicts with a struct", name) }
-		if _, exists := byName[name]; exists { return nil, fmt.Errorf("duplicate enum type %q", name) }
-		if len(enumType.Variants) == 0 { return nil, fmt.Errorf("enum %q must have at least one variant", name) }
+		if _, exists := structTypesByName[name]; exists {
+			return nil, fmt.Errorf("enum type %q conflicts with a struct", name)
+		}
+		if _, exists := byName[name]; exists {
+			return nil, fmt.Errorf("duplicate enum type %q", name)
+		}
+		if len(enumType.Variants) == 0 {
+			return nil, fmt.Errorf("enum %q must have at least one variant", name)
+		}
 		totalVariants += len(enumType.Variants)
-		if totalVariants > maxEnumVariantCount { return nil, fmt.Errorf("enum variant metadata exceeds safety limit") }
+		if totalVariants > maxEnumVariantCount {
+			return nil, fmt.Errorf("enum variant metadata exceeds safety limit")
+		}
 		seen := make(map[string]struct{}, len(enumType.Variants))
 		for _, variant := range enumType.Variants {
 			if variant.Name == "" || len(variant.Name) > maxTypeNameBytes || !langtypes.ValidName(variant.Name) {
 				return nil, fmt.Errorf("enum %q has invalid variant name %q", name, variant.Name)
 			}
-			if _, exists := seen[variant.Name]; exists { return nil, fmt.Errorf("enum %q has duplicate variant %q", name, variant.Name) }
+			if _, exists := seen[variant.Name]; exists {
+				return nil, fmt.Errorf("enum %q has duplicate variant %q", name, variant.Name)
+			}
 			seen[variant.Name] = struct{}{}
-			if len(variant.PayloadTypes) > maxEnumPayloadCount { return nil, fmt.Errorf("enum %q variant %q exceeds payload-count safety limit", name, variant.Name) }
+			if len(variant.PayloadTypes) > maxEnumPayloadCount {
+				return nil, fmt.Errorf("enum %q variant %q exceeds payload-count safety limit", name, variant.Name)
+			}
 		}
 		byName[name] = enumType
 	}
@@ -473,42 +487,68 @@ func (p *Program) validateEnumTypes(structTypesByName map[string]StructType) (ma
 	state := make(map[string]uint8)
 	var visit func(string) error
 	visit = func(name string) error {
-		if state[name] == 1 { return fmt.Errorf("nominal type %q has a recursive by-value layout", name) }
-		if state[name] == 2 { return nil }
+		if state[name] == 1 {
+			return fmt.Errorf("nominal type %q has a recursive by-value layout", name)
+		}
+		if state[name] == 2 {
+			return nil
+		}
 		state[name] = 1
 		var children []string
 		if st, ok := structTypesByName[name]; ok {
 			for _, field := range st.Fields {
 				if _, arr := abstractArrayElementType(field.Type); !arr {
-					if _, exists := structTypesByName[field.Type]; exists { children = append(children, field.Type) }
-					if _, exists := byName[field.Type]; exists { children = append(children, field.Type) }
+					if _, exists := structTypesByName[field.Type]; exists {
+						children = append(children, field.Type)
+					}
+					if _, exists := byName[field.Type]; exists {
+						children = append(children, field.Type)
+					}
 				}
 			}
 		}
 		if en, ok := byName[name]; ok {
 			for _, variant := range en.Variants {
 				for _, typ := range variant.PayloadTypes {
-					if _, arr := abstractArrayElementType(typ); arr { continue }
-					if _, exists := structTypesByName[typ]; exists { children = append(children, typ) }
-					if _, exists := byName[typ]; exists { children = append(children, typ) }
+					if _, arr := abstractArrayElementType(typ); arr {
+						continue
+					}
+					if _, exists := structTypesByName[typ]; exists {
+						children = append(children, typ)
+					}
+					if _, exists := byName[typ]; exists {
+						children = append(children, typ)
+					}
 				}
 			}
 		}
 		for _, child := range children {
-			if err := visit(child); err != nil { return err }
+			if err := visit(child); err != nil {
+				return err
+			}
 		}
 		state[name] = 2
 		return nil
 	}
-	for name := range structTypesByName { if err := visit(name); err != nil { return nil, err } }
-	for name := range byName { if err := visit(name); err != nil { return nil, err } }
+	for name := range structTypesByName {
+		if err := visit(name); err != nil {
+			return nil, err
+		}
+	}
+	for name := range byName {
+		if err := visit(name); err != nil {
+			return nil, err
+		}
+	}
 	return byName, nil
 }
 
 func (p *Program) validateMatchTables(enumTypesByName map[string]EnumType) error {
 	_ = enumTypesByName
 	for _, fn := range p.Functions {
-		if len(fn.MatchTables) > maxEnumVariantCount { return fmt.Errorf("function %q exceeds match-table safety limit", fn.Name) }
+		if len(fn.MatchTables) > maxEnumVariantCount {
+			return fmt.Errorf("function %q exceeds match-table safety limit", fn.Name)
+		}
 		for ti, table := range fn.MatchTables {
 			if table.EnumTypeID < 0 || table.EnumTypeID >= len(p.EnumTypes) {
 				return fmt.Errorf("function %q match table %d references invalid enum type %d", fn.Name, ti, table.EnumTypeID)
@@ -539,9 +579,13 @@ func (p *Program) validProgramTypeName(name string, structTypesByName map[string
 	case "i64", "f64", "bool", "string", "unit":
 		return true
 	default:
-		if _, ok := structTypesByName[name]; ok { return true }
+		if _, ok := structTypesByName[name]; ok {
+			return true
+		}
 		for _, enumType := range p.EnumTypes {
-			if enumType.Name == name { return true }
+			if enumType.Name == name {
+				return true
+			}
 		}
 		return false
 	}
@@ -568,8 +612,12 @@ func (p *Program) Validate() error {
 		return err
 	}
 	enumTypesByName, err := p.validateEnumTypes(structTypesByName)
-	if err != nil { return err }
-	if err := p.validateMatchTables(enumTypesByName); err != nil { return err }
+	if err != nil {
+		return err
+	}
+	if err := p.validateMatchTables(enumTypesByName); err != nil {
+		return err
+	}
 	totalConstantValues := 0
 	totalConstantStringBytes := 0
 	totalConstantArrayItems := 0
@@ -758,7 +806,9 @@ func validateFunctionStack(fn Function) error {
 				required, delta = ins.A, 1-ins.A
 			case OpBuildStruct, OpBuildEnum:
 				count := ins.B
-				if ins.Op == OpBuildEnum { count = ins.C }
+				if ins.Op == OpBuildEnum {
+					count = ins.C
+				}
 				required, delta = count, 1-count
 			case OpGetField:
 				required = 1
@@ -830,10 +880,14 @@ func validateFunctionStack(fn Function) error {
 
 			switch ins.Op {
 			case OpJump:
-				if err := enqueue(ins.A); err != nil { return err }
+				if err := enqueue(ins.A); err != nil {
+					return err
+				}
 			case OpMatchEnum:
 				for _, target := range fn.MatchTables[ins.B].Targets {
-					if err := enqueue(target); err != nil { return err }
+					if err := enqueue(target); err != nil {
+						return err
+					}
 				}
 			case OpJumpIfFalse, OpJumpIfTrue:
 				if err := enqueue(ins.A); err != nil {
