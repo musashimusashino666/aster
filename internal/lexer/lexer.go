@@ -203,8 +203,14 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 		if kind == token.Illegal {
 			message := fmt.Sprintf("unexpected character %q", ch)
 			if ch >= utf8.RuneSelf {
-				r, _ := utf8.DecodeRuneInString(l.source[start:])
+				r, size := utf8.DecodeRuneInString(l.source[start:])
 				message = fmt.Sprintf("unexpected character U+%04X %q", r, r)
+				// The leading byte was already consumed above. Advance over
+				// the rest of this UTF-8 code point so the diagnostic span ends
+				// after the complete offending character.
+				for i := 1; i < size; i++ {
+					l.advance()
+				}
 			}
 			return nil, l.errorAt(pos, diagnostic.LexerUnexpectedCharacter, message)
 		}
@@ -280,7 +286,7 @@ func (l *Lexer) position() token.Position {
 	return token.Position{Offset: l.offset, Line: l.line, Column: l.column}
 }
 func (l *Lexer) errorAt(p token.Position, code, message string) error {
-	return diagnostic.New(code, "lexer", p, message)
+	return diagnostic.NewSpan(code, "lexer", p, l.position(), message)
 }
 func (l *Lexer) skipTrivia() error {
 	for !l.atEnd() {
