@@ -267,6 +267,15 @@ const (
 	TypeSliceBoundType          = "TYP049"
 	TypeNumericCastArity        = "TYP050"
 	TypeNumericCastOperand      = "TYP051"
+	TypeDuplicateStruct         = "TYP052"
+	TypeDuplicateStructField    = "TYP053"
+	TypeInvalidStructField      = "TYP054"
+	TypeFieldOnNonStruct        = "TYP055"
+	TypeUnknownStructField      = "TYP056"
+	TypeStructConstructorArity  = "TYP057"
+	TypeStructFieldMismatch     = "TYP058"
+	TypeRecursiveStruct         = "TYP059"
+	TypePrintStructUnsupported  = "TYP060"
 )
 
 const (
