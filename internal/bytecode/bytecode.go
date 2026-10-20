@@ -67,6 +67,32 @@ type Value struct {
 	arrayBorrowed bool          `json:"-"`
 }
 
+// MarshalJSON preserves the sign bit of floating-point zero. The default
+// omitempty handling treats -0.0 as empty and would silently serialize it as
+// +0.0 when bytecode is written and read back.
+func (v Value) MarshalJSON() ([]byte, error) {
+	type valueJSON struct {
+		Kind   ValueKind `json:"kind"`
+		I64    int64     `json:"i64,omitempty"`
+		F64    *float64  `json:"f64,omitempty"`
+		Bool   bool      `json:"bool,omitempty"`
+		String string    `json:"string,omitempty"`
+		Array  []Value   `json:"array,omitempty"`
+	}
+	var f64 *float64
+	if v.Kind == ValueF64 {
+		f64 = &v.F64
+	}
+	return json.Marshal(valueJSON{
+		Kind:   v.Kind,
+		I64:    v.I64,
+		F64:    f64,
+		Bool:   v.Bool,
+		String: v.String,
+		Array:  v.Array,
+	})
+}
+
 // EnsureArrayStorage initializes runtime metadata on an array and its nested
 // elements. The per-storage initialization flag keeps repeated local reads
 // from traversing the entire array on every indexed update.
