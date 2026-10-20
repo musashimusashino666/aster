@@ -22,6 +22,30 @@ var arrayAssignmentBenchmarkWorkloads = []struct {
 	{size: 16, rounds: 2048},
 	{size: 64, rounds: 512},
 	{size: 256, rounds: 256},
+	{size: 1024, rounds: 16},
+}
+
+// BenchmarkNativeProcessStartup estimates the process-launch floor using a
+// no-op executable built with the same host Go toolchain as the native backend.
+// It is a reference measurement, not a value to subtract mechanically from the
+// array benchmark: executable size and runtime initialization can differ.
+func BenchmarkNativeProcessStartup(b *testing.B) {
+	const goSource = "package main\n\nfunc main() {}\n"
+	bin := filepath.Join(b.TempDir(), "native-noop")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cmd := exec.Command(bin)
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+		if err := cmd.Run(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N), "ns/process")
 }
 
 func BenchmarkArrayElementAssignmentVM(b *testing.B) {
@@ -76,7 +100,7 @@ func BenchmarkArrayElementAssignmentNative(b *testing.B) {
 			}
 
 			// Compilation is excluded. Each timed operation still launches a
-			// process; size-specific rounds reduce the startup-time share.
+			// process; the no-op benchmark above provides a startup reference.
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				cmd := exec.Command(bin)
