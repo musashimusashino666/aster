@@ -334,8 +334,15 @@ func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 	}{
 		{name: "division_by_zero", source: "print(10 / 0);", diagnostic: "division by zero", marker: "/"},
 		{name: "integer_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum + 1);", diagnostic: "overflow", marker: "+"},
+		{name: "integer_subtraction_overflow", source: "let minimum: i64 = -9223372036854775808; print(minimum - 1);", diagnostic: "overflow", marker: "minimum - 1", offset: len("minimum ")},
+		{name: "integer_multiplication_overflow", source: "let maximum: i64 = 9223372036854775807; print(maximum * 2);", diagnostic: "overflow", marker: "maximum * 2", offset: len("maximum ")},
+		{name: "integer_division_overflow", source: "let minimum: i64 = -9223372036854775808; print(minimum / -1);", diagnostic: "overflow", marker: "minimum / -1", offset: len("minimum ")},
+		{name: "integer_negation_overflow", source: "let minimum: i64 = -9223372036854775808; print(-minimum);", diagnostic: "integer overflow in unary '-'", marker: "print(-minimum)", offset: len("print(")},
+		{name: "remainder_by_zero", source: "print(10 % 0);", diagnostic: "remainder by zero", marker: "%"},
 		{name: "assertion_failure", source: "assert(false);", diagnostic: "assertion failed", marker: "assert(", offset: len("assert")},
 		{name: "float_division_by_zero", source: "print(1.0 / 0.0);", diagnostic: "division by zero", marker: "/"},
+		{name: "float_non_finite", source: "fn grow(n: i64) -> f64 { if n == 0 { return 1.0; } else { return grow(n - 1) * 10.0; } } print(grow(400));", diagnostic: "non-finite floating-point result", marker: "*"},
+		{name: "array_index_out_of_bounds", source: "let xs: Array<i64> = [1]; print(xs[1]);", diagnostic: "out of bounds", marker: "xs[1]", offset: len("xs")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
