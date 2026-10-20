@@ -26,6 +26,7 @@ type FunctionResolver func(name string) (FunctionSignature, bool)
 type Program struct {
 	SourceName  string
 	StructTypes []StructType
+	EnumTypes   []EnumType
 	Functions   []*Function
 	Body        []Stmt
 }
@@ -39,6 +40,17 @@ type StructType struct {
 type StructField struct {
 	Name string
 	Type Type
+}
+
+type EnumType struct {
+	ID       int
+	Name     string
+	Variants []EnumVariant
+}
+
+type EnumVariant struct {
+	Name    string
+	Payload []Type
 }
 
 type Node interface {
@@ -222,6 +234,40 @@ func (n *FieldExpr) Pos() token.Position { return n.At }
 func (*FieldExpr) exprNode()             {}
 func (n *FieldExpr) ExprType() Type      { return n.ResolvedType }
 
+type EnumExpr struct {
+	At           token.Position
+	ResolvedType Type
+	EnumID       int
+	VariantIndex int
+	VariantName  string
+	Args         []Expr
+}
+
+func (n *EnumExpr) Pos() token.Position { return n.At }
+func (*EnumExpr) exprNode()             {}
+func (n *EnumExpr) ExprType() Type      { return n.ResolvedType }
+
+type MatchArm struct {
+	At             token.Position
+	Wildcard       bool
+	VariantIndexes []int
+	Bindings       []Local
+	Expr           Expr
+}
+
+type MatchExpr struct {
+	At           token.Position
+	ResolvedType Type
+	EnumID       int
+	Subject      Expr
+	SubjectLocal Local
+	Arms         []MatchArm
+}
+
+func (n *MatchExpr) Pos() token.Position { return n.At }
+func (*MatchExpr) exprNode()             {}
+func (n *MatchExpr) ExprType() Type      { return n.ResolvedType }
+
 type IndexExpr struct {
 	At           token.Position
 	ResolvedType Type
@@ -351,6 +397,8 @@ type lowerer struct {
 	functionIDs  map[string]FunctionID
 	structIDs    map[string]int
 	structTypes  []StructType
+	enumIDs      map[string]int
+	enumTypes    []EnumType
 	scope        *scope
 	nextSymbolID SymbolID
 }
@@ -372,6 +420,7 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 		functionOf:  functionOf,
 		functionIDs: make(map[string]FunctionID),
 		structIDs:   make(map[string]int),
+		enumIDs:     make(map[string]int),
 	}
 	functionDecls := make([]*ast.Function, 0)
 	for _, decl := range tree.Decls {
@@ -384,6 +433,18 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 			}
 			program.StructTypes = append(program.StructTypes, structType)
 			l.structTypes = program.StructTypes
+		}
+		if enumDecl, ok := decl.(*ast.EnumDecl); ok {
+			id := len(program.EnumTypes)
+			l.enumIDs[enumDecl.Name] = id
+			enumType := EnumType{ID: id, Name: enumDecl.Name, Variants: make([]EnumVariant, 0, len(enumDecl.Variants))}
+			for _, variant := range enumDecl.Variants {
+				payload := make([]Type, len(variant.Payload))
+				for i, typ := range variant.Payload { payload[i] = typeRefType(typ) }
+				enumType.Variants = append(enumType.Variants, EnumVariant{Name: variant.Name, Payload: payload})
+			}
+			program.EnumTypes = append(program.EnumTypes, enumType)
+			l.enumTypes = program.EnumTypes
 		}
 		if function, ok := decl.(*ast.Function); ok {
 			id := FunctionID(len(functionDecls))
@@ -652,6 +713,68 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			elements[i] = lowered
 		}
 		return &ArrayExpr{At: n.Pos(), ResolvedType: resolvedType, Elements: elements}, nil
+	case *ast.EnumVariantExpr:
+		enumID, exists := l.enumIDs[n.EnumName]
+		if !exists { return nil, fmt.Errorf("%d:%d: ir: unresolved enum type %q", n.Pos().Line, n.Pos().Column, n.EnumName) }
+		variantIndex := -1
+		for i, variant := range l.enumTypes[enumID].Variants {
+			if variant.Name == n.VariantName { variantIndex = i; break }
+		}
+		if variantIndex < 0 { return nil, fmt.Errorf("%d:%d: ir: unresolved enum variant %s::%s", n.Pos().Line, n.Pos().Column, n.EnumName, n.VariantName) }
+		args := make([]Expr, len(n.Args))
+		for i, arg := range n.Args {
+			lowered, err := l.lowerExpr(arg)
+			if err != nil { return nil, err }
+			args[i] = lowered
+		}
+		return &EnumExpr{At: n.Pos(), ResolvedType: resolvedType, EnumID: enumID, VariantIndex: variantIndex, VariantName: n.VariantName, Args: args}, nil
+	case *ast.MatchExpr:
+		subject, err := l.lowerExpr(n.Subject)
+		if err != nil { return nil, err }
+		enumID, exists := l.enumIDs[string(subject.ExprType())]
+		if !exists { return nil, fmt.Errorf("%d:%d: ir: unresolved match enum %q", n.Pos().Line, n.Pos().Column, subject.ExprType()) }
+		temp := Local{At: n.Pos(), ID: l.newSymbolID(), Name: "__match_subject", Type: subject.ExprType()}
+		arms := make([]MatchArm, 0, len(n.Arms))
+		covered := make(map[int]bool)
+		for _, arm := range n.Arms {
+			irArm := MatchArm{At: arm.At, Wildcard: arm.Pattern.Wildcard, Expr: nil}
+			var variantIndex int = -1
+			if arm.Pattern.Wildcard {
+				for i := range l.enumTypes[enumID].Variants {
+					if !covered[i] { irArm.VariantIndexes = append(irArm.VariantIndexes, i); covered[i] = true }
+				}
+			} else {
+				for i, variant := range l.enumTypes[enumID].Variants {
+					if variant.Name == arm.Pattern.VariantName { variantIndex = i; break }
+				}
+				if variantIndex < 0 { return nil, fmt.Errorf("%d:%d: ir: unresolved match variant %q", arm.At.Line, arm.At.Column, arm.Pattern.VariantName) }
+				covered[variantIndex] = true
+				irArm.VariantIndexes = []int{variantIndex}
+				variant := l.enumTypes[enumID].Variants[variantIndex]
+				oldScope := l.scope
+				l.scope = newScope(oldScope)
+				for i, name := range arm.Pattern.Bindings {
+					if i >= len(variant.Payload) { l.scope = oldScope; return nil, fmt.Errorf("%d:%d: ir: too many enum pattern bindings", arm.At.Line, arm.At.Column) }
+					local := Local{At: arm.Pattern.At, ID: l.newSymbolID(), Name: name, Type: variant.Payload[i]}
+					if !l.scope.define(local) { l.scope = oldScope; return nil, fmt.Errorf("%d:%d: ir: duplicate enum pattern binding %q", arm.At.Line, arm.At.Column, name) }
+					irArm.Bindings = append(irArm.Bindings, local)
+				}
+				lowered, lowerErr := l.lowerExpr(arm.Expr)
+				l.scope = oldScope
+				if lowerErr != nil { return nil, lowerErr }
+				irArm.Expr = lowered
+				arms = append(arms, irArm)
+				continue
+			}
+			oldScope := l.scope
+			l.scope = newScope(oldScope)
+			lowered, lowerErr := l.lowerExpr(arm.Expr)
+			l.scope = oldScope
+			if lowerErr != nil { return nil, lowerErr }
+			irArm.Expr = lowered
+			arms = append(arms, irArm)
+		}
+		return &MatchExpr{At: n.Pos(), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
 	case *ast.FieldExpr:
 		object, err := l.lowerExpr(n.Object)
 		if err != nil {
