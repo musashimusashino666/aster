@@ -61,6 +61,7 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	}
 	g.line("func main() {")
 	g.indent++
+	g.line("asterCallDepth = 1")
 	g.line("defer func() { if r := recover(); r != nil { msg := fmt.Sprint(r); if !strings.Contains(msg, \"runtime error:\") { msg = \"runtime error: \" + msg }; fmt.Fprintln(os.Stderr, msg); os.Exit(1) } }()")
 	for _, stmt := range typed.IR.Body {
 		if err := g.irStatement(stmt); err != nil {
@@ -89,6 +90,10 @@ func (g *generator) writePreamble() {
 	g.line("func asterPrint(v any, line, column int) struct{} { var out strings.Builder; asterFormatValue(reflect.ValueOf(v), &out, line, column, 0); if _, err := fmt.Fprintln(os.Stdout, out.String()); err != nil { asterRuntimeError(line, column, fmt.Sprintf(\"write output: %v\", err)) }; return struct{}{} }")
 	g.line("func asterLenString(s string) int64 { return int64(utf8.RuneCountInString(s)) }")
 	g.line(fmt.Sprintf("const asterMaxStringBytes = %d", limits.MaxStringBytes))
+	g.line(fmt.Sprintf("const asterMaxCallDepth = %d", limits.MaxCallDepth))
+	g.line("var asterCallDepth int")
+	g.line("func asterEnterCall(line, column int) { if asterCallDepth >= asterMaxCallDepth { asterRuntimeError(line, column, fmt.Sprintf(\"call depth limit exceeded (maximum %d)\", asterMaxCallDepth)) }; asterCallDepth++ }")
+	g.line("func asterLeaveCall() { asterCallDepth-- }")
 	g.line(fmt.Sprintf("const asterMaxArrayNestingDepth = %d", limits.MaxArrayNestingDepth))
 	g.line("func asterDisplayWrite(out *strings.Builder, text string, line, column int) { if len(text) > asterMaxStringBytes-out.Len() { asterRuntimeError(line, column, fmt.Sprintf(\"printed value exceeds %d-byte output limit\", asterMaxStringBytes)) }; out.WriteString(text) }")
 	g.line("func asterFormatValue(value reflect.Value, out *strings.Builder, line, column, depth int) { if value.Kind() == reflect.Slice { if depth >= asterMaxArrayNestingDepth && value.Len() > 0 { asterRuntimeError(line, column, \"printed array nesting exceeds depth limit\") }; asterDisplayWrite(out, \"[\", line, column); for i := 0; i < value.Len(); i++ { if i > 0 { asterDisplayWrite(out, \" \", line, column) }; asterFormatValue(value.Index(i), out, line, column, depth+1) }; asterDisplayWrite(out, \"]\", line, column); return }; if value.Kind() == reflect.String { asterDisplayWrite(out, value.String(), line, column); return }; asterDisplayWrite(out, fmt.Sprint(value.Interface()), line, column) }")
