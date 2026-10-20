@@ -301,7 +301,11 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		case ir.CallAssert:
 			return "asterAssert(" + joined + ", " + irPositionArgs(n) + ")", nil
 		case ir.CallUserFunction:
-			return irFunctionName(n.Function) + "(" + joined + ", " + irPositionArgs(n) + ")", nil
+			callArgs := joined
+			if callArgs != "" {
+				callArgs += ", "
+			}
+			return irFunctionName(n.Function) + "(" + callArgs + irPositionArgs(n) + ")", nil
 		default:
 			return "", fmt.Errorf("codegen: unsupported IR call target %q", n.Target)
 		}
