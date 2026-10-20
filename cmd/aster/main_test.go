@@ -138,6 +138,9 @@ func TestCommandFmtWritesCanonicalSource(t *testing.T) {
 	if err := commandFmt([]string{"--check", path}); err != nil {
 		t.Fatalf("formatted source did not pass --check: %v", err)
 	}
+	if err := commandFmt([]string{path, "--check"}); err != nil {
+		t.Fatalf("formatted source did not pass when --check followed the file: %v", err)
+	}
 }
 
 func TestCommandFmtCheckDoesNotModifyUnformattedSource(t *testing.T) {
