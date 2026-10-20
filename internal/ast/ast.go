@@ -79,6 +79,15 @@ type AssignStmt struct {
 func (n *AssignStmt) Pos() token.Position { return n.At }
 func (*AssignStmt) stmtNode()             {}
 
+type IndexAssignStmt struct {
+	At     token.Position
+	Target Expr
+	Value  Expr
+}
+
+func (n *IndexAssignStmt) Pos() token.Position { return n.At }
+func (*IndexAssignStmt) stmtNode()             {}
+
 type ExprStmt struct {
 	At   token.Position
 	Expr Expr
