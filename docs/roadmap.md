@@ -33,7 +33,7 @@ This roadmap is a planning document, not a commitment that work is already in pr
 
 ## Phase 0.4 — backend and platform expansion
 
-- [ ] Typed intermediate representation shared by bytecode and native backends (initial bridge complete: checker exposes expression types/signatures and native codegen consumes them; a normalized IR with source spans, resolved identities, and explicit runtime operations remains to be implemented)
+- [ ] Typed intermediate representation shared by bytecode and native backends (phase 2 introduces source-spanned typed IR with resolved local/function identities and explicit checked operations; native codegen consumes it, while bytecode lowering still needs migration)
 - [ ] Independent native backend using LLVM or Cranelift
 - [ ] WebAssembly backend plus explicit host API bindings
 - [ ] Cross-compilation and target capability manifests
