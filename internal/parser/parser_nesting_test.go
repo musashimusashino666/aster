@@ -18,6 +18,20 @@ func TestParenthesizedExpressionNestingLimit(t *testing.T) {
 	}
 }
 
+
+func TestNestedArrayExpressionNestingLimit(t *testing.T) {
+	validDepth := maxSyntaxNestingDepth - 1
+	valid := "let value = " + strings.Repeat("[", validDepth) + "1" + strings.Repeat("]", validDepth) + ";"
+	if _, err := Parse(valid, "nesting.ast"); err != nil {
+		t.Fatalf("maximum supported nested array expression should parse: %v", err)
+	}
+
+	tooDeep := "let value = " + strings.Repeat("[", maxSyntaxNestingDepth) + "1" + strings.Repeat("]", maxSyntaxNestingDepth) + ";"
+	if _, err := Parse(tooDeep, "nesting.ast"); err == nil || !strings.Contains(err.Error(), "syntax nesting exceeds limit") {
+		t.Fatalf("expected nested array syntax limit error, got %v", err)
+	}
+}
+
 func TestExpressionASTDepthLimit(t *testing.T) {
 	valid := "let value = " + strings.Repeat("1 + ", maxSyntaxNestingDepth-1) + "1;"
 	if _, err := Parse(valid, "nesting.ast"); err != nil {
