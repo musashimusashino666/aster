@@ -905,7 +905,7 @@ print(i64(-9223372036854775808.0));`
 
 func TestExplicitFloatToIntegerRangeMatchesBackends(t *testing.T) {
 	source := "print(i64(9223372036854775808.0));"
-	line, column := sourceMarkerPosition(t, source, "i64(", 0)
+	line, column := sourceMarkerPosition(t, source, "i64(", len("i64"))
 	expected := fmt.Sprintf("%d:%d: runtime error: f64 value out of range for i64 conversion", line, column)
 
 	vmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
