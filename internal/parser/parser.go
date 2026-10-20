@@ -685,22 +685,16 @@ func (p *Parser) matchPattern() (ast.MatchPattern, error) {
 	if p.match(token.LParen) {
 		pattern.HasPayload = true
 		if !p.check(token.RParen) {
-			seen := make(map[string]struct{})
 			for {
 				binding, bindingErr := p.consume(token.Ident, "expected payload binding name")
 				if bindingErr != nil { return ast.MatchPattern{}, bindingErr }
 				if binding.Lexeme == "_" {
 					return ast.MatchPattern{}, p.errorAt(binding, "use a wildcard arm for an ignored payload")
 				}
-				if _, duplicate := seen[binding.Lexeme]; duplicate {
-					return ast.MatchPattern{}, p.errorAt(binding, "duplicate payload binding")
-				}
-				seen[binding.Lexeme] = struct{}{}
 				pattern.Bindings = append(pattern.Bindings, binding.Lexeme)
 				if !p.match(token.Comma) { break }
 				if p.check(token.RParen) { break }
 			}
-		}
 		if _, err = p.consume(token.RParen, "expected ')' after pattern bindings"); err != nil {
 			return ast.MatchPattern{}, err
 		}
