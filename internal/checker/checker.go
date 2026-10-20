@@ -172,6 +172,9 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 		if !ok {
 			continue
 		}
+		if !langtypes.ValidName(s.Name) {
+			return typeError(s.Pos(), diagnostic.TypeInvalidStructName, "invalid or reserved struct name '%s'", s.Name)
+		}
 		if builtinName(s.Name) || s.Name == "Array" {
 			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' is reserved", s.Name)
 		}
@@ -192,6 +195,9 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 		fields := make([]StructFieldInfo, 0, len(s.Fields))
 		seen := make(map[string]struct{})
 		for _, field := range s.Fields {
+			if len(field.Name) > langtypes.MaxTypeNameBytes || (!langtypes.ValidName(field.Name) && field.Name != "Array") {
+				return typeError(field.At, diagnostic.TypeInvalidStructFieldName, "invalid struct field name '%s'", field.Name)
+			}
 			if _, exists := seen[field.Name]; exists {
 				return typeError(field.At, diagnostic.TypeDuplicateStructField, "field '%s' is duplicated in struct '%s'", field.Name, s.Name)
 			}
