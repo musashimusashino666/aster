@@ -454,3 +454,39 @@ func TestExpanderEnforcesCombinedMonomorphizationLimit(t *testing.T) {
 		t.Fatalf("expected positioned TYP089 at aggregate limit, got %v", err)
 	}
 }
+
+func TestExpandPreservesASTEndPositions(t *testing.T) {
+	source := "fn identity<T>(value: T) -> T { return value; }\nlet result = identity::<i64>(7);"
+	program := parse(t, source)
+	template := program.Decls[0].(*ast.Function)
+	templateReturn := template.Body.Statements[0].(*ast.ReturnStmt)
+
+	expanded, err := Expand(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var instance *ast.Function
+	for _, decl := range expanded.Decls {
+		fn, ok := decl.(*ast.Function)
+		if ok && strings.HasPrefix(fn.Name, "__aster_generic_fn_") {
+			instance = fn
+			break
+		}
+	}
+	if instance == nil {
+		t.Fatal("generic function instance was not generated")
+	}
+	if instance.EndPos() != template.EndPos() {
+		t.Fatalf("instance end = %+v, template end = %+v", instance.EndPos(), template.EndPos())
+	}
+	if instance.Params[0].EndPos() != template.Params[0].EndPos() ||
+		instance.Params[0].Type.EndPos() != template.Params[0].Type.EndPos() {
+		t.Fatalf("parameter/type ends were not preserved: got %+v / %+v, want %+v / %+v",
+			instance.Params[0].EndPos(), instance.Params[0].Type.EndPos(),
+			template.Params[0].EndPos(), template.Params[0].Type.EndPos())
+	}
+	gotReturn := instance.Body.Statements[0].(*ast.ReturnStmt)
+	if gotReturn.EndPos() != templateReturn.EndPos() {
+		t.Fatalf("return end = %+v, template return end = %+v", gotReturn.EndPos(), templateReturn.EndPos())
+	}
+}
