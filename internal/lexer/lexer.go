@@ -9,6 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/token"
 )
 
@@ -23,7 +24,7 @@ func New(source string) *Lexer { return &Lexer{source: source, line: 1, column: 
 
 func (l *Lexer) Lex() ([]token.Token, error) {
 	if !utf8.ValidString(l.source) {
-		return nil, fmt.Errorf("1:1: lexer error: source is not valid UTF-8")
+		return nil, diagnostic.New(diagnostic.LexerInvalidUTF8, "lexer", token.Position{Line: 1, Column: 1}, "source is not valid UTF-8")
 	}
 	var out []token.Token
 	for {
@@ -250,7 +251,24 @@ func (l *Lexer) position() token.Position {
 	return token.Position{Offset: l.offset, Line: l.line, Column: l.column}
 }
 func (l *Lexer) errorAt(p token.Position, message string) error {
-	return fmt.Errorf("%d:%d: lexer error: %s", p.Line, p.Column, message)
+	code := diagnostic.LexerGeneric
+	switch {
+	case message == "integer literal is outside the i64 range":
+		code = diagnostic.LexerIntegerOutOfRange
+	case message == "invalid floating-point literal":
+		code = diagnostic.LexerInvalidFloat
+	case message == "newline in string literal":
+		code = diagnostic.LexerNewlineInString
+	case strings.HasPrefix(message, "unsupported escape sequence"):
+		code = diagnostic.LexerUnsupportedEscape
+	case message == "unterminated string literal":
+		code = diagnostic.LexerUnterminatedString
+	case strings.HasPrefix(message, "unexpected character"):
+		code = diagnostic.LexerUnexpectedCharacter
+	case message == "unterminated block comment":
+		code = diagnostic.LexerUnterminatedBlockComment
+	}
+	return diagnostic.New(code, "lexer", p, message)
 }
 func (l *Lexer) skipTrivia() error {
 	for !l.atEnd() {
