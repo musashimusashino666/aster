@@ -83,6 +83,45 @@ len(data);
 	}
 }
 
+func TestExtendedVMAndNativeBackendParity(t *testing.T) {
+	source := `print(1.5 + 2.25); print(false && (1 / 0 == 0)); print(true || (1 / 0 == 0)); print("alpha" == "alpha"); print("alpha" < "beta");`
+	tree, err := parser.Parse(source, "extended-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-extended-parity")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("native backend failed: %v\n%s", err, nativeOutput)
+	}
+	if got, want := vmOutput.String(), "3.75\nfalse\ntrue\ntrue\ntrue\n"; got != want {
+		t.Fatalf("unexpected VM output: got %q want %q", got, want)
+	}
+	if got := string(nativeOutput); got != vmOutput.String() {
+		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), got)
+	}
+}
+
 func TestArrayIndexBoundsMatchBackends(t *testing.T) {
 	tests := []struct {
 		name  string
