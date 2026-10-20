@@ -159,3 +159,26 @@ let horizontal = point.x;`, "struct.ast")
 		t.Fatalf("field expression = %#v", let.Value)
 	}
 }
+
+func TestParsesEnumPayloadsAndMatchExpression(t *testing.T) {
+	source := `enum Message { Quit, Move(i64, i64), Write(string), }
+let message = Message::Move(10, 20);
+let label = match message {
+	Message::Quit => "quit",
+	Message::Move(x, y) => "move",
+	Message::Write(text) => text,
+};`
+	tree, err := Parse(source, "enum-match.ast")
+	if err != nil { t.Fatal(err) }
+	enumDecl, ok := tree.Decls[0].(*ast.EnumDecl)
+	if !ok { t.Fatalf("first declaration = %T, want enum declaration", tree.Decls[0]) }
+	if len(enumDecl.Variants) != 3 || len(enumDecl.Variants[1].Payload) != 2 {
+		t.Fatalf("unexpected enum variants: %#v", enumDecl.Variants)
+	}
+	letDecl := tree.Decls[2].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	match, ok := letDecl.Value.(*ast.MatchExpr)
+	if !ok { t.Fatalf("initializer = %T, want match expression", letDecl.Value) }
+	if len(match.Arms) != 3 || match.Arms[1].Pattern.VariantName != "Move" || len(match.Arms[1].Pattern.Bindings) != 2 {
+		t.Fatalf("unexpected match arms: %#v", match.Arms)
+	}
+}
