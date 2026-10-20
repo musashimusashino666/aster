@@ -7,6 +7,7 @@ import (
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/langtypes"
+	"github.com/aster-lang/aster/internal/limits"
 	"github.com/aster-lang/aster/internal/parser"
 )
 
@@ -60,5 +61,51 @@ func TestGenerateRejectsExcessiveInferredArrayTypeNesting(t *testing.T) {
 	}}
 	if _, err := Generate(tree); err == nil || !strings.Contains(err.Error(), "type nesting exceeds limit") {
 		t.Fatalf("expected code generation type nesting limit error, got %v", err)
+	}
+}
+
+func TestGenerateStringConcatenationUsesRuntimeLimitHelper(t *testing.T) {
+	tree, err := parser.Parse(`let left: string = "left"; let right: string = "right"; print(left + right);`, "string-limit.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(source, "asterAddString(v_left, v_right, ") {
+		t.Fatalf("generated source does not use bounded string concatenation:\n%s", source)
+	}
+	if !strings.Contains(source, "string length limit exceeded") {
+		t.Fatalf("generated source is missing the string length diagnostic:\n%s", source)
+	}
+}
+
+func TestGenerateRejectsOversizedStringLiteral(t *testing.T) {
+	tree := &ast.Program{Decls: []ast.Decl{
+		&ast.StmtDecl{Statement: &ast.LetStmt{
+			Name:  "value",
+			Value: &ast.LiteralExpr{Kind: "string", String: strings.Repeat("x", limits.MaxStringBytes+1)},
+		}},
+	}}
+	if _, err := Generate(tree); err == nil || !strings.Contains(err.Error(), "string literal exceeds") {
+		t.Fatalf("expected oversized string literal rejection, got %v", err)
+	}
+}
+
+func TestGenerateRejectsOversizedArrayLiteral(t *testing.T) {
+	elements := make([]ast.Expr, limits.MaxArrayLength+1)
+	literal := &ast.LiteralExpr{Kind: "i64", Int: 1}
+	for i := range elements {
+		elements[i] = literal
+	}
+	tree := &ast.Program{Decls: []ast.Decl{
+		&ast.StmtDecl{Statement: &ast.LetStmt{
+			Name:  "values",
+			Value: &ast.ArrayExpr{Elements: elements},
+		}},
+	}}
+	if _, err := Generate(tree); err == nil || !strings.Contains(err.Error(), "array literal has") {
+		t.Fatalf("expected oversized array literal rejection, got %v", err)
 	}
 }
