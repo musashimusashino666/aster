@@ -276,6 +276,8 @@ const (
 	TypeStructFieldMismatch     = "TYP058"
 	TypeRecursiveStruct         = "TYP059"
 	TypePrintStructUnsupported  = "TYP060"
+	TypeInvalidStructName       = "TYP061"
+	TypeInvalidStructFieldName  = "TYP062"
 )
 
 const (
