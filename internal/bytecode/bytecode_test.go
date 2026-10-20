@@ -27,7 +27,7 @@ func TestRejectsUnknownOpcode(t *testing.T) {
 }
 
 func TestReadRejectsTrailingJSON(t *testing.T) {
-	input := `{"format":"aster-bytecode","version":2,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0} {}`
+	input := `{"format":"aster-bytecode","version":3,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0} {}`
 	if _, err := Read(strings.NewReader(input)); err == nil {
 		t.Fatal("expected trailing JSON rejection")
 	}
@@ -163,10 +163,10 @@ func TestValidateRejectsFallthroughPastFunctionEnd(t *testing.T) {
 }
 
 func FuzzReadBytecodeNeverPanics(f *testing.F) {
-	f.Add(`{"format":"aster-bytecode","version":2,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
+	f.Add(`{"format":"aster-bytecode","version":3,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
 	f.Add("")
 	f.Add("{}")
-	f.Add(`{"format":"aster-bytecode","version":2,"constants":[{"kind":"array","array":[]}],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
+	f.Add(`{"format":"aster-bytecode","version":3,"constants":[{"kind":"array","array":[]}],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
 	f.Fuzz(func(t *testing.T, input string) {
 		_, _ = Read(bytes.NewReader([]byte(input)))
 	})
@@ -607,5 +607,37 @@ func TestValidateRejectsExcessivelyNestedBuiltArrayType(t *testing.T) {
 	)
 	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "array type nesting exceeds") {
 		t.Fatalf("expected array type nesting limit rejection, got %v", err)
+	}
+}
+
+func TestValidateRejectsInvalidIndexedAssignmentDepth(t *testing.T) {
+	p := stackVerifierProgram(0, nil,
+		Function{Name: "main", Locals: 1, Return: "unit", Code: []Instruction{
+			{Op: OpSetIndexPath, A: 0},
+			{Op: OpHalt},
+		}},
+	)
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "invalid indexed-assignment depth") {
+		t.Fatalf("expected invalid indexed-assignment depth error, got %v", err)
+	}
+}
+
+func TestValidateRejectsIndexedAssignmentValueTypeMismatch(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{
+		Array([]Value{I64(1), I64(2)}),
+		I64(0),
+		Str("wrong"),
+	}, Function{Name: "main", Locals: 1, Return: "unit", Code: []Instruction{
+		{Op: OpConst, A: 0},
+		{Op: OpStoreLocal, A: 0},
+		{Op: OpLoadLocal, A: 0},
+		{Op: OpConst, A: 1},
+		{Op: OpConst, A: 2},
+		{Op: OpSetIndexPath, A: 1},
+		{Op: OpStoreLocal, A: 0},
+		{Op: OpHalt},
+	}})
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "indexed assignment value has type string; expected i64") {
+		t.Fatalf("expected indexed-assignment type mismatch, got %v", err)
 	}
 }
