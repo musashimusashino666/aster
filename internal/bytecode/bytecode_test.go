@@ -853,13 +853,12 @@ func TestValidateRejectsRecursiveStructLayout(t *testing.T) {
 	}
 }
 
-
 func TestRejectsMalformedEnumMatchTable(t *testing.T) {
 	p := stackVerifierProgram(0, nil,
 		Function{
 			Name: "main", Locals: 1, Return: "unit",
 			MatchTables: []MatchTable{{EnumTypeID: 0, Targets: []int{0}}},
-			Code: []Instruction{{Op: OpHalt}},
+			Code:        []Instruction{{Op: OpHalt}},
 		},
 	)
 	p.EnumTypes = []EnumType{{Name: "State", Variants: []EnumVariant{{Name: "Ready"}, {Name: "Busy"}}}}
