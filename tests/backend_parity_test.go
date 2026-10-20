@@ -925,7 +925,6 @@ func TestExplicitFloatToIntegerRangeMatchesBackends(t *testing.T) {
 	}
 }
 
-
 func TestStructFieldBackendParityAndArrayValueSemantics(t *testing.T) {
 	source := `struct Point { x: i64, y: i64 }
 struct Box { point: Point, values: Array<i64> }
