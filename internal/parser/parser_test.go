@@ -280,7 +280,6 @@ func TestRejectsEmptyGenericEnumTypeArguments(t *testing.T) {
 	}
 }
 
-
 func TestParserDiagnosticsRetainOffendingTokenSpan(t *testing.T) {
 	_, err := Parse("let x = ;", "test.ast")
 	if err == nil {
