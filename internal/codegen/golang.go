@@ -87,7 +87,7 @@ func goType(t string) string {
 		return "string"
 	default:
 		if elem, ok := arrayElementType(t); ok {
-			return "[]" + goType(elem)
+			return "asterArray[" + goType(elem) + "]"
 		}
 		return "struct{}"
 	}
