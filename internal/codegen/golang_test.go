@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"context"
 	"fmt"
 	"go/format"
 	"strconv"
@@ -32,6 +33,22 @@ func TestGenerateTypedUsesCheckerMetadata(t *testing.T) {
 		t.Fatalf("generated source does not use expected typed arithmetic helper:\n%s", source)
 	}
 }
+func TestGenerateTypedContextHonorsCancellation(t *testing.T) {
+	tree, err := parser.Parse("print(1);", "canceled-codegen.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := GenerateTypedContext(ctx, typed); err != context.Canceled {
+		t.Fatalf("GenerateTypedContext() error = %v, want context.Canceled", err)
+	}
+}
+
 func TestGenerateTypedWildcardMatchCodeGrowthIsLinear(t *testing.T) {
 	const depth = 16
 	expr := "0"
