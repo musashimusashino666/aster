@@ -52,19 +52,3 @@ jobs:
 
       - name: Check native array index bounds on 32-bit target
         run: GOARCH=386 go test ./tests -run TestArrayIndexBoundsMatchBackends/large_positive_index
-
-  benchmark-array-assignment:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/perf/amortize-native-array-benchmark'
-    name: Array assignment benchmark (temporary)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: stable
-          cache: true
-      - name: Run array assignment benchmarks
-        run: go test ./tests -run '^$' -bench '^BenchmarkArrayElementAssignment' -benchmem -count=5
