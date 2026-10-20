@@ -99,7 +99,7 @@ func TestGenerateTypedRejectsNativeSourceOverLimitAtSourcePosition(t *testing.T)
 	_, err = generateTypedWithLimit(typed, limit)
 	if err == nil || !strings.Contains(err.Error(), "TYP078") ||
 		!strings.Contains(err.Error(), "native-limit.ast:1:1") ||
-		!strings.Contains(err.Error(), fmt.Sprintf("%d-byte limit", limit)) {
+		!strings.Contains(err.Error(), strconv.Itoa(limit) + "-byte limit") {
 		t.Fatalf("expected positioned native source limit diagnostic, got %v", err)
 	}
 }
