@@ -84,6 +84,18 @@ type AssignStmt struct {
 func (n *AssignStmt) Pos() token.Position { return n.At }
 func (*AssignStmt) stmtNode()             {}
 
+type IndexAssignStmt struct {
+	At       token.Position
+	Target   SymbolID
+	Name     string
+	RootType Type
+	Indices  []Expr
+	Value    Expr
+}
+
+func (n *IndexAssignStmt) Pos() token.Position { return n.At }
+func (*IndexAssignStmt) stmtNode()             {}
+
 type ExprStmt struct {
 	At   token.Position
 	Expr Expr
@@ -390,6 +402,27 @@ func (l *lowerer) lowerBlock(block *ast.BlockStmt, pushScope bool) (*BlockStmt, 
 	return out, nil
 }
 
+func indexAssignmentParts(expr ast.Expr) (*ast.IdentifierExpr, []ast.Expr, bool) {
+	var reversed []*ast.IndexExpr
+	for {
+		index, ok := expr.(*ast.IndexExpr)
+		if !ok {
+			break
+		}
+		reversed = append(reversed, index)
+		expr = index.Collection
+	}
+	root, ok := expr.(*ast.IdentifierExpr)
+	if !ok || len(reversed) == 0 {
+		return nil, nil, false
+	}
+	indices := make([]ast.Expr, len(reversed))
+	for i, index := range reversed {
+		indices[len(reversed)-1-i] = index.Index
+	}
+	return root, indices, true
+}
+
 func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 	switch n := stmt.(type) {
 	case *ast.BlockStmt:
@@ -404,6 +437,31 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 			return nil, fmt.Errorf("%d:%d: ir: duplicate local %q", n.Pos().Line, n.Pos().Column, n.Name)
 		}
 		return &LetStmt{At: n.Pos(), Local: local, Value: value}, nil
+	case *ast.IndexAssignStmt:
+		root, indexNodes, ok := indexAssignmentParts(n.Target)
+		if !ok {
+			return nil, fmt.Errorf("%d:%d: ir: array assignment target must be rooted in a variable", n.Pos().Line, n.Pos().Column)
+		}
+		target, exists := l.scope.lookup(root.Name)
+		if !exists {
+			return nil, fmt.Errorf("%d:%d: ir: unresolved indexed assignment target %q", n.Pos().Line, n.Pos().Column, root.Name)
+		}
+		indices := make([]Expr, len(indexNodes))
+		for i, index := range indexNodes {
+			lowered, err := l.lowerExpr(index)
+			if err != nil {
+				return nil, err
+			}
+			indices[i] = lowered
+		}
+		value, err := l.lowerExpr(n.Value)
+		if err != nil {
+			return nil, err
+		}
+		return &IndexAssignStmt{
+			At: n.Pos(), Target: target.ID, Name: target.Name, RootType: target.Type,
+			Indices: indices, Value: value,
+		}, nil
 	case *ast.AssignStmt:
 		target, ok := l.scope.lookup(n.Name)
 		if !ok {
