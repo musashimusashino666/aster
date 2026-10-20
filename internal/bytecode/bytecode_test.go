@@ -757,7 +757,7 @@ func TestValidateRejectsNonArraySlice(t *testing.T) {
 
 func TestValidateRejectsIndexOperands(t *testing.T) {
 	tests := []struct {
-		name string
+		name    string
 		a, b, c int
 	}{
 		{name: "operand A", a: 1},
