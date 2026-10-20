@@ -797,7 +797,7 @@ print(replaceFirst([4, 5]));`
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
- 
+
 func TestArraySliceBackendParityAndIndependentValues(t *testing.T) {
 	source := `fn middle(values: Array<i64>) -> Array<i64> {
     return values[1:3];
