@@ -103,6 +103,6 @@ const (
 	TypeArgumentMismatch        = "TYP045"
 	TypeUnsupportedExpression   = "TYP046"
 	TypeIndexAssignmentMismatch = "TYP047"
-	TypeSliceNonArray          = "TYP048"
-	TypeSliceBoundType         = "TYP049"
+	TypeSliceNonArray           = "TYP048"
+	TypeSliceBoundType          = "TYP049"
 )
