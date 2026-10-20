@@ -549,8 +549,9 @@ func isDeferredTypeInferenceDiagnostic(err error) bool {
 	if !errors.As(err, &diagnosticError) {
 		return false
 	}
-	return diagnosticError.Code == diagnostic.TypeGenericEnumInference ||
-		diagnosticError.Code == diagnostic.TypeGenericStructInference
+	return (diagnosticError.Code == diagnostic.TypeGenericEnumInference ||
+		diagnosticError.Code == diagnostic.TypeGenericStructInference) &&
+		!strings.Contains(diagnosticError.Message, "consistently")
 }
 
 func typePatternResolved(pattern ast.TypeRef, parameters map[string]bool, inferred map[string]ast.TypeRef) bool {
