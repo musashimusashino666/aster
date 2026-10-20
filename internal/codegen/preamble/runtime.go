@@ -139,7 +139,7 @@ func asterShareValue[T any](value T) T {
 	return value
 }
 
-func (a asterArray[T]) PrepareArrayWrite() asterArray[T] {
+func (a asterArray[T]) PrepareArrayWrite() any {
 	if a.Storage == nil {
 		a.Storage = &asterArrayStorage{}
 	}
@@ -151,6 +151,30 @@ func (a asterArray[T]) PrepareArrayWrite() asterArray[T] {
 		asterMarkArrayShared(item)
 	}
 	return asterArray[T]{Items: items, Storage: &asterArrayStorage{}}
+}
+
+func (a asterArray[T]) AsterArrayLength() int {
+	return len(a.Items)
+}
+
+func (a asterArray[T]) AsterArrayItem(index int) any {
+	return a.Items[index]
+}
+
+func (a asterArray[T]) AsterSetArrayItem(index int, value any) bool {
+	item, ok := value.(T)
+	if !ok {
+		return false
+	}
+	a.Items[index] = item
+	return true
+}
+
+type asterArrayRuntime interface {
+	PrepareArrayWrite() any
+	AsterArrayLength() int
+	AsterArrayItem(int) any
+	AsterSetArrayItem(int, any) bool
 }
 
 func asterLenArray[T any](array asterArray[T]) int64 {
@@ -199,47 +223,31 @@ func asterSetIndexPath(collection any, indices []int64, replacement any, line, c
 	if len(indices) == 0 {
 		asterRuntimeError(line, column, "indexed assignment requires at least one index")
 	}
-	value := reflect.ValueOf(collection)
-	if !value.IsValid() || value.Kind() != reflect.Struct {
+	source, ok := collection.(asterArrayRuntime)
+	if !ok {
 		asterRuntimeError(line, column, "indexed assignment requires an array value")
 	}
-	itemsField := value.FieldByName("Items")
-	if !itemsField.IsValid() || itemsField.Kind() != reflect.Slice {
-		asterRuntimeError(line, column, "indexed assignment requires an array value")
-	}
-
 	index := indices[0]
-	if index < 0 || index >= int64(itemsField.Len()) {
-		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", index, itemsField.Len()))
+	length := source.AsterArrayLength()
+	if index < 0 || index >= int64(length) {
+		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", index, length))
 	}
-
-	prepare := value.MethodByName("PrepareArrayWrite")
-	if !prepare.IsValid() {
-		asterRuntimeError(line, column, "array value cannot detach shared storage")
-	}
-	prepared := prepare.Call(nil)
-	if len(prepared) != 1 || prepared[0].Kind() != reflect.Struct {
+	writable, ok := source.PrepareArrayWrite().(asterArrayRuntime)
+	if !ok {
 		asterRuntimeError(line, column, "array value returned invalid writable storage")
 	}
-	value = prepared[0]
-	itemsField = value.FieldByName("Items")
-	if !itemsField.IsValid() || itemsField.Kind() != reflect.Slice {
-		asterRuntimeError(line, column, "array value has invalid storage")
-	}
 
-	var item reflect.Value
+	var item any
 	if len(indices) == 1 {
 		asterMarkArrayShared(replacement)
-		item = reflect.ValueOf(replacement)
+		item = replacement
 	} else {
-		child := asterSetIndexPath(itemsField.Index(int(index)).Interface(), indices[1:], replacement, line, column)
-		item = reflect.ValueOf(child)
+		item = asterSetIndexPath(writable.AsterArrayItem(int(index)), indices[1:], replacement, line, column)
 	}
-	if !item.IsValid() || !item.Type().AssignableTo(itemsField.Type().Elem()) {
+	if !writable.AsterSetArrayItem(int(index), item) {
 		asterRuntimeError(line, column, "indexed assignment value has incompatible type")
 	}
-	itemsField.Index(int(index)).Set(item)
-	return value.Interface()
+	return writable
 }
 
 func asterAddI64(a, b int64, line, column int) int64 {
