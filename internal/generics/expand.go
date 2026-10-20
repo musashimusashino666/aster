@@ -310,7 +310,7 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 	}
 	e.nextID++
 	name := fmt.Sprintf("__aster_generic_fn_%06d", e.nextID)
-	instance := &ast.Function{At: template.At, Name: name}
+	instance := &ast.Function{At: template.At, EndAt: template.EndAt, Name: name}
 	// Register before walking the body so same-instantiation recursion hits the cache.
 	e.instances[key] = instance
 	e.functions[name] = instance
@@ -321,7 +321,7 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 		if err != nil {
 			return "", err
 		}
-		instance.Params[i] = ast.Param{At: param.At, Name: param.Name, Type: typ}
+		instance.Params[i] = ast.Param{At: param.At, EndAt: param.EndAt, Name: param.Name, Type: typ}
 	}
 	if template.ReturnType != nil {
 		ret, err := e.resolveType(substituteType(*template.ReturnType, sub), template.ReturnType.At, depth)
@@ -387,7 +387,7 @@ func (e *expander) instantiateStruct(template *ast.StructDecl, args []ast.TypeRe
 	}
 	e.nextStructID++
 	name := fmt.Sprintf("__aster_generic_struct_%06d", e.nextStructID)
-	instance := &ast.StructDecl{At: template.At, Name: name}
+	instance := &ast.StructDecl{At: template.At, EndAt: template.EndAt, Name: name}
 	// Cache the placeholder before resolving its fields so recursion through
 	// Array<T> and exact self references reuse this nominal identity.
 	e.structInstances[key] = instance
@@ -401,7 +401,7 @@ func (e *expander) instantiateStruct(template *ast.StructDecl, args []ast.TypeRe
 		if err != nil {
 			return "", err
 		}
-		instance.Fields[i] = ast.StructField{At: field.At, Name: field.Name, Type: typ}
+		instance.Fields[i] = ast.StructField{At: field.At, EndAt: field.EndAt, Name: field.Name, Type: typ}
 		fields[field.Name] = cloneTypeRef(typ)
 	}
 	e.structFields[name] = fields
@@ -444,7 +444,7 @@ func (e *expander) instantiateEnum(template *ast.EnumDecl, args []ast.TypeRef, a
 	}
 	e.nextEnumID++
 	name := fmt.Sprintf("__aster_generic_enum_%06d", e.nextEnumID)
-	instance := &ast.EnumDecl{At: template.At, Name: name}
+	instance := &ast.EnumDecl{At: template.At, EndAt: template.EndAt, Name: name}
 	// Register before resolving payloads so identical recursive applications
 	// reuse this nominal identity instead of recursively expanding forever.
 	e.enumInstances[key] = instance
@@ -454,7 +454,7 @@ func (e *expander) instantiateEnum(template *ast.EnumDecl, args []ast.TypeRef, a
 	e.orderedEnums = append(e.orderedEnums, instance)
 	instance.Variants = make([]ast.EnumVariant, len(template.Variants))
 	for i, variant := range template.Variants {
-		out := ast.EnumVariant{At: variant.At, Name: variant.Name, Payload: make([]ast.TypeRef, len(variant.Payload))}
+		out := ast.EnumVariant{At: variant.At, EndAt: variant.EndAt, Name: variant.Name, Payload: make([]ast.TypeRef, len(variant.Payload))}
 		for j, payload := range variant.Payload {
 			typ, err := e.resolveType(substituteType(payload, sub), payload.At, depth)
 			if err != nil {
@@ -592,11 +592,11 @@ func typePatternResolved(pattern ast.TypeRef, parameters map[string]bool, inferr
 }
 
 func (e *expander) rewriteEnum(template *ast.EnumDecl, sub map[string]ast.TypeRef, depth int) (*ast.EnumDecl, error) {
-	out := &ast.EnumDecl{At: template.At, Name: template.Name, Variants: make([]ast.EnumVariant, len(template.Variants))}
+	out := &ast.EnumDecl{At: template.At, EndAt: template.EndAt, Name: template.Name, Variants: make([]ast.EnumVariant, len(template.Variants))}
 	// Keep the declaration visible while resolving its own payload types.
 	e.enumDecls[out.Name] = out
 	for i, variant := range template.Variants {
-		copy := ast.EnumVariant{At: variant.At, Name: variant.Name, Payload: make([]ast.TypeRef, len(variant.Payload))}
+		copy := ast.EnumVariant{At: variant.At, EndAt: variant.EndAt, Name: variant.Name, Payload: make([]ast.TypeRef, len(variant.Payload))}
 		for j, payload := range variant.Payload {
 			typ, err := e.resolveType(substituteType(payload, sub), payload.At, depth)
 			if err != nil {
@@ -685,7 +685,7 @@ func (e *expander) resolveType(typ ast.TypeRef, at token.Position, depth int) (a
 		if err != nil {
 			return ast.TypeRef{}, err
 		}
-		return ast.TypeRef{Name: name, At: typ.At}, nil
+		return ast.TypeRef{Name: name, At: typ.At, EndAt: typ.EndAt}, nil
 	}
 	if template, isGeneric := e.structTemplates[typ.Name]; isGeneric {
 		if len(typ.Args) == 0 {
@@ -703,7 +703,7 @@ func (e *expander) resolveType(typ ast.TypeRef, at token.Position, depth int) (a
 		if err != nil {
 			return ast.TypeRef{}, err
 		}
-		return ast.TypeRef{Name: name, At: typ.At}, nil
+		return ast.TypeRef{Name: name, At: typ.At, EndAt: typ.EndAt}, nil
 	}
 	if len(typ.Args) != 0 {
 		return ast.TypeRef{}, typeError(at, diagnostic.TypeGenericArgumentsOnNonGeneric, "type '%s' does not accept generic type arguments", typ.Name)
@@ -715,14 +715,14 @@ func (e *expander) resolveType(typ ast.TypeRef, at token.Position, depth int) (a
 }
 
 func (e *expander) rewriteStruct(template *ast.StructDecl, sub map[string]ast.TypeRef, depth int) (*ast.StructDecl, error) {
-	out := &ast.StructDecl{At: template.At, Name: template.Name}
+	out := &ast.StructDecl{At: template.At, EndAt: template.EndAt, Name: template.Name}
 	out.Fields = make([]ast.StructField, len(template.Fields))
 	for i, field := range template.Fields {
 		typ, err := e.resolveType(substituteType(field.Type, sub), field.At, depth)
 		if err != nil {
 			return nil, err
 		}
-		out.Fields[i] = ast.StructField{At: field.At, Name: field.Name, Type: typ}
+		out.Fields[i] = ast.StructField{At: field.At, EndAt: field.EndAt, Name: field.Name, Type: typ}
 	}
 	fields := make(map[string]ast.TypeRef, len(out.Fields))
 	for _, field := range out.Fields {
@@ -868,7 +868,7 @@ func (e *expander) unifyType(pattern, actual ast.TypeRef, parameters map[string]
 
 func (e *expander) inferExprType(expr ast.Expr) (ast.TypeRef, bool) {
 	concrete := func(name string) (ast.TypeRef, bool) {
-		return ast.TypeRef{Name: name, At: expr.Pos()}, name != ""
+		return ast.TypeRef{Name: name, At: expr.Pos(), EndAt: expr.EndPos()}, name != ""
 	}
 	switch n := expr.(type) {
 	case *ast.LiteralExpr:
@@ -890,7 +890,7 @@ func (e *expander) inferExprType(expr ast.Expr) (ast.TypeRef, bool) {
 				return ast.TypeRef{}, false
 			}
 		}
-		return ast.TypeRef{Name: "Array", At: n.At, Element: &element}, true
+		return ast.TypeRef{Name: "Array", At: n.At, EndAt: n.EndAt, Element: &element}, true
 	case *ast.FieldExpr:
 		object, ok := e.inferExprType(n.Object)
 		if !ok {
@@ -1068,7 +1068,7 @@ func typeError(pos token.Position, code, format string, args ...any) error {
 }
 
 func (e *expander) rewriteFunction(fn *ast.Function, sub map[string]ast.TypeRef, depth int) (*ast.Function, error) {
-	out := &ast.Function{At: fn.At, Name: fn.Name}
+	out := &ast.Function{At: fn.At, EndAt: fn.EndAt, Name: fn.Name}
 	out.Params = make([]ast.Param, len(fn.Params))
 	previousVariables := e.variables
 	e.variables = make(map[string]ast.TypeRef, len(fn.Params))
@@ -1078,7 +1078,7 @@ func (e *expander) rewriteFunction(fn *ast.Function, sub map[string]ast.TypeRef,
 			e.variables = previousVariables
 			return nil, err
 		}
-		out.Params[i] = ast.Param{At: p.At, Name: p.Name, Type: typ}
+		out.Params[i] = ast.Param{At: p.At, EndAt: p.EndAt, Name: p.Name, Type: typ}
 		e.variables[p.Name] = cloneTypeRef(typ)
 	}
 	if fn.ReturnType != nil {
@@ -1109,7 +1109,7 @@ func (e *expander) rewriteBlock(block *ast.BlockStmt, sub map[string]ast.TypeRef
 	previousVariables := e.variables
 	e.variables = cloneTypeScope(previousVariables)
 	defer func() { e.variables = previousVariables }()
-	out := &ast.BlockStmt{At: block.At, Statements: make([]ast.Stmt, len(block.Statements))}
+	out := &ast.BlockStmt{At: block.At, EndAt: block.EndAt, Statements: make([]ast.Stmt, len(block.Statements))}
 	for i, stmt := range block.Statements {
 		copy, err := e.rewriteStmt(stmt, sub, depth)
 		if err != nil {
@@ -1125,7 +1125,7 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 	case *ast.BlockStmt:
 		return e.rewriteBlock(n, sub, depth)
 	case *ast.LetStmt:
-		out := &ast.LetStmt{At: n.At, Name: n.Name, Mutable: n.Mutable}
+		out := &ast.LetStmt{At: n.At, EndAt: n.EndAt, Name: n.Name, Mutable: n.Mutable}
 		if n.Annotation != nil {
 			v, err := e.resolveType(substituteType(*n.Annotation, sub), n.Annotation.At, depth)
 			if err != nil {
@@ -1159,7 +1159,7 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 		if err != nil {
 			return nil, err
 		}
-		return &ast.AssignStmt{At: n.At, Name: n.Name, Value: value}, nil
+		return &ast.AssignStmt{At: n.At, EndAt: n.EndAt, Name: n.Name, Value: value}, nil
 	case *ast.IndexAssignStmt:
 		target, err := e.rewriteExpr(n.Target, sub, depth)
 		if err != nil {
@@ -1169,13 +1169,13 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 		if err != nil {
 			return nil, err
 		}
-		return &ast.IndexAssignStmt{At: n.At, Target: target, Value: value}, nil
+		return &ast.IndexAssignStmt{At: n.At, EndAt: n.EndAt, Target: target, Value: value}, nil
 	case *ast.ExprStmt:
 		expr, err := e.rewriteExpr(n.Expr, sub, depth)
 		if err != nil {
 			return nil, err
 		}
-		return &ast.ExprStmt{At: n.At, Expr: expr}, nil
+		return &ast.ExprStmt{At: n.At, EndAt: n.EndAt, Expr: expr}, nil
 	case *ast.IfStmt:
 		cond, err := e.rewriteExpr(n.Condition, sub, depth)
 		if err != nil {
@@ -1192,7 +1192,7 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 				return nil, err
 			}
 		}
-		return &ast.IfStmt{At: n.At, Condition: cond, Then: then, Else: otherwise}, nil
+		return &ast.IfStmt{At: n.At, EndAt: n.EndAt, Condition: cond, Then: then, Else: otherwise}, nil
 	case *ast.WhileStmt:
 		cond, err := e.rewriteExpr(n.Condition, sub, depth)
 		if err != nil {
@@ -1202,9 +1202,9 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 		if err != nil {
 			return nil, err
 		}
-		return &ast.WhileStmt{At: n.At, Condition: cond, Body: body}, nil
+		return &ast.WhileStmt{At: n.At, EndAt: n.EndAt, Condition: cond, Body: body}, nil
 	case *ast.ReturnStmt:
-		out := &ast.ReturnStmt{At: n.At}
+		out := &ast.ReturnStmt{At: n.At, EndAt: n.EndAt}
 		if n.Value != nil {
 			value, err := e.rewriteExprExpected(n.Value, sub, depth, e.expectedReturn)
 			if err != nil {
@@ -1225,21 +1225,21 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef, depth int, expected *ast.TypeRef) (ast.Expr, error) {
 	switch n := expr.(type) {
 	case *ast.IdentifierExpr:
-		return &ast.IdentifierExpr{At: n.At, Name: n.Name}, nil
+		return &ast.IdentifierExpr{At: n.At, EndAt: n.EndAt, Name: n.Name}, nil
 	case *ast.LiteralExpr:
-		return &ast.LiteralExpr{At: n.At, Kind: n.Kind, Text: n.Text, Int: n.Int, Float: n.Float, String: n.String, Bool: n.Bool}, nil
+		return &ast.LiteralExpr{At: n.At, EndAt: n.EndAt, Kind: n.Kind, Text: n.Text, Int: n.Int, Float: n.Float, String: n.String, Bool: n.Bool}, nil
 	case *ast.FieldExpr:
 		object, err := e.rewriteExpr(n.Object, sub, depth)
 		if err != nil {
 			return nil, err
 		}
-		return &ast.FieldExpr{At: n.At, Object: object, Name: n.Name}, nil
+		return &ast.FieldExpr{At: n.At, EndAt: n.EndAt, Object: object, Name: n.Name}, nil
 	case *ast.UnaryExpr:
 		right, err := e.rewriteExpr(n.Right, sub, depth)
 		if err != nil {
 			return nil, err
 		}
-		return &ast.UnaryExpr{At: n.At, Op: n.Op, Right: right}, nil
+		return &ast.UnaryExpr{At: n.At, EndAt: n.EndAt, Op: n.Op, Right: right}, nil
 	case *ast.BinaryExpr:
 		left, err := e.rewriteExpr(n.Left, sub, depth)
 		if err != nil {
@@ -1249,7 +1249,7 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 		if err != nil {
 			return nil, err
 		}
-		return &ast.BinaryExpr{At: n.At, Left: left, Op: n.Op, Right: right}, nil
+		return &ast.BinaryExpr{At: n.At, EndAt: n.EndAt, Left: left, Op: n.Op, Right: right}, nil
 	case *ast.CallExpr:
 		id, named := n.Callee.(*ast.IdentifierExpr)
 		var expectedArgs []*ast.TypeRef
@@ -1309,14 +1309,14 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 				if err != nil {
 					return nil, err
 				}
-				return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
+				return &ast.CallExpr{At: n.At, EndAt: n.EndAt, Callee: &ast.IdentifierExpr{At: id.At, EndAt: id.EndAt, Name: instanceName}, Args: args}, nil
 			}
 			if template, ok := e.structTemplates[id.Name]; ok {
 				instanceName, err := e.instantiateStruct(template, n.TypeArgs, n.At, sub, depth)
 				if err != nil {
 					return nil, err
 				}
-				return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
+				return &ast.CallExpr{At: n.At, EndAt: n.EndAt, Callee: &ast.IdentifierExpr{At: id.At, EndAt: id.EndAt, Name: instanceName}, Args: args}, nil
 			}
 			return nil, typeError(n.At, diagnostic.TypeGenericArgumentsOnNonGeneric, "function or struct '%s' does not accept explicit type arguments", id.Name)
 		}
@@ -1330,7 +1330,7 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 				if instantiateErr != nil {
 					return nil, instantiateErr
 				}
-				return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
+				return &ast.CallExpr{At: n.At, EndAt: n.EndAt, Callee: &ast.IdentifierExpr{At: id.At, EndAt: id.EndAt, Name: instanceName}, Args: args}, nil
 			}
 			if template, generic := e.structTemplates[id.Name]; generic {
 				inferred, inferErr := e.inferStructTypeArguments(template, args, n.At)
@@ -1341,14 +1341,14 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 				if instantiateErr != nil {
 					return nil, instantiateErr
 				}
-				return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
+				return &ast.CallExpr{At: n.At, EndAt: n.EndAt, Callee: &ast.IdentifierExpr{At: id.At, EndAt: id.EndAt, Name: instanceName}, Args: args}, nil
 			}
 		}
 		callee, err := e.rewriteExpr(n.Callee, sub, depth)
 		if err != nil {
 			return nil, err
 		}
-		return &ast.CallExpr{At: n.At, Callee: callee, Args: args}, nil
+		return &ast.CallExpr{At: n.At, EndAt: n.EndAt, Callee: callee, Args: args}, nil
 	case *ast.EnumVariantExpr:
 		enumName := n.EnumName
 		var enumDecl *ast.EnumDecl
@@ -1404,7 +1404,7 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 			}
 			args[i] = value
 		}
-		return &ast.EnumVariantExpr{At: n.At, EnumName: enumName, VariantName: n.VariantName, Args: args, HasPayload: n.HasPayload}, nil
+		return &ast.EnumVariantExpr{At: n.At, EndAt: n.EndAt, EnumName: enumName, VariantName: n.VariantName, Args: args, HasPayload: n.HasPayload}, nil
 	case *ast.MatchExpr:
 		subject, err := e.rewriteExpr(n.Subject, sub, depth)
 		if err != nil {
@@ -1446,9 +1446,9 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 			if err != nil {
 				return nil, err
 			}
-			arms[i] = ast.MatchArm{At: arm.At, Pattern: pattern, Expr: value}
+			arms[i] = ast.MatchArm{At: arm.At, EndAt: arm.EndAt, Pattern: pattern, Expr: value}
 		}
-		return &ast.MatchExpr{At: n.At, Subject: subject, Arms: arms}, nil
+		return &ast.MatchExpr{At: n.At, EndAt: n.EndAt, Subject: subject, Arms: arms}, nil
 	case *ast.ArrayExpr:
 		elements := make([]ast.Expr, len(n.Elements))
 		var elementExpected *ast.TypeRef
@@ -1463,7 +1463,7 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 			}
 			elements[i] = value
 		}
-		return &ast.ArrayExpr{At: n.At, Elements: elements}, nil
+		return &ast.ArrayExpr{At: n.At, EndAt: n.EndAt, Elements: elements}, nil
 	case *ast.IndexExpr:
 		collection, err := e.rewriteExpr(n.Collection, sub, depth)
 		if err != nil {
@@ -1473,7 +1473,7 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 		if err != nil {
 			return nil, err
 		}
-		return &ast.IndexExpr{At: n.At, Collection: collection, Index: index}, nil
+		return &ast.IndexExpr{At: n.At, EndAt: n.EndAt, Collection: collection, Index: index}, nil
 	case *ast.SliceExpr:
 		collection, err := e.rewriteExpr(n.Collection, sub, depth)
 		if err != nil {
@@ -1487,7 +1487,7 @@ func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef
 		if err != nil {
 			return nil, err
 		}
-		return &ast.SliceExpr{At: n.At, Collection: collection, Start: start, End: end}, nil
+		return &ast.SliceExpr{At: n.At, EndAt: n.EndAt, Collection: collection, Start: start, End: end}, nil
 	default:
 		return nil, typeError(expr.Pos(), diagnostic.TypeUnsupportedExpression, "generic expansion does not support expression %T", expr)
 	}
