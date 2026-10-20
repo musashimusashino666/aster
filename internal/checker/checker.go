@@ -201,6 +201,9 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 		info := EnumInfo{Name: e.Name, Decl: e}
 		seen := make(map[string]struct{})
 		for _, variant := range e.Variants {
+			if len(variant.Name) == 0 || len(variant.Name) > langtypes.MaxTypeNameBytes || !langtypes.ValidName(variant.Name) {
+				return typeError(variant.At, diagnostic.TypeDuplicateEnumVariant, "invalid variant name '%s' in enum '%s'", variant.Name, e.Name)
+			}
 			if _, duplicate := seen[variant.Name]; duplicate {
 				return typeError(variant.At, diagnostic.TypeDuplicateEnumVariant, "variant '%s' is duplicated in enum '%s'", variant.Name, e.Name)
 			}
@@ -1010,6 +1013,9 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 			}
 			seenNames := make(map[string]struct{}, len(pattern.Bindings))
 			for i, name := range pattern.Bindings {
+				if len(name) == 0 || len(name) > langtypes.MaxTypeNameBytes || !langtypes.ValidName(name) {
+					return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateBinding, "invalid payload binding '%s'", name)
+				}
 				if _, duplicate := seenNames[name]; duplicate {
 					return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateBinding, "payload binding '%s' is repeated", name)
 				}
