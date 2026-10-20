@@ -138,3 +138,25 @@ func TestRejectsMissingSliceBounds(t *testing.T) {
 		}
 	}
 }
+
+
+func TestParsesStructDeclarationAndFieldSelection(t *testing.T) {
+	program, err := Parse(`struct Point { x: i64, y: i64, }
+let point = Point(3, 4);
+let horizontal = point.x;`, "struct.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(program.Decls) != 3 {
+		t.Fatalf("declaration count = %d, want struct plus two statements", len(program.Decls))
+	}
+	decl, ok := program.Decls[0].(*ast.StructDecl)
+	if !ok || decl.Name != "Point" || len(decl.Fields) != 2 {
+		t.Fatalf("struct declaration = %#v", program.Decls[0])
+	}
+	let := program.Decls[2].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	field, ok := let.Value.(*ast.FieldExpr)
+	if !ok || field.Name != "x" {
+		t.Fatalf("field expression = %#v", let.Value)
+	}
+}
