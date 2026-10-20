@@ -25,8 +25,20 @@ type FunctionResolver func(name string) (FunctionSignature, bool)
 
 type Program struct {
 	SourceName string
+	StructTypes []StructType
 	Functions  []*Function
 	Body       []Stmt
+}
+
+type StructType struct {
+	ID     int
+	Name   string
+	Fields []StructField
+}
+
+type StructField struct {
+	Name string
+	Type Type
 }
 
 type Node interface {
@@ -197,6 +209,19 @@ func (n *ArrayExpr) Pos() token.Position { return n.At }
 func (*ArrayExpr) exprNode()             {}
 func (n *ArrayExpr) ExprType() Type      { return n.ResolvedType }
 
+type FieldExpr struct {
+	At           token.Position
+	ResolvedType Type
+	Object       Expr
+	StructID     int
+	FieldIndex   int
+	FieldName    string
+}
+
+func (n *FieldExpr) Pos() token.Position { return n.At }
+func (*FieldExpr) exprNode()             {}
+func (n *FieldExpr) ExprType() Type      { return n.ResolvedType }
+
 type IndexExpr struct {
 	At           token.Position
 	ResolvedType Type
@@ -231,6 +256,7 @@ const (
 	CallAssert       CallTarget = "assert"
 	CallI64Cast      CallTarget = "i64_cast"
 	CallF64Cast      CallTarget = "f64_cast"
+	CallStructConstructor CallTarget = "struct_constructor"
 )
 
 type CallExpr struct {
@@ -239,6 +265,7 @@ type CallExpr struct {
 	Target       CallTarget
 	Function     FunctionID
 	FunctionName string
+	StructID     int
 	Args         []Expr
 }
 
@@ -305,10 +332,25 @@ func (s *scope) define(local Local) bool {
 	return true
 }
 
+func typeRefType(ref ast.TypeRef) Type {
+	if ref.Element == nil {
+		return Type(ref.Name)
+	}
+	return Type("Array<" + string(typeRefType(*ref.Element)) + ">")
+}
+
+func (l *lowerer) currentProgramStructTypes() []StructType {
+	// The IR program owns immutable nominal metadata; the lowerer consults this
+	// copy only to resolve checked field names to stable declaration-order slots.
+	return l.structTypes
+}
+
 type lowerer struct {
 	typeOf       TypeResolver
 	functionOf   FunctionResolver
 	functionIDs  map[string]FunctionID
+	structIDs    map[string]int
+	structTypes  []StructType
 	scope        *scope
 	nextSymbolID SymbolID
 }
@@ -329,9 +371,20 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 		typeOf:      typeOf,
 		functionOf:  functionOf,
 		functionIDs: make(map[string]FunctionID),
+		structIDs:   make(map[string]int),
 	}
 	functionDecls := make([]*ast.Function, 0)
 	for _, decl := range tree.Decls {
+		if structDecl, ok := decl.(*ast.StructDecl); ok {
+			id := len(program.StructTypes)
+			l.structIDs[structDecl.Name] = id
+			structType := StructType{ID: id, Name: structDecl.Name, Fields: make([]StructField, 0, len(structDecl.Fields))}
+			for _, field := range structDecl.Fields {
+				structType.Fields = append(structType.Fields, StructField{Name: field.Name, Type: typeRefType(field.Type)})
+			}
+			program.StructTypes = append(program.StructTypes, structType)
+			l.structTypes = program.StructTypes
+		}
 		if function, ok := decl.(*ast.Function); ok {
 			id := FunctionID(len(functionDecls))
 			l.functionIDs[function.Name] = id
@@ -599,6 +652,30 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			elements[i] = lowered
 		}
 		return &ArrayExpr{At: n.Pos(), ResolvedType: resolvedType, Elements: elements}, nil
+	case *ast.FieldExpr:
+		object, err := l.lowerExpr(n.Object)
+		if err != nil {
+			return nil, err
+		}
+		structID, exists := l.structIDs[string(object.ExprType())]
+		if !exists {
+			return nil, fmt.Errorf("%d:%d: ir: unresolved struct type %q", n.Pos().Line, n.Pos().Column, object.ExprType())
+		}
+		fieldIndex := -1
+		for _, structType := range l.currentProgramStructTypes() {
+			if structType.ID == structID {
+				for i, field := range structType.Fields {
+					if field.Name == n.Name {
+						fieldIndex = i
+						break
+					}
+				}
+			}
+		}
+		if fieldIndex < 0 {
+			return nil, fmt.Errorf("%d:%d: ir: unresolved field %q on %s", n.Pos().Line, n.Pos().Column, n.Name, object.ExprType())
+		}
+		return &FieldExpr{At: n.Pos(), ResolvedType: resolvedType, Object: object, StructID: structID, FieldIndex: fieldIndex, FieldName: n.Name}, nil
 	case *ast.IndexExpr:
 		collection, err := l.lowerExpr(n.Collection)
 		if err != nil {
@@ -641,6 +718,12 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		}
 		target := CallTarget("")
 		functionID := FunctionID(-1)
+		if structID, isStruct := l.structIDs[callee.Name]; isStruct {
+			return &CallExpr{
+				At: n.Pos(), ResolvedType: resolvedType, Target: CallStructConstructor,
+				StructID: structID, Function: FunctionID(-1), FunctionName: callee.Name, Args: args,
+			}, nil
+		}
 		switch callee.Name {
 		case "print":
 			target = CallPrint
