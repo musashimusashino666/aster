@@ -296,7 +296,7 @@ func (p *Parser) typeRefDepth(depth int) (ast.TypeRef, error) {
 	if err != nil {
 		return ast.TypeRef{}, err
 	}
-	ref := ast.TypeRef{Name: t.Lexeme, At: t.Pos}
+	ref := ast.TypeRef{Name: t.Lexeme, At: t.Pos, EndAt: t.End}
 	if p.match(token.Less) {
 		if depth >= langtypes.MaxNestingDepth {
 			return ast.TypeRef{}, p.errorAtCode(t, diagnostic.ParserTypeNesting, fmt.Sprintf("type nesting exceeds limit %d", langtypes.MaxNestingDepth))
@@ -700,9 +700,11 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		if err != nil {
 			return nil, 0, err
 		}
-		if _, err = p.consume(token.RParen, "expected ')' after expression"); err != nil {
-			return nil, 0, err
+		close, closeErr := p.consume(token.RParen, "expected ')' after expression")
+		if closeErr != nil {
+			return nil, 0, closeErr
 		}
+		setExprEnd(e, close.End)
 		left = e
 		leftDepth = expressionDepth
 	default:
@@ -761,6 +763,34 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		left = &ast.BinaryExpr{At: op.Pos, EndAt: p.previous().End, Left: left, Op: string(op.Kind), Right: right}
 	}
 	return left, leftDepth, nil
+}
+
+
+func setExprEnd(expr ast.Expr, end token.Position) {
+	switch n := expr.(type) {
+	case *ast.IdentifierExpr:
+		n.EndAt = end
+	case *ast.FieldExpr:
+		n.EndAt = end
+	case *ast.LiteralExpr:
+		n.EndAt = end
+	case *ast.UnaryExpr:
+		n.EndAt = end
+	case *ast.BinaryExpr:
+		n.EndAt = end
+	case *ast.CallExpr:
+		n.EndAt = end
+	case *ast.EnumVariantExpr:
+		n.EndAt = end
+	case *ast.MatchExpr:
+		n.EndAt = end
+	case *ast.ArrayExpr:
+		n.EndAt = end
+	case *ast.IndexExpr:
+		n.EndAt = end
+	case *ast.SliceExpr:
+		n.EndAt = end
+	}
 }
 
 func (p *Parser) finishEnumVariant(enumName, variant token.Token, typeArgs []ast.TypeRef) (ast.Expr, int, error) {
