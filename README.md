@@ -160,7 +160,7 @@ Only `native` is a supported build target in this version. Unsupported targets f
 ├── cmd/aster/           CLI entry point
 ├── internal/
 │   ├── ast/              AST nodes
-│   ├── bytecode/         bytecode format and AST-to-bytecode compiler
+│   ├── bytecode/         bytecode format, verifier, and typed-IR compiler
 │   ├── checker/          static type checker
 │   ├── codegen/          native Go backend
 │   ├── lexer/            tokenization and source locations
@@ -199,7 +199,7 @@ The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci
 
 ## Roadmap
 
-See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The next priorities are stronger bytecode verification, a richer standard library, mutable array indexing, records, a formatter, modules, and an official conformance suite. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
+See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier and shared typed-IR backend boundary are implemented. Near-term work is focused on a formatter and stable diagnostic codes, more exact return-flow analysis and source spans, stronger sustained fuzzing and differential testing, mutable array indexing and slices, explicit numeric conversions, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
 
 ## License
 

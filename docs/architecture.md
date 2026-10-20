@@ -6,10 +6,10 @@
 Aster source
   -> lexer / tokens
   -> parser / AST
-  -> static checker
+  -> static checker / typed IR
   -> one of two backends
-       -> Aster bytecode -> validated bytecode VM
-       -> Go source generation -> host Go compiler -> native executable
+       -> typed IR -> Aster bytecode -> validated bytecode VM
+       -> typed IR -> Go source generation -> host Go compiler -> native executable
 ```
 
 The checker is run before both backends. This ensures that type errors are rejected consistently before execution, although runtime behavior and diagnostics still need ongoing parity testing.
@@ -36,8 +36,8 @@ Bytecode is a versioned JSON format to make early inspection and debugging easy.
 
 ## Native backend
 
-The current native backend does not emit machine code itself and does not use LLVM yet. It generates Go source from a type-checked AST and calls the Go compiler. This gives the prototype a practical native-executable path while preserving a clean boundary for a future LLVM/Cranelift backend. It also means Go is currently a build-time dependency, and generated programs inherit platform availability from the Go toolchain.
+The current native backend does not emit machine code itself and does not use LLVM yet. The checker lowers the AST into normalized typed IR, which is consumed by both the bytecode compiler and the native Go code generator. The native backend generates Go source from this typed IR and invokes the Go compiler. AST-facing compatibility entry points perform analysis before invoking the typed compilation path; they are not a separate AST-based backend. This gives the prototype a practical native-executable path while preserving a clean boundary for a future LLVM/Cranelift backend. Go remains a build-time dependency, and generated programs inherit platform availability from the Go toolchain.
 
 ## Intended future backend abstraction
 
-The typed-program bridge exposes checker-produced expression types and function signatures. The normalized IR preserves source positions, function and local identities, builtin targets, and explicit checked operations for arithmetic and indexing; both backend compilers consume it. The checker and IR compiler apply the same conservative return-flow semantics. Remaining work is to remove obsolete AST-based native helper paths and continue expanding semantic metadata where new language features require it.
+The typed-program bridge exposes checker-produced expression types and function signatures. The normalized IR preserves source positions, function and local identities, builtin targets, and explicit checked operations for arithmetic and indexing; both backend compilers consume it. The checker and IR compiler apply the same conservative return-flow semantics. Future language features should extend this shared semantic representation instead of adding backend-specific type inference or AST lowering.
