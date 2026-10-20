@@ -21,7 +21,9 @@ The benchmarks parse, type-check, and compile their Aster source once before tim
 - `BenchmarkVMStringConcatAndUnicodeLen`: string concatenation and Unicode code-point counting.
 - `BenchmarkVMFormattedArrayPrint`: construction and formatting of a 128-element array, with the writer set to `io.Discard` so terminal throughput does not dominate.
 
-The runtime currently writes each `print` directly with `fmt.Fprintln`; it does not aggregate output through a shared buffered writer. `BenchmarkVMFormattedArrayPrint` intentionally uses `io.Discard`, so it measures formatting and execution rather than stdout system-call throughput. Do not extrapolate this benchmark to print-heavy workloads; output-heavy comparisons need an explicit, equivalent output destination and should report I/O costs separately.\n\nThese are execution-focused microbenchmarks, not end-to-end compile measurements. Use the same Go version, commit, benchmark flags, and host when comparing revisions. Record OS/kernel, CPU, Go version, commit, compiler flags, warm/cold cache conditions, repetitions, median, and dispersion. Do not compare single-run results or interpret a microbenchmark as a general language-performance claim.
+The runtime currently writes each `print` directly with `fmt.Fprintln`; it does not aggregate output through a shared buffered writer. `BenchmarkVMFormattedArrayPrint` intentionally uses `io.Discard`, so it measures formatting and execution rather than stdout system-call throughput. Do not extrapolate this benchmark to print-heavy workloads; output-heavy comparisons need an explicit, equivalent output destination and should report I/O costs separately.
+
+These are execution-focused microbenchmarks, not end-to-end compile measurements. Use the same Go version, commit, benchmark flags, and host when comparing revisions. Record OS/kernel, CPU, Go version, commit, compiler flags, warm/cold cache conditions, repetitions, median, and dispersion. Do not compare single-run results or interpret a microbenchmark as a general language-performance claim.
 
 ## Native comparison
 
