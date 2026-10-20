@@ -11,12 +11,12 @@ func compileIR(tree *ir.Program) (*Program, error) {
 		return nil, fmt.Errorf("bytecode: nil normalized IR")
 	}
 	p := &Program{
-		Format:    "aster-bytecode",
-		Version:   FormatVersion,
-		Source:    tree.SourceName,
-		Constants: []Value{},
+		Format:      "aster-bytecode",
+		Version:     FormatVersion,
+		Source:      tree.SourceName,
+		Constants:   []Value{},
 		StructTypes: make([]StructType, len(tree.StructTypes)),
-		Entry:     len(tree.Functions),
+		Entry:       len(tree.Functions),
 	}
 	for i, structType := range tree.StructTypes {
 		if structType.ID != i {
