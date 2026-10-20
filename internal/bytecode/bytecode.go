@@ -47,6 +47,14 @@ const (
 	ValueArray  ValueKind = "array"
 )
 
+// arrayStorage tracks whether the backing storage is shared by more than one
+// independently mutable Aster array value. It is runtime metadata only and is
+// deliberately excluded from the versioned bytecode JSON representation.
+type arrayStorage struct {
+	shared              bool
+	childrenInitialized bool
+}
+
 type Value struct {
 	Kind   ValueKind `json:"kind"`
 	I64    int64     `json:"i64,omitempty"`
@@ -54,14 +62,86 @@ type Value struct {
 	Bool   bool      `json:"bool,omitempty"`
 	String string    `json:"string,omitempty"`
 	Array  []Value   `json:"array,omitempty"`
+
+	arrayStorage  *arrayStorage `json:"-"`
+	arrayBorrowed bool          `json:"-"`
 }
 
-func Unit() Value           { return Value{Kind: ValueUnit} }
-func I64(n int64) Value     { return Value{Kind: ValueI64, I64: n} }
-func F64(n float64) Value   { return Value{Kind: ValueF64, F64: n} }
-func Bool(b bool) Value     { return Value{Kind: ValueBool, Bool: b} }
-func Str(s string) Value    { return Value{Kind: ValueString, String: s} }
-func Array(v []Value) Value { return Value{Kind: ValueArray, Array: append([]Value(nil), v...)} }
+// EnsureArrayStorage initializes runtime metadata on an array and its nested
+// elements. The per-storage initialization flag keeps repeated local reads
+// from traversing the entire array on every indexed update.
+func (v *Value) EnsureArrayStorage() {
+	if v == nil || v.Kind != ValueArray {
+		return
+	}
+	if v.arrayStorage == nil {
+		v.arrayStorage = &arrayStorage{}
+	}
+	if v.arrayStorage.childrenInitialized {
+		return
+	}
+	v.arrayStorage.childrenInitialized = true
+	for i := range v.Array {
+		v.Array[i].EnsureArrayStorage()
+	}
+}
+
+// MarkArrayShared conservatively records that another independently mutable
+// value may still refer to this array's backing storage.
+func (v *Value) MarkArrayShared() {
+	v.EnsureArrayStorage()
+	if v.Kind == ValueArray {
+		v.arrayStorage.shared = true
+	}
+}
+
+// PrepareArrayWrite detaches shared storage before a mutation. Child arrays
+// become shared because both the old and the new outer array retain them.
+func (v *Value) PrepareArrayWrite() {
+	v.EnsureArrayStorage()
+	if v.Kind != ValueArray || !v.arrayStorage.shared {
+		return
+	}
+	items := append([]Value(nil), v.Array...)
+	for i := range items {
+		if items[i].Kind == ValueArray {
+			items[i].MarkArrayShared()
+		}
+	}
+	v.Array = items
+	v.arrayStorage = &arrayStorage{childrenInitialized: true}
+}
+
+func (v Value) IsArrayBorrowed() bool {
+	return v.Kind == ValueArray && v.arrayBorrowed
+}
+
+// SetArrayBorrowed marks a temporary array value as borrowed from a value that
+// may remain live. Storing, returning, or passing it across a copy boundary
+// must account for that additional owner.
+func (v *Value) SetArrayBorrowed(borrowed bool) {
+	if v != nil && v.Kind == ValueArray {
+		v.arrayBorrowed = borrowed
+	}
+}
+
+// ClearArrayBorrowed transfers a temporary array value to its next owner.
+func (v *Value) ClearArrayBorrowed() {
+	if v != nil {
+		v.arrayBorrowed = false
+	}
+}
+
+func Unit() Value         { return Value{Kind: ValueUnit} }
+func I64(n int64) Value   { return Value{Kind: ValueI64, I64: n} }
+func F64(n float64) Value { return Value{Kind: ValueF64, F64: n} }
+func Bool(b bool) Value   { return Value{Kind: ValueBool, Bool: b} }
+func Str(s string) Value  { return Value{Kind: ValueString, String: s} }
+func Array(v []Value) Value {
+	value := Value{Kind: ValueArray, Array: append([]Value(nil), v...)}
+	value.EnsureArrayStorage()
+	return value
+}
 func (v Value) StringValue() string {
 	switch v.Kind {
 	case ValueUnit:
