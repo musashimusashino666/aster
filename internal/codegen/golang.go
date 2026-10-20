@@ -5,6 +5,7 @@ package codegen
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -47,6 +48,20 @@ func (b *limitedBuffer) String() string { return b.data.String() }
 type generator struct {
 	out    limitedBuffer
 	indent int
+	ctx    context.Context
+}
+
+func (g *generator) checkContext() error {
+	if g.ctx == nil {
+		return nil
+	}
+	if err := g.ctx.Err(); err != nil {
+		if err == context.DeadlineExceeded {
+			return diagnostic.WrapToolchain(fmt.Errorf("native code generation timed out: %w", err))
+		}
+		return fmt.Errorf("native code generation canceled: %w", err)
+	}
+	return nil
 }
 
 func (g *generator) checkNativeSourceLimit(sourceName string, pos token.Position) error {
@@ -115,10 +130,30 @@ func Generate(tree *ast.Program) (string, error) {
 // GenerateTyped lowers the checker's normalized IR to Go. Expression types,
 // resolved symbols, function targets, and checked operations come from the checker phase.
 func GenerateTyped(typed *checker.TypedProgram) (string, error) {
-	return generateTypedWithLimit(typed, limits.MaxNativeSourceBytes)
+	return GenerateTypedContext(context.Background(), typed)
+}
+
+// GenerateTypedContext lowers the normalized IR to Go, returning promptly when
+// ctx is canceled. The context should cover code generation and any subsequent
+// native toolchain work that shares the same CLI deadline.
+func GenerateTypedContext(ctx context.Context, typed *checker.TypedProgram) (string, error) {
+	if ctx == nil {
+		return "", fmt.Errorf("codegen: nil context")
+	}
+	return generateTypedWithContextAndLimit(ctx, typed, limits.MaxNativeSourceBytes)
 }
 
 func generateTypedWithLimit(typed *checker.TypedProgram, sourceLimit int) (string, error) {
+	return generateTypedWithContextAndLimit(context.Background(), typed, sourceLimit)
+}
+
+func generateTypedWithContextAndLimit(ctx context.Context, typed *checker.TypedProgram, sourceLimit int) (string, error) {
+	if ctx == nil {
+		return "", fmt.Errorf("codegen: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if typed == nil {
 		return "", fmt.Errorf("codegen: nil typed program")
 	}
@@ -128,7 +163,7 @@ func generateTypedWithLimit(typed *checker.TypedProgram, sourceLimit int) (strin
 	if err := validateEnumResourceLimits(typed.IR.EnumTypes); err != nil {
 		return "", err
 	}
-	g := &generator{out: limitedBuffer{limit: sourceLimit}}
+	g := &generator{out: limitedBuffer{limit: sourceLimit}, ctx: ctx}
 	for _, fn := range typed.IR.Functions {
 		ret := string(fn.ReturnType)
 		if !langtypes.ValidName(ret) {
@@ -142,10 +177,16 @@ func generateTypedWithLimit(typed *checker.TypedProgram, sourceLimit int) (strin
 		}
 	}
 	g.writePreamble()
+	if err := g.checkContext(); err != nil {
+		return "", err
+	}
 	if err := g.checkNativeSourceLimit(typed.IR.SourceName, firstNativeSourcePosition(typed.Tree)); err != nil {
 		return "", err
 	}
 	for _, structType := range typed.IR.StructTypes {
+		if err := g.checkContext(); err != nil {
+			return "", err
+		}
 		if err := g.irStructType(structType); err != nil {
 			return "", err
 		}
@@ -154,6 +195,9 @@ func generateTypedWithLimit(typed *checker.TypedProgram, sourceLimit int) (strin
 		}
 	}
 	for _, enumType := range typed.IR.EnumTypes {
+		if err := g.checkContext(); err != nil {
+			return "", err
+		}
 		if err := g.irEnumType(enumType); err != nil {
 			return "", err
 		}
@@ -162,6 +206,9 @@ func generateTypedWithLimit(typed *checker.TypedProgram, sourceLimit int) (strin
 		}
 	}
 	for _, f := range typed.IR.Functions {
+		if err := g.checkContext(); err != nil {
+			return "", err
+		}
 		if err := g.irFunction(f); err != nil {
 			return "", err
 		}
@@ -175,6 +222,9 @@ func generateTypedWithLimit(typed *checker.TypedProgram, sourceLimit int) (strin
 	g.line("asterSourceName = " + strconv.Quote(typed.IR.SourceName))
 	g.line("defer func() { if recovered := recover(); recovered != nil { if failure, ok := recovered.(asterRuntimeFailure); ok { fmt.Fprintln(os.Stderr, failure.Error()); os.Exit(1) }; panic(recovered) } }()")
 	for _, stmt := range typed.IR.Body {
+		if err := g.checkContext(); err != nil {
+			return "", err
+		}
 		if err := g.irStatement(stmt); err != nil {
 			return "", err
 		}
