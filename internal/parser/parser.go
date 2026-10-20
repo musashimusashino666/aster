@@ -765,7 +765,6 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 	return left, leftDepth, nil
 }
 
-
 func setExprEnd(expr ast.Expr, end token.Position) {
 	switch n := expr.(type) {
 	case *ast.IdentifierExpr:
