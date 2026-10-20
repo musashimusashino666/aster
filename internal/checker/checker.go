@@ -338,6 +338,30 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 			return false, typeError(n.Pos(), diagnostic.TypeAssignmentTypeMismatch, "cannot assign %s to variable '%s' of type %s", got, n.Name, v.Type)
 		}
 		return false, nil
+	case *ast.IndexAssignStmt:
+		root, ok := indexedAssignmentRoot(n.Target)
+		if !ok {
+			return false, typeError(n.Pos(), diagnostic.TypeGeneric, "array assignment target must be rooted in a variable")
+		}
+		variable, exists := c.scopes.lookup(root.Name)
+		if !exists {
+			return false, typeError(root.Pos(), diagnostic.TypeUndefinedVariable, "undefined variable '%s'", root.Name)
+		}
+		if !variable.Mutable {
+			return false, typeError(n.Pos(), diagnostic.TypeImmutableAssignment, "cannot assign to immutable variable '%s'; declare it with 'let mut'", root.Name)
+		}
+		elementType, err := c.checkExpr(n.Target)
+		if err != nil {
+			return false, err
+		}
+		valueType, err := c.checkExpr(n.Value)
+		if err != nil {
+			return false, err
+		}
+		if valueType != elementType {
+			return false, typeError(n.Pos(), diagnostic.TypeIndexAssignmentMismatch, "cannot assign %s to array element of type %s", valueType, elementType)
+		}
+		return false, nil
 	case *ast.ExprStmt:
 		_, err := c.checkExpr(n.Expr)
 		return false, err
@@ -600,6 +624,18 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		return fn.Return, nil
 	}
 	return "", typeError(e.Pos(), diagnostic.TypeUnsupportedExpression, "unsupported expression node %T", e)
+}
+
+func indexedAssignmentRoot(expr ast.Expr) (*ast.IdentifierExpr, bool) {
+	for {
+		index, ok := expr.(*ast.IndexExpr)
+		if !ok {
+			break
+		}
+		expr = index.Collection
+	}
+	root, ok := expr.(*ast.IdentifierExpr)
+	return root, ok
 }
 
 func astBoolLiteral(expr ast.Expr) (bool, bool) {

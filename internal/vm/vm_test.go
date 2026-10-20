@@ -169,3 +169,31 @@ func TestVMRejectsExcessiveActiveLocalSlots(t *testing.T) {
 		t.Fatalf("expected cumulative frame allocation limit error, got %v", err)
 	}
 }
+
+func TestIndexedArrayAssignmentUsesValueSemantics(t *testing.T) {
+	source := `let mut original: Array<Array<i64>> = [[1, 2], [3, 4]];
+let mut values: Array<Array<i64>> = original;
+values[0][1] = 9;
+print(values);
+print(original);
+let mut row: Array<i64> = [7, 8];
+values[1] = row;
+values[1][0] = 6;
+print(values);
+print(row);`
+	out, err := runSource(t, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[[1 9] [3 4]]\n[[1 2] [3 4]]\n[[1 9] [6 8]]\n[7 8]\n"
+	if out != want {
+		t.Fatalf("output = %q, want %q", out, want)
+	}
+}
+
+func TestIndexedArrayAssignmentChecksBounds(t *testing.T) {
+	_, err := runSource(t, "let mut values = [1, 2]; values[2] = 9;")
+	if err == nil || !strings.Contains(err.Error(), "out of bounds") {
+		t.Fatalf("expected out-of-bounds runtime error, got %v", err)
+	}
+}

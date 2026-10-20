@@ -5,7 +5,7 @@
 
 ## Context
 
-Aster currently represents arrays as dynamically sized arrays in both execution backends. The VM's `bytecode.Value` and generated Go code use slices, whose underlying storage may be shared when values are copied. Array-element assignment and slicing are not supported in Aster 0.1, so that sharing is not currently observable through element mutation.
+Aster represents arrays as dynamically sized arrays in both execution backends. The VM's `bytecode.Value` and generated Go code use slices, whose underlying storage may be shared when values are copied. Mutable indexed assignment is now supported; implementations must prevent writes from becoming observable through another copied array value. Slicing remains unimplemented.
 
 Before mutable indexing or slicing is introduced, the language must define whether aliases observe each other's writes. Leaving this to backend implementation details would make the same Aster program behave differently on the VM and native backends, and would constrain later ownership and optimization work.
 
@@ -15,11 +15,11 @@ Before mutable indexing or slicing is introduced, the language must define wheth
 
 - Initializing a binding from an existing array, rebinding a mutable variable, passing an array as a function argument, and returning an array preserve value semantics.
 - Nested arrays are copied recursively in the semantic model. Mutating an element through one value must not change another value that was copied from it, including when the mutation targets a nested array.
-- A future slice/range operation produces an independent array value, not a mutable view into the original array.
+- A slice/range operation must produce an independent array value, not a mutable view into the original array. Slices remain future work.
 - Implementations may use deep copies, copy-on-write, persistent data structures, or another representation, provided all observable behavior matches these rules.
 - The language does not expose array identity or pointer/reference operations that would allow programs to distinguish these implementation strategies.
 
-This decision defines the contract for future mutable array operations. It does not add array-element assignment or slicing to Aster 0.1, and it does not require changing the current behavior of programs that cannot mutate array elements.
+This decision governs the implemented mutable indexed assignment and future slicing behavior. The implementation uses copy-on-write along the indexed path: each array container on the path is copied before the update, while untouched branches may share internal storage because any future mutation also has to copy its own path. Slicing remains out of scope until a separate implementation and regression-test change lands.
 
 ## Consequences
 

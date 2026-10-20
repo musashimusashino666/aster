@@ -99,6 +99,34 @@ func asterIndexI64[T any](s []T, i int64, line, column int) T {
 	return s[int(i)]
 }
 
+func asterSetIndexPath(collection any, indices []int64, replacement any, line, column int) any {
+	if len(indices) == 0 {
+		asterRuntimeError(line, column, "indexed assignment requires at least one index")
+	}
+	source := reflect.ValueOf(collection)
+	if !source.IsValid() || source.Kind() != reflect.Slice {
+		asterRuntimeError(line, column, "indexed assignment requires an array value")
+	}
+	index := indices[0]
+	if index < 0 || index >= int64(source.Len()) {
+		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", index, source.Len()))
+	}
+	updated := reflect.MakeSlice(source.Type(), source.Len(), source.Len())
+	reflect.Copy(updated, source)
+	var item reflect.Value
+	if len(indices) == 1 {
+		item = reflect.ValueOf(replacement)
+	} else {
+		child := asterSetIndexPath(updated.Index(int(index)).Interface(), indices[1:], replacement, line, column)
+		item = reflect.ValueOf(child)
+	}
+	if !item.IsValid() || !item.Type().AssignableTo(updated.Type().Elem()) {
+		asterRuntimeError(line, column, "indexed assignment value has incompatible type")
+	}
+	updated.Index(int(index)).Set(item)
+	return updated.Interface()
+}
+
 func asterAddI64(a, b int64, line, column int) int64 {
 	if (b > 0 && a > asterMaxI64-b) || (b < 0 && a < asterMinI64-b) {
 		asterRuntimeError(line, column, "i64 overflow in addition")

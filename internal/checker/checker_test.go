@@ -254,3 +254,34 @@ func TestRejectsStatementsAfterNonFallthroughWhile(t *testing.T) {
 		t.Fatalf("expected unreachable-statement diagnostic, got %v", err)
 	}
 }
+
+func TestChecksIndexedArrayAssignment(t *testing.T) {
+	valid := []string{
+		"let mut values = [1, 2]; values[0] = 9;",
+		"let mut matrix: Array<Array<i64>> = [[1, 2], [3, 4]]; matrix[0][1] = 9;",
+		"let mut matrix: Array<Array<i64>> = [[1], [2]]; let mut row: Array<i64> = [8, 9]; matrix[0] = row;",
+	}
+	for _, source := range valid {
+		if err := checkSource(t, source); err != nil {
+			t.Errorf("expected indexed assignment to type-check for %q: %v", source, err)
+		}
+	}
+
+	invalid := []struct {
+		name, source, want string
+	}{
+		{"immutable root", "let values = [1, 2]; values[0] = 9;", "immutable variable"},
+		{"value type mismatch", "let mut values = [1, 2]; values[0] = true;", "array element of type"},
+		{"index type mismatch", "let mut values = [1, 2]; values[true] = 9;", "array index must be i64"},
+		{"non-array root", "let mut value = 1; value[0] = 9;", "indexing requires an Array<T>"},
+		{"nested non-array", "let mut matrix = [[1, 2]]; matrix[0][true] = 9;", "array index must be i64"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkSource(t, tt.source)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}

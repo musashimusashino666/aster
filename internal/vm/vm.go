@@ -76,6 +76,30 @@ func Run(program *bytecode.Program, out io.Writer) error {
 	}
 	return nil
 }
+func setIndexPath(collection bytecode.Value, indices []int64, replacement bytecode.Value) (bytecode.Value, error) {
+	if len(indices) == 0 {
+		return bytecode.Value{}, fmt.Errorf("indexed assignment requires at least one index")
+	}
+	if collection.Kind != bytecode.ValueArray {
+		return bytecode.Value{}, fmt.Errorf("indexing requires an array, got %s", collection.Kind)
+	}
+	index := indices[0]
+	if index < 0 || index >= int64(len(collection.Array)) {
+		return bytecode.Value{}, fmt.Errorf("array index %d out of bounds for length %d", index, len(collection.Array))
+	}
+	items := append([]bytecode.Value(nil), collection.Array...)
+	if len(indices) == 1 {
+		items[int(index)] = replacement
+	} else {
+		child, err := setIndexPath(items[int(index)], indices[1:], replacement)
+		if err != nil {
+			return bytecode.Value{}, err
+		}
+		items[int(index)] = child
+	}
+	return bytecode.Value{Kind: bytecode.ValueArray, Array: items}, nil
+}
+
 func (v *VM) step(i bytecode.Instruction, fnName string) error {
 	pop := func() (bytecode.Value, error) {
 		if len(v.stack) == 0 {
@@ -120,6 +144,31 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			return v.fault(i, "array index %d out of bounds for length %d", index.I64, len(collection.Array))
 		}
 		push(collection.Array[int(index.I64)])
+	case bytecode.OpSetIndexPath:
+		replacement, err := pop()
+		if err != nil {
+			return err
+		}
+		indices := make([]int64, i.A)
+		for index := i.A - 1; index >= 0; index-- {
+			value, err := pop()
+			if err != nil {
+				return err
+			}
+			if value.Kind != bytecode.ValueI64 {
+				return v.fault(i, "array index must be i64, got %s", value.Kind)
+			}
+			indices[index] = value.I64
+		}
+		collection, err := pop()
+		if err != nil {
+			return err
+		}
+		updated, err := setIndexPath(collection, indices, replacement)
+		if err != nil {
+			return v.fault(i, "%v", err)
+		}
+		push(updated)
 	case bytecode.OpLoadLocal:
 		fr := &v.frames[len(v.frames)-1]
 		if i.A < 0 || i.A >= len(fr.locals) {

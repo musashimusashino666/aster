@@ -151,7 +151,21 @@ func (p *Parser) statement() (ast.Stmt, error) {
 		return p.returnStatement(p.previous())
 	}
 	if p.indexedAssignmentAhead() {
-		return nil, p.errorAtCode(p.peek(), diagnostic.ParserArrayAssignmentUnsupported, "array element assignment is not supported in Aster 0.1")
+		target, err := p.expression(0)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.consume(token.Assign, "expected '=' after array index target"); err != nil {
+			return nil, err
+		}
+		value, err := p.expression(0)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.consume(token.Semicolon, "expected ';' after array element assignment"); err != nil {
+			return nil, err
+		}
+		return &ast.IndexAssignStmt{At: target.Pos(), Target: target, Value: value}, nil
 	}
 	if p.check(token.Ident) && p.checkNext(token.Assign) {
 		id := p.advance()
@@ -175,22 +189,32 @@ func (p *Parser) statement() (ast.Stmt, error) {
 	return &ast.ExprStmt{At: expr.Pos(), Expr: expr}, nil
 }
 
-// indexedAssignmentAhead recognizes the unsupported target form `name[index] = value`
-// to return a direct, actionable diagnostic instead of a generic missing-semicolon error.
+// indexedAssignmentAhead recognizes an identifier-rooted index chain followed by assignment.
 func (p *Parser) indexedAssignmentAhead() bool {
 	if !p.check(token.Ident) || !p.checkNext(token.LBracket) {
 		return false
 	}
-	depth := 0
-	for i := p.current + 1; i < len(p.tokens); i++ {
-		switch p.tokens[i].Kind {
-		case token.LBracket:
-			depth++
-		case token.RBracket:
-			depth--
-			if depth == 0 {
-				return i+1 < len(p.tokens) && p.tokens[i+1].Kind == token.Assign
+	i := p.current + 1
+	for i < len(p.tokens) && p.tokens[i].Kind == token.LBracket {
+		depth := 1
+		i++
+		for i < len(p.tokens) && depth > 0 {
+			switch p.tokens[i].Kind {
+			case token.LBracket:
+				depth++
+			case token.RBracket:
+				depth--
 			}
+			i++
+		}
+		if depth != 0 || i >= len(p.tokens) {
+			return false
+		}
+		if p.tokens[i].Kind == token.Assign {
+			return true
+		}
+		if p.tokens[i].Kind != token.LBracket {
+			return false
 		}
 	}
 	return false

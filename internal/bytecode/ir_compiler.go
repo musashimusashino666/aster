@@ -148,6 +148,23 @@ func (c *irFunctionCompiler) compileStmt(stmt ir.Stmt) error {
 		}
 		c.emit(OpStoreLocal, slot, 0, pos.Line, pos.Column)
 		return nil
+	case *ir.IndexAssignStmt:
+		slot, err := c.slot(n.Target, n.Name, n)
+		if err != nil {
+			return err
+		}
+		c.emit(OpLoadLocal, slot, 0, pos.Line, pos.Column)
+		for _, index := range n.Indices {
+			if err := c.compileExpr(index); err != nil {
+				return err
+			}
+		}
+		if err := c.compileExpr(n.Value); err != nil {
+			return err
+		}
+		c.emit(OpSetIndexPath, len(n.Indices), 0, pos.Line, pos.Column)
+		c.emit(OpStoreLocal, slot, 0, pos.Line, pos.Column)
+		return nil
 	case *ir.AssignStmt:
 		slot, err := c.slot(n.Target, n.Name, n)
 		if err != nil {

@@ -70,10 +70,14 @@ func TestRejectsPositiveI64MinimumMagnitude(t *testing.T) {
 	}
 }
 
-func TestArrayElementAssignmentHasSpecificDiagnostic(t *testing.T) {
-	_, err := Parse("let values = [1]; values[0] = 2;", "test.ast")
-	if err == nil || !strings.Contains(err.Error(), "array element assignment is not supported") {
-		t.Fatalf("expected array assignment diagnostic, got %v", err)
+func TestParsesSimpleArrayElementAssignment(t *testing.T) {
+	program, err := Parse("let mut values = [1]; values[0] = 2;", "test.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt := program.Decls[1].(*ast.StmtDecl).Statement
+	if _, ok := stmt.(*ast.IndexAssignStmt); !ok {
+		t.Fatalf("statement type = %T, want *ast.IndexAssignStmt", stmt)
 	}
 }
 
@@ -81,5 +85,28 @@ func TestPositiveI64MinimumMagnitudeExplainsUnaryMinusRequirement(t *testing.T) 
 	_, err := Parse("let tooLarge = 0 - 9223372036854775808;", "test.ast")
 	if err == nil || !strings.Contains(err.Error(), "only immediately after unary '-'") {
 		t.Fatalf("expected actionable i64 boundary diagnostic, got %v", err)
+	}
+}
+
+func TestParsesNestedArrayElementAssignment(t *testing.T) {
+	program, err := Parse("let mut matrix = [[1, 2], [3, 4]]; matrix[0][1] = 9;", "indexed-assignment.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt := program.Decls[1].(*ast.StmtDecl).Statement
+	assign, ok := stmt.(*ast.IndexAssignStmt)
+	if !ok {
+		t.Fatalf("statement type = %T, want *ast.IndexAssignStmt", stmt)
+	}
+	outer, ok := assign.Target.(*ast.IndexExpr)
+	if !ok {
+		t.Fatalf("target type = %T, want *ast.IndexExpr", assign.Target)
+	}
+	inner, ok := outer.Collection.(*ast.IndexExpr)
+	if !ok {
+		t.Fatalf("target collection type = %T, want nested *ast.IndexExpr", outer.Collection)
+	}
+	if root, ok := inner.Collection.(*ast.IdentifierExpr); !ok || root.Name != "matrix" {
+		t.Fatalf("indexed assignment root = %#v, want matrix", inner.Collection)
 	}
 }

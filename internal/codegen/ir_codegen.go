@@ -86,6 +86,23 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		g.line(name + " := " + expr)
 		g.line("_ = " + name)
 		return nil
+	case *ir.IndexAssignStmt:
+		root := irLocalName(n.Target)
+		indices := make([]string, len(n.Indices))
+		for i, index := range n.Indices {
+			lowered, err := g.irExpression(index)
+			if err != nil {
+				return err
+			}
+			indices[i] = lowered
+		}
+		value, err := g.irExpression(n.Value)
+		if err != nil {
+			return err
+		}
+		g.line(fmt.Sprintf("%s = asterSetIndexPath(%s, []int64{%s}, %s, %s).(%s)",
+			root, root, strings.Join(indices, ", "), value, irPositionArgs(n), goType(string(n.RootType))))
+		return nil
 	case *ir.AssignStmt:
 		expr, err := g.irExpression(n.Value)
 		if err != nil {

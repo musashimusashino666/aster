@@ -26,7 +26,7 @@
 | Type inference for local variables | Implemented |
 | Functions, recursion, conditionals, loops, return | Implemented |
 | Immutable bindings by default; `let mut` for assignment | Implemented |
-| Arrays (`Array<T>`), homogeneous literals, `len`, checked indexing | Implemented; array elements are currently read-only |
+| Arrays (`Array<T>`), homogeneous literals, `len`, checked indexing | Implemented; `let mut` supports nested indexed assignment with value semantics |
 | `Option`, `Result`, enums, structs, user generics | Planned; not implemented |
 | Bytecode compiler and JSON bytecode file | Implemented |
 | Bytecode structural, stack-height, abstract type, and local-initialization verification | Implemented |
@@ -128,7 +128,7 @@ print(total);
 - `bool`: `true` or `false`.
 - `string`: UTF-8 text. `len(string)` counts Unicode code points, not bytes or grapheme clusters.
 - `unit`: the return type of functions that do not return a value. It cannot be stored in a variable.
-- `Array<T>`: dynamically sized homogeneous arrays; literals infer their element type, indexing is bounds-checked, and `len` returns element count. Empty literals and element assignment are not supported yet.
+- `Array<T>`: dynamically sized homogeneous arrays; literals infer their element type, indexing is bounds-checked, and `len` returns element count. `let mut` bindings support checked element assignment, including nested paths; updates copy the indexed array path so copied values remain independent. Empty literals and slices are not supported yet.
 
 A variable may be annotated (`let score: i64 = 42;`) or inferred (`let score = 42;`). Bindings are immutable unless declared with `let mut`.
 
@@ -148,7 +148,7 @@ Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
 
 Logical: `&&`, `||` (short-circuiting)
 
-Numeric operands must have matching types; there is no implicit `i64`/`f64` conversion in 0.1. Arrays are currently read-only by element; `let mut` can reassign the binding, but `values[0] = ...` is not yet supported.
+Numeric operands must have matching types; there is no implicit `i64`/`f64` conversion in 0.1. Array element assignment requires a mutable root binding, for example `let mut values = [1, 2]; values[0] = 9;`. Nested indexed assignments preserve array value semantics. Slices remain unsupported.
 
 ## CLI reference
 
@@ -213,7 +213,7 @@ The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci
 
 ## Roadmap
 
-See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, and stable lexer/parser/type-checker diagnostic codes are implemented. Near-term work is focused on end-to-end source spans, continued fuzzing and differential testing, mutable array indexing and slices, explicit numeric conversions, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
+See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, and stable lexer/parser/type-checker diagnostic codes are implemented. Near-term work is focused on end-to-end source spans, continued fuzzing and differential testing, array slices, explicit numeric conversions, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
 
 ## License
 

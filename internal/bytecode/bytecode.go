@@ -13,7 +13,7 @@ import (
 	"github.com/aster-lang/aster/internal/limits"
 )
 
-const FormatVersion = 2
+const FormatVersion = 3
 
 // Per-value allocation limits enforced by bytecode validation and the VM.
 // String limits are measured in UTF-8 bytes, not Unicode code points.
@@ -91,6 +91,7 @@ const (
 	OpLoadLocal    Op = "LOAD_LOCAL"
 	OpBuildArray   Op = "BUILD_ARRAY"
 	OpIndex        Op = "INDEX"
+	OpSetIndexPath Op = "SET_INDEX_PATH"
 	OpStoreLocal   Op = "STORE_LOCAL"
 	OpPop          Op = "POP"
 	OpNeg          Op = "NEG"
@@ -212,6 +213,10 @@ func (p *Program) Validate() error {
 					return fmt.Errorf("function %q instruction %d has invalid array element count %d", f.Name, pc, ins.A)
 				}
 			case OpIndex:
+			case OpSetIndexPath:
+				if ins.A < 1 || ins.A > maxArrayNestingDepth || ins.B != 0 {
+					return fmt.Errorf("function %q instruction %d has invalid indexed-assignment depth %d", f.Name, pc, ins.A)
+				}
 			case OpLoadLocal, OpStoreLocal:
 				if ins.A < 0 || ins.A >= f.Locals {
 					return fmt.Errorf("function %q instruction %d references invalid local %d", f.Name, pc, ins.A)
@@ -302,6 +307,8 @@ func validateFunctionStack(fn Function) error {
 				required, delta = ins.A, 1-ins.A
 			case OpIndex:
 				required, delta = 2, -1
+			case OpSetIndexPath:
+				required, delta = ins.A+2, -ins.A-1
 			case OpStoreLocal, OpPop:
 				required, delta = 1, -1
 			case OpNeg, OpNot:
