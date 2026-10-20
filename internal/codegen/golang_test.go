@@ -24,7 +24,7 @@ func TestGenerateTypedUsesCheckerMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(source, "asterAddI64(v_x, int64(1), ") {
+	if !strings.Contains(source, "asterAddI64(v_0, int64(1), ") {
 		t.Fatalf("generated source does not use expected typed arithmetic helper:\n%s", source)
 	}
 }
@@ -73,7 +73,7 @@ func TestGenerateStringConcatenationUsesRuntimeLimitHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(source, "asterAddString(v_left, v_right, ") {
+	if !strings.Contains(source, "asterAddString(v_0, v_1, ") {
 		t.Fatalf("generated source does not use bounded string concatenation:\n%s", source)
 	}
 	if !strings.Contains(source, "string length limit exceeded") {

@@ -1,4 +1,4 @@
-// Package codegen lowers the type-checked Aster AST to a self-contained Go program.
+// Package codegen lowers the normalized, type-checked Aster IR to a self-contained Go program.
 // The Go backend is an initial native backend; generated executables include
 // Aster runtime checks rather than relying on unchecked Go arithmetic.
 package codegen
@@ -34,15 +34,17 @@ func Generate(tree *ast.Program) (string, error) {
 	return GenerateTyped(typed)
 }
 
-// GenerateTyped lowers checker-produced semantic metadata and its AST to Go.
-// Expression types and function signatures are read from the checker result;
-// the native backend does not independently re-infer them.
+// GenerateTyped lowers the checker's normalized IR to Go. Expression types,
+// resolved symbols, function targets, and checked operations come from the checker phase.
 func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	if typed == nil || typed.Tree == nil {
 		return "", fmt.Errorf("codegen: nil typed program")
 	}
 	tree := typed.Tree
 	g := &generator{typed: typed, tree: tree}
+	if typed.IR == nil {
+		return "", fmt.Errorf("codegen: typed program has no normalized IR")
+	}
 	for _, d := range tree.Decls {
 		f, ok := d.(*ast.Function)
 		if !ok {
@@ -67,24 +69,16 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 		}
 	}
 	g.writePreamble()
-	for _, d := range tree.Decls {
-		f, ok := d.(*ast.Function)
-		if !ok {
-			continue
-		}
-		if err := g.function(f); err != nil {
+	for _, f := range typed.IR.Functions {
+		if err := g.irFunction(f); err != nil {
 			return "", err
 		}
 	}
 	g.line("func main() {")
 	g.indent++
 	g.line("defer func() { if r := recover(); r != nil { msg := fmt.Sprint(r); if !strings.Contains(msg, \"runtime error:\") { msg = \"runtime error: \" + msg }; fmt.Fprintln(os.Stderr, msg); os.Exit(1) } }()")
-	for _, d := range tree.Decls {
-		sd, ok := d.(*ast.StmtDecl)
-		if !ok {
-			continue
-		}
-		if err := g.statement(sd.Statement); err != nil {
+	for _, stmt := range typed.IR.Body {
+		if err := g.irStatement(stmt); err != nil {
 			return "", err
 		}
 	}
