@@ -220,8 +220,10 @@ func writeOutputAtomically(path string, write func(io.Writer) error) error {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
 	mode := os.FileMode(0)
+	preserveMode := false
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode().Perm()
+		preserveMode = true
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("inspect output %s: %w", path, err)
 	}
@@ -237,7 +239,7 @@ func writeOutputAtomically(path string, write func(io.Writer) error) error {
 	if err != nil {
 		return fmt.Errorf("create temporary output: %w", err)
 	}
-	if mode != 0 {
+	if preserveMode {
 		if err := file.Chmod(mode); err != nil {
 			_ = file.Close()
 			return fmt.Errorf("preserve output permissions: %w", err)
