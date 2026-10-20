@@ -177,7 +177,7 @@ func FuzzValidateInstructionOperandsNeverPanics(f *testing.F) {
 	f.Add(uint8(1), int16(-1), int16(3))
 	f.Add(uint8(255), int16(32767), int16(-32768))
 	ops := []Op{
-		OpConst, OpLoadLocal, OpBuildArray, OpIndex, OpStoreLocal, OpPop,
+		OpConst, OpLoadLocal, OpBuildArray, OpIndex, OpSetIndexPath, OpStoreLocal, OpPop,
 		OpNeg, OpNot, OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual,
 		OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
 		OpJump, OpJumpIfFalse, OpJumpIfTrue, OpCall, OpBuiltin, OpReturn,
@@ -234,7 +234,7 @@ func TestValidateRejectsOversizedArrayConstant(t *testing.T) {
 
 func TestReadPreflightsOversizedConstantArrayBeforeDecode(t *testing.T) {
 	items := strings.Repeat("null,", MaxArrayLength)
-	input := "{\"format\":\"aster-bytecode\",\"version\":2,\"constants\":[{\"kind\":\"array\",\"array\":[" + items + "null]}],\"functions\":[{\"name\":\"main\",\"params\":0,\"locals\":0,\"return\":\"unit\",\"code\":[{\"op\":\"HALT\"}]}],\"entry\":0}"
+	input := "{\"format\":\"aster-bytecode\",\"version\":3,\"constants\":[{\"kind\":\"array\",\"array\":[" + items + "null]}],\"functions\":[{\"name\":\"main\",\"params\":0,\"locals\":0,\"return\":\"unit\",\"code\":[{\"op\":\"HALT\"}]}],\"entry\":0}"
 	_, err := Read(strings.NewReader(input))
 	if err == nil || !strings.Contains(err.Error(), "bytecode preflight: constant array exceeds") {
 		t.Fatalf("expected pre-decode array limit error, got %v", err)
