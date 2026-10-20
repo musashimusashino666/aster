@@ -457,3 +457,64 @@ func TestDeterministicGeneratedProgramsMatchBackends(t *testing.T) {
 		t.Fatalf("generated backend output differs\nVM:\n%s\nnative:\n%s\nsource:\n%s", vmOutput.String(), nativeOutput, programSource)
 	}
 }
+
+func TestNativePrintWriteFailureMatchesVM(t *testing.T) {
+	const source = "print(42);"
+	const fullDevice = "/dev/full"
+	full, err := os.OpenFile(fullDevice, os.O_WRONLY, 0)
+	if err != nil {
+		t.Skipf("write-failure device %s is unavailable: %v", fullDevice, err)
+	}
+
+	tree, err := parser.Parse(source, "print-write-error.ast")
+	if err != nil {
+		full.Close()
+		t.Fatal(err)
+	}
+	if err = checker.Check(tree); err != nil {
+		full.Close()
+		t.Fatal(err)
+	}
+	program, err := bytecode.Compile(tree)
+	if err != nil {
+		full.Close()
+		t.Fatal(err)
+	}
+	vmErr := vm.Run(program, full)
+	closeErr := full.Close()
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if vmErr == nil || !strings.Contains(vmErr.Error(), "write output:") {
+		t.Fatalf("VM should report stdout write failure, got %v", vmErr)
+	}
+
+	goSource, err := codegen.Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-print-write-error")
+	if err = toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	full, err = os.OpenFile(fullDevice, os.O_WRONLY, 0)
+	if err != nil {
+		t.Skipf("write-failure device %s became unavailable: %v", fullDevice, err)
+	}
+	cmd := exec.Command(bin)
+	cmd.Stdout = full
+	var nativeStderr bytes.Buffer
+	cmd.Stderr = &nativeStderr
+	nativeErr := cmd.Run()
+	closeErr = full.Close()
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if nativeErr == nil {
+		t.Fatal("native backend should fail when stdout cannot be written")
+	}
+	nativeDiagnostic := strings.TrimSpace(nativeStderr.String())
+	if nativeDiagnostic != vmErr.Error() {
+		t.Fatalf("backend write diagnostics differ: VM=%q native=%q", vmErr.Error(), nativeDiagnostic)
+	}
+}
