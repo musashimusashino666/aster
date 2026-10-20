@@ -66,7 +66,6 @@ type EnumVariant struct {
 	Payload []TypeRef
 }
 
-
 type StructField struct {
 	At   token.Position
 	Name string
