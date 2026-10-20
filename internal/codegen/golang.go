@@ -14,28 +14,11 @@ import (
 	"github.com/aster-lang/aster/internal/langtypes"
 )
 
-type typeScope struct {
-	types  map[string]string
-	parent *typeScope
-}
-
-func newTypeScope(p *typeScope) *typeScope { return &typeScope{types: map[string]string{}, parent: p} }
-func (s *typeScope) find(n string) (string, bool) {
-	for x := s; x != nil; x = x.parent {
-		v, ok := x.types[n]
-		if ok {
-			return v, true
-		}
-	}
-	return "", false
-}
-
 type generator struct {
 	typed  *checker.TypedProgram
 	tree   *ast.Program
 	out    bytes.Buffer
 	indent int
-	scope  *typeScope
 }
 
 // Generate returns native-backend source. The resulting file can be compiled by
@@ -95,7 +78,6 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	g.line("func main() {")
 	g.indent++
 	g.line("defer func() { if r := recover(); r != nil { msg := strings.TrimPrefix(fmt.Sprint(r), \"runtime error: \"); fmt.Fprintln(os.Stderr, \"Aster runtime error:\", msg); os.Exit(1) } }()")
-	g.scope = newTypeScope(nil)
 	for _, d := range tree.Decls {
 		sd, ok := d.(*ast.StmtDecl)
 		if !ok {
@@ -142,7 +124,6 @@ func (g *generator) writePreamble() {
 	g.line("")
 }
 func (g *generator) function(f *ast.Function) error {
-	g.scope = newTypeScope(nil)
 	info, ok := g.typed.Function(f.Name)
 	if !ok {
 		return fmt.Errorf("codegen: checker has no signature for function %q", f.Name)
@@ -151,7 +132,6 @@ func (g *generator) function(f *ast.Function) error {
 	for i, p := range f.Params {
 		pt := info.Params[i].String()
 		params = append(params, "v_"+p.Name+" "+goType(pt))
-		g.scope.types[p.Name] = pt
 	}
 	ret := info.Return.String()
 	g.line(fmt.Sprintf("func asterFn_%s(%s) %s {", f.Name, strings.Join(params, ", "), goType(ret)))
@@ -178,14 +158,11 @@ func (g *generator) blockContents(b *ast.BlockStmt) error {
 func (g *generator) statement(s ast.Stmt) error {
 	switch n := s.(type) {
 	case *ast.BlockStmt:
-		old := g.scope
-		g.scope = newTypeScope(old)
 		g.line("{")
 		g.indent++
 		err := g.blockContents(n)
 		g.indent--
 		g.line("}")
-		g.scope = old
 		return err
 	case *ast.LetStmt:
 		expr, err := g.expression(n.Value)
@@ -201,7 +178,6 @@ func (g *generator) statement(s ast.Stmt) error {
 		}
 		g.line(fmt.Sprintf("v_%s := %s", n.Name, expr))
 		g.line("_ = v_" + n.Name)
-		g.scope.types[n.Name] = t
 		return nil
 	case *ast.AssignStmt:
 		expr, err := g.expression(n.Value)
@@ -227,10 +203,7 @@ func (g *generator) statement(s ast.Stmt) error {
 		}
 		g.line("if " + cond + " {")
 		g.indent++
-		old := g.scope
-		g.scope = newTypeScope(old)
 		err = g.blockContents(n.Then)
-		g.scope = old
 		g.indent--
 		if err != nil {
 			return err
@@ -238,10 +211,7 @@ func (g *generator) statement(s ast.Stmt) error {
 		if n.Else != nil {
 			g.line("} else {")
 			g.indent++
-			old = g.scope
-			g.scope = newTypeScope(old)
 			err = g.statement(n.Else)
-			g.scope = old
 			g.indent--
 			if err != nil {
 				return err
@@ -258,10 +228,7 @@ func (g *generator) statement(s ast.Stmt) error {
 		}
 		g.line("for " + cond + " {")
 		g.indent++
-		old := g.scope
-		g.scope = newTypeScope(old)
 		err = g.blockContents(n.Body)
-		g.scope = old
 		g.indent--
 		g.line("}")
 		return err
@@ -318,9 +285,6 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		}
 		return "asterIndexI64(" + collection + ", " + index + ")", nil
 	case *ast.IdentifierExpr:
-		if _, ok := g.scope.find(n.Name); !ok {
-			return "", fmt.Errorf("codegen: unknown identifier %q", n.Name)
-		}
 		return "v_" + n.Name, nil
 	case *ast.UnaryExpr:
 		r, err := g.expression(n.Right)
