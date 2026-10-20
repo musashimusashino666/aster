@@ -5,7 +5,7 @@
 
 ## Context
 
-Aster represents arrays as dynamically sized arrays in both execution backends. The VM's `bytecode.Value` and generated Go code use slices, whose underlying storage may be shared when values are copied. Mutable indexed assignment is now supported; implementations must prevent writes from becoming observable through another copied array value. Slicing remains unimplemented.
+Aster represents arrays as dynamically sized arrays in both execution backends. The VM's `bytecode.Value` and generated Go code use slices, whose underlying storage may be shared when values are copied. Mutable indexed assignment and half-open array slicing are implemented; both operations must prevent writes from becoming observable through another copied array value.
 
 Before mutable indexing or slicing is introduced, the language must define whether aliases observe each other's writes. Leaving this to backend implementation details would make the same Aster program behave differently on the VM and native backends, and would constrain later ownership and optimization work.
 
@@ -15,11 +15,11 @@ Before mutable indexing or slicing is introduced, the language must define wheth
 
 - Initializing a binding from an existing array, rebinding a mutable variable, passing an array as a function argument, and returning an array preserve value semantics.
 - Nested arrays are copied recursively in the semantic model. Mutating an element through one value must not change another value that was copied from it, including when the mutation targets a nested array.
-- A slice/range operation must produce an independent array value, not a mutable view into the original array. Slices remain future work.
+- A slice/range operation produces an independent array value, not a mutable view into the original array. The current syntax is `values[start:end]`, with inclusive start and exclusive end.
 - Implementations may use deep copies, copy-on-write, persistent data structures, or another representation, provided all observable behavior matches these rules.
 - The language does not expose array identity or pointer/reference operations that would allow programs to distinguish these implementation strategies.
 
-This decision governs the implemented mutable indexed assignment and future slicing behavior. The implementation uses copy-on-write along the indexed path: each array container on the path is copied before the update, while untouched branches may share internal storage because any future mutation also has to copy its own path. Slicing remains out of scope until a separate implementation and regression-test change lands.
+This decision governs both implemented features. Indexed assignment copies each array container along the path before updating it. Slicing allocates and copies a fresh array for the selected range, including an independent empty array when the range length is zero. Nested elements may share internal representation, but later mutations still copy their own indexed path and remain unobservable through the original value.
 
 ## Consequences
 
