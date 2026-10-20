@@ -29,7 +29,7 @@ func TestReadPreservesNegativeZeroF64Constant(t *testing.T) {
 	if err := Write(&encoded, program); err != nil {
 		t.Fatalf("write bytecode: %v", err)
 	}
-	if !strings.Contains(encoded.String(), `"f64":-0`) {
+	if !strings.Contains(encoded.String(), `"f64": -0`) {
 		t.Fatalf("serialized bytecode does not preserve negative zero: %s", encoded.String())
 	}
 
