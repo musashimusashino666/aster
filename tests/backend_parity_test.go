@@ -89,9 +89,9 @@ fn select<T>(left: T, right: T, choose_left: bool) -> T {
     if choose_left { return left; }
     return right;
 }
-print(identity::<i64>(42));
-print(identity::<string>("aster"));
-print(select::<i64>(7, 9, false));
+print(identity(42));
+print(identity("aster"));
+print(select(7, 9, false));
 `
 	tree, err := parser.Parse(source, "generic-function-parity.ast")
 	if err != nil {

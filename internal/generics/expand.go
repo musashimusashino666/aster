@@ -13,11 +13,14 @@ import (
 )
 
 type expander struct {
-	templates  map[string]*ast.Function
-	knownTypes map[string]bool
-	instances  map[string]*ast.Function
-	ordered    []*ast.Function
-	nextID     int
+	templates    map[string]*ast.Function
+	functions    map[string]*ast.Function
+	knownTypes   map[string]bool
+	structFields map[string]map[string]ast.TypeRef
+	instances    map[string]*ast.Function
+	ordered      []*ast.Function
+	variables    map[string]ast.TypeRef
+	nextID       int
 }
 
 // Expand specializes explicitly instantiated generic functions before type
@@ -28,11 +31,14 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 		return nil, fmt.Errorf("generics: nil program")
 	}
 	e := &expander{
-		templates: map[string]*ast.Function{},
+		templates:    map[string]*ast.Function{},
+		functions:    map[string]*ast.Function{},
+		structFields: map[string]map[string]ast.TypeRef{},
 		knownTypes: map[string]bool{
 			"i64": true, "f64": true, "bool": true, "string": true, "unit": true,
 		},
 		instances: map[string]*ast.Function{},
+		variables: map[string]ast.TypeRef{},
 	}
 	functionNames := map[string]*ast.Function{}
 	for _, decl := range program.Decls {
@@ -42,6 +48,7 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateFunction, "function '%s' is already declared", prior.Name)
 			}
 			functionNames[n.Name] = n
+			e.functions[n.Name] = n
 			if len(n.TypeParams) > 0 {
 				if len(n.TypeParams) > limits.MaxGenericTypeParameters {
 					return nil, typeError(n.Pos(), diagnostic.TypeGenericInstantiationLimit, "generic function '%s' declares %d type parameters; maximum is %d", n.Name, len(n.TypeParams), limits.MaxGenericTypeParameters)
@@ -57,6 +64,11 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 			}
 		case *ast.StructDecl:
 			e.knownTypes[n.Name] = true
+			fields := make(map[string]ast.TypeRef, len(n.Fields))
+			for _, field := range n.Fields {
+				fields[field.Name] = field.Type
+			}
+			e.structFields[n.Name] = fields
 		case *ast.EnumDecl:
 			e.knownTypes[n.Name] = true
 		}
@@ -148,6 +160,7 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 	instance := &ast.Function{At: template.At, Name: name}
 	// Register before walking the body so same-instantiation recursion hits the cache.
 	e.instances[key] = instance
+	e.functions[name] = instance
 	e.ordered = append(e.ordered, instance)
 	instance.Params = make([]ast.Param, len(template.Params))
 	for i, param := range template.Params {
@@ -157,7 +170,13 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 		ret := substituteType(*template.ReturnType, sub)
 		instance.ReturnType = &ret
 	}
+	previousVariables := e.variables
+	e.variables = make(map[string]ast.TypeRef, len(instance.Params))
+	for _, param := range instance.Params {
+		e.variables[param.Name] = cloneTypeRef(param.Type)
+	}
 	body, err := e.rewriteBlock(template.Body, sub, depth)
+	e.variables = previousVariables
 	if err != nil {
 		return "", err
 	}
@@ -191,6 +210,183 @@ func typeKey(t ast.TypeRef) string {
 	return t.Name
 }
 
+func cloneTypeScope(source map[string]ast.TypeRef) map[string]ast.TypeRef {
+	out := make(map[string]ast.TypeRef, len(source))
+	for name, typ := range source {
+		out[name] = cloneTypeRef(typ)
+	}
+	return out
+}
+
+func containsParameter(typ ast.TypeRef, parameters map[string]bool) bool {
+	if typ.Element == nil {
+		return parameters[typ.Name]
+	}
+	return containsParameter(*typ.Element, parameters)
+}
+
+func (e *expander) inferCallTypeArguments(template *ast.Function, args []ast.Expr, at token.Position) ([]ast.TypeRef, error) {
+	if len(args) != len(template.Params) {
+		return nil, typeError(at, diagnostic.TypeGenericInference, "cannot infer type arguments for '%s': expected %d value arguments, got %d", template.Name, len(template.Params), len(args))
+	}
+	parameters := make(map[string]bool, len(template.TypeParams))
+	for _, name := range template.TypeParams {
+		parameters[name] = true
+	}
+	inferred := make(map[string]ast.TypeRef, len(template.TypeParams))
+	for i, pattern := range template.Params {
+		if !containsParameter(pattern.Type, parameters) {
+			continue
+		}
+		actual, ok := e.inferExprType(args[i])
+		if !ok {
+			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericInference, "cannot infer type arguments for '%s' from argument %d; add explicit type arguments with %s::<...>(...)", template.Name, i+1, template.Name)
+		}
+		if err := unifyType(pattern.Type, actual, parameters, inferred); err != nil {
+			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericInference, "cannot infer type arguments for '%s' consistently: %v", template.Name, err)
+		}
+	}
+	out := make([]ast.TypeRef, len(template.TypeParams))
+	for i, name := range template.TypeParams {
+		typ, ok := inferred[name]
+		if !ok {
+			return nil, typeError(at, diagnostic.TypeGenericInference, "cannot infer type parameter '%s' for '%s'; use %s::<...>(...)", name, template.Name, template.Name)
+		}
+		out[i] = typ
+	}
+	return out, nil
+}
+
+func unifyType(pattern, actual ast.TypeRef, parameters map[string]bool, inferred map[string]ast.TypeRef) error {
+	if pattern.Element == nil && parameters[pattern.Name] {
+		if previous, exists := inferred[pattern.Name]; exists {
+			if typeKey(previous) != typeKey(actual) {
+				return fmt.Errorf("type parameter '%s' would be both %s and %s", pattern.Name, typeKey(previous), typeKey(actual))
+			}
+			return nil
+		}
+		inferred[pattern.Name] = cloneTypeRef(actual)
+		return nil
+	}
+	if pattern.Name == "Array" && pattern.Element != nil {
+		if actual.Name != "Array" || actual.Element == nil {
+			return fmt.Errorf("expected %s but argument has type %s", typeKey(pattern), typeKey(actual))
+		}
+		return unifyType(*pattern.Element, *actual.Element, parameters, inferred)
+	}
+	// Concrete parameter types are still checked by the regular checker after
+	// specialization; they do not participate in type-variable inference.
+	return nil
+}
+
+func (e *expander) inferExprType(expr ast.Expr) (ast.TypeRef, bool) {
+	concrete := func(name string) (ast.TypeRef, bool) {
+		return ast.TypeRef{Name: name, At: expr.Pos()}, name != ""
+	}
+	switch n := expr.(type) {
+	case *ast.LiteralExpr:
+		return concrete(n.Kind)
+	case *ast.IdentifierExpr:
+		typ, ok := e.variables[n.Name]
+		return cloneTypeRef(typ), ok
+	case *ast.ArrayExpr:
+		if len(n.Elements) == 0 {
+			return ast.TypeRef{}, false
+		}
+		element, ok := e.inferExprType(n.Elements[0])
+		if !ok || element.Name == "unit" {
+			return ast.TypeRef{}, false
+		}
+		for _, item := range n.Elements[1:] {
+			other, ok := e.inferExprType(item)
+			if !ok || typeKey(other) != typeKey(element) {
+				return ast.TypeRef{}, false
+			}
+		}
+		return ast.TypeRef{Name: "Array", At: n.At, Element: &element}, true
+	case *ast.FieldExpr:
+		object, ok := e.inferExprType(n.Object)
+		if !ok {
+			return ast.TypeRef{}, false
+		}
+		fields, ok := e.structFields[object.Name]
+		if !ok {
+			return ast.TypeRef{}, false
+		}
+		typ, ok := fields[n.Name]
+		return cloneTypeRef(typ), ok
+	case *ast.UnaryExpr:
+		right, ok := e.inferExprType(n.Right)
+		if !ok {
+			return ast.TypeRef{}, false
+		}
+		if n.Op == "!" {
+			return concrete("bool")
+		}
+		return right, true
+	case *ast.BinaryExpr:
+		left, lok := e.inferExprType(n.Left)
+		right, rok := e.inferExprType(n.Right)
+		if !lok || !rok || typeKey(left) != typeKey(right) {
+			return ast.TypeRef{}, false
+		}
+		switch n.Op {
+		case "==", "!=", "<", "<=", ">", ">=", "&&", "||":
+			return concrete("bool")
+		default:
+			return left, true
+		}
+	case *ast.CallExpr:
+		id, ok := n.Callee.(*ast.IdentifierExpr)
+		if !ok {
+			return ast.TypeRef{}, false
+		}
+		switch id.Name {
+		case "print", "assert":
+			return concrete("unit")
+		case "len", "i64":
+			return concrete("i64")
+		case "f64":
+			return concrete("f64")
+		}
+		fn, ok := e.functions[id.Name]
+		if !ok || fn.ReturnType == nil {
+			return ast.TypeRef{}, false
+		}
+		return cloneTypeRef(*fn.ReturnType), true
+	case *ast.EnumVariantExpr:
+		return concrete(n.EnumName)
+	case *ast.MatchExpr:
+		if len(n.Arms) == 0 {
+			return ast.TypeRef{}, false
+		}
+		typ, ok := e.inferExprType(n.Arms[0].Expr)
+		if !ok {
+			return ast.TypeRef{}, false
+		}
+		for _, arm := range n.Arms[1:] {
+			other, ok := e.inferExprType(arm.Expr)
+			if !ok || typeKey(other) != typeKey(typ) {
+				return ast.TypeRef{}, false
+			}
+		}
+		return typ, true
+	case *ast.IndexExpr:
+		collection, ok := e.inferExprType(n.Collection)
+		if !ok || collection.Name != "Array" || collection.Element == nil {
+			return ast.TypeRef{}, false
+		}
+		return cloneTypeRef(*collection.Element), true
+	case *ast.SliceExpr:
+		collection, ok := e.inferExprType(n.Collection)
+		if !ok || collection.Name != "Array" || collection.Element == nil {
+			return ast.TypeRef{}, false
+		}
+		return collection, true
+	}
+	return ast.TypeRef{}, false
+}
+
 func substituteType(t ast.TypeRef, sub map[string]ast.TypeRef) ast.TypeRef {
 	if t.Element == nil {
 		if replacement, ok := sub[t.Name]; ok {
@@ -220,14 +416,18 @@ func typeError(pos token.Position, code, format string, args ...any) error {
 func (e *expander) rewriteFunction(fn *ast.Function, sub map[string]ast.TypeRef, depth int) (*ast.Function, error) {
 	out := &ast.Function{At: fn.At, Name: fn.Name}
 	out.Params = make([]ast.Param, len(fn.Params))
+	previousVariables := e.variables
+	e.variables = make(map[string]ast.TypeRef, len(fn.Params))
 	for i, p := range fn.Params {
 		out.Params[i] = ast.Param{At: p.At, Name: p.Name, Type: substituteType(p.Type, sub)}
+		e.variables[p.Name] = cloneTypeRef(out.Params[i].Type)
 	}
 	if fn.ReturnType != nil {
 		ret := substituteType(*fn.ReturnType, sub)
 		out.ReturnType = &ret
 	}
 	body, err := e.rewriteBlock(fn.Body, sub, depth)
+	e.variables = previousVariables
 	if err != nil {
 		return nil, err
 	}
@@ -236,6 +436,9 @@ func (e *expander) rewriteFunction(fn *ast.Function, sub map[string]ast.TypeRef,
 }
 
 func (e *expander) rewriteBlock(block *ast.BlockStmt, sub map[string]ast.TypeRef, depth int) (*ast.BlockStmt, error) {
+	previousVariables := e.variables
+	e.variables = cloneTypeScope(previousVariables)
+	defer func() { e.variables = previousVariables }()
 	out := &ast.BlockStmt{At: block.At, Statements: make([]ast.Stmt, len(block.Statements))}
 	for i, stmt := range block.Statements {
 		copy, err := e.rewriteStmt(stmt, sub, depth)
@@ -262,6 +465,11 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 			return nil, err
 		}
 		out.Value = value
+		if out.Annotation != nil {
+			e.variables[n.Name] = cloneTypeRef(*out.Annotation)
+		} else if inferred, ok := e.inferExprType(out.Value); ok {
+			e.variables[n.Name] = inferred
+		}
 		return out, nil
 	case *ast.AssignStmt:
 		value, err := e.rewriteExpr(n.Value, sub, depth)
@@ -380,8 +588,16 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 			return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
 		}
 		if named {
-			if _, generic := e.templates[id.Name]; generic {
-				return nil, typeError(n.At, diagnostic.TypeGenericInference, "generic function '%s' requires explicit type arguments in this implementation stage (use %s::<...>(...))", id.Name, id.Name)
+			if template, generic := e.templates[id.Name]; generic {
+				inferred, inferErr := e.inferCallTypeArguments(template, args, n.At)
+				if inferErr != nil {
+					return nil, inferErr
+				}
+				instanceName, instantiateErr := e.instantiate(template, inferred, n.At, sub, depth)
+				if instantiateErr != nil {
+					return nil, instantiateErr
+				}
+				return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
 			}
 		}
 		callee, err := e.rewriteExpr(n.Callee, sub, depth)

@@ -458,10 +458,32 @@ let chosen = choose::<i64>(integer, 9, true);`
 	}
 }
 
-func TestRejectsGenericFunctionWithoutExplicitTypeArguments(t *testing.T) {
-	err := checkSource(t, `fn identity<T>(value: T) -> T { return value; } let value = identity(1);`)
+func TestChecksInferredGenericFunctionTypeArguments(t *testing.T) {
+	source := `fn identity<T>(value: T) -> T { return value; }
+fn first<T>(values: Array<T>) -> T { return values[0]; }
+let integer = identity(7);
+let text = identity("ok");
+let values: Array<i64> = [2, 4, 6];
+let selected = first(values);
+print(integer);
+print(text);
+print(selected);`
+	if err := checkSource(t, source); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRejectsGenericReturnOnlyInference(t *testing.T) {
+	err := checkSource(t, `fn make<T>() -> T { return 1; } let value = make();`)
 	if err == nil || !strings.Contains(err.Error(), "TYP081") {
-		t.Fatalf("expected TYP081 explicit-type-argument diagnostic, got %v", err)
+		t.Fatalf("expected TYP081 inference diagnostic, got %v", err)
+	}
+}
+
+func TestRejectsConflictingGenericInference(t *testing.T) {
+	err := checkSource(t, `fn same<T>(left: T, right: T) -> T { return left; } let value = same(1, "wrong");`)
+	if err == nil || !strings.Contains(err.Error(), "TYP081") {
+		t.Fatalf("expected TYP081 conflicting inference diagnostic, got %v", err)
 	}
 }
 
