@@ -9,8 +9,8 @@ import (
 
 func TestVMConstantPoolArraysDetachOnWrite(t *testing.T) {
 	program := &bytecode.Program{
-		Format:    "aster-bytecode",
-		Version:   bytecode.FormatVersion,
+		Format:  "aster-bytecode",
+		Version: bytecode.FormatVersion,
 		Constants: []bytecode.Value{
 			bytecode.Array([]bytecode.Value{bytecode.I64(1), bytecode.I64(2)}),
 			bytecode.I64(0),
