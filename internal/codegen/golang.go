@@ -105,7 +105,7 @@ func (g *generator) writePreamble() {
 	g.indent--
 	g.line(")")
 	g.line("")
-	g.line("func asterPrint(v any) struct{} { fmt.Println(v); return struct{}{} }")
+	g.line("func asterPrint(v any, line, column int) struct{} { if _, err := fmt.Fprintln(os.Stdout, v); err != nil { asterRuntimeError(line, column, fmt.Sprintf(\"write output: %v\", err)) }; return struct{}{} }")
 	g.line("func asterLenString(s string) int64 { return int64(utf8.RuneCountInString(s)) }")
 	g.line("func asterRuntimeError(line, column int, message string) { if line > 0 && column > 0 { panic(fmt.Sprintf(\"%d:%d: runtime error: %s\", line, column, message)) }; panic(\"runtime error: \" + message) }")
 	g.line("func asterAssert(ok bool, line, column int) struct{} { if !ok { asterRuntimeError(line, column, \"assertion failed\") }; return struct{}{} }")
@@ -350,7 +350,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		joined := strings.Join(args, ", ")
 		switch id.Name {
 		case "print":
-			return "asterPrint(" + joined + ")", nil
+			return "asterPrint(" + joined + ", " + positionArgs(n) + ")", nil
 		case "len":
 			if len(n.Args) == 1 {
 				argType, err := g.typeOf(n.Args[0])
