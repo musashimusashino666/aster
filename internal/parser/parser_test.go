@@ -139,7 +139,6 @@ func TestRejectsMissingSliceBounds(t *testing.T) {
 	}
 }
 
-
 func TestParsesStructDeclarationAndFieldSelection(t *testing.T) {
 	program, err := Parse(`struct Point { x: i64, y: i64, }
 let point = Point(3, 4);
