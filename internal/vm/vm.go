@@ -159,9 +159,9 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 					items[index].MarkArrayShared()
 				}
 				items[index].ClearArrayBorrowed()
-			} else if items[index].Kind == bytecode.ValueStruct {
-				// The source struct remains live; arrays within its fields must
-				// detach if either value later mutates an extracted array field.
+			} else if items[index].Kind == bytecode.ValueStruct || items[index].Kind == bytecode.ValueEnum {
+				// The source aggregate remains live; payload/field arrays must
+				// detach if either value later mutates an extracted array.
 				items[index].MarkArrayShared()
 			}
 		}
@@ -208,10 +208,80 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		if value.Kind == bytecode.ValueArray {
 			value.MarkArrayShared()
 			value.SetArrayBorrowed(true)
-		} else if value.Kind == bytecode.ValueStruct {
+		} else if value.Kind == bytecode.ValueStruct || value.Kind == bytecode.ValueEnum {
 			value.MarkArrayShared()
 		}
 		push(value)
+	case bytecode.OpBuildEnum:
+		if i.A < 0 || i.A >= len(v.program.EnumTypes) {
+			return v.fault(i, "invalid enum type index %d", i.A)
+		}
+		enumType := v.program.EnumTypes[i.A]
+		if i.B < 0 || i.B >= len(enumType.Variants) {
+			return v.fault(i, "invalid variant index %d for enum %q", i.B, enumType.Name)
+		}
+		variant := enumType.Variants[i.B]
+		if i.C != len(variant.PayloadTypes) || i.C > len(v.stack) {
+			return v.fault(i, "enum %s::%s requires %d payload values, stack has %d", enumType.Name, variant.Name, len(variant.PayloadTypes), len(v.stack))
+		}
+		start := len(v.stack) - i.C
+		payload := append([]bytecode.Value(nil), v.stack[start:]...)
+		for index := range payload {
+			payload[index].EnsureAggregateStorage()
+		}
+		v.stack = v.stack[:start]
+		push(bytecode.EnumValue(i.A, i.B, payload))
+	case bytecode.OpMatchEnum:
+		fr := &v.frames[len(v.frames)-1]
+		fn := v.program.Functions[fr.function]
+		if i.A < 0 || i.A >= len(fr.locals) || i.B < 0 || i.B >= len(fn.MatchTables) {
+			return v.fault(i, "invalid enum match local or table index")
+		}
+		value := fr.locals[i.A]
+		table := fn.MatchTables[i.B]
+		if value.Kind != bytecode.ValueEnum || value.EnumTypeID != table.EnumTypeID {
+			return v.fault(i, "MATCH_ENUM subject does not match enum dispatch table")
+		}
+		if value.EnumTypeID < 0 || value.EnumTypeID >= len(v.program.EnumTypes) {
+			return v.fault(i, "invalid runtime enum type index %d", value.EnumTypeID)
+		}
+		enumType := v.program.EnumTypes[value.EnumTypeID]
+		if value.VariantIndex < 0 || value.VariantIndex >= len(enumType.Variants) || value.VariantIndex >= len(table.Targets) {
+			return v.fault(i, "invalid runtime variant index %d for enum %q", value.VariantIndex, enumType.Name)
+		}
+		fr.ip = table.Targets[value.VariantIndex]
+	case bytecode.OpGetEnumPayload:
+		fr := &v.frames[len(v.frames)-1]
+		if i.A < 0 || i.A >= len(fr.locals) {
+			return v.fault(i, "invalid enum payload local %d", i.A)
+		}
+		value := fr.locals[i.A]
+		if value.Kind != bytecode.ValueEnum {
+			return v.fault(i, "GET_ENUM_PAYLOAD requires an enum value, got %s", value.Kind)
+		}
+		if value.VariantIndex != i.B {
+			return v.fault(i, "enum payload variant mismatch: have %d, requested %d", value.VariantIndex, i.B)
+		}
+		if value.EnumTypeID < 0 || value.EnumTypeID >= len(v.program.EnumTypes) {
+			return v.fault(i, "invalid runtime enum type index %d", value.EnumTypeID)
+		}
+		enumType := v.program.EnumTypes[value.EnumTypeID]
+		if i.B < 0 || i.B >= len(enumType.Variants) {
+			return v.fault(i, "invalid runtime variant index %d for enum %q", i.B, enumType.Name)
+		}
+		variant := enumType.Variants[i.B]
+		if i.C < 0 || i.C >= len(variant.PayloadTypes) || i.C >= len(value.Payload) {
+			return v.fault(i, "invalid payload index %d for enum %s::%s", i.C, enumType.Name, variant.Name)
+		}
+		payload := value.Payload[i.C]
+		payload.EnsureAggregateStorage()
+		if payload.Kind == bytecode.ValueArray {
+			payload.MarkArrayShared()
+			payload.SetArrayBorrowed(true)
+		} else if payload.Kind == bytecode.ValueStruct || payload.Kind == bytecode.ValueEnum {
+			payload.MarkArrayShared()
+		}
+		push(payload)
 	case bytecode.OpIndex:
 		index, err := pop()
 		if err != nil {
@@ -235,7 +305,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			value.EnsureArrayStorage()
 			// INDEX returns a value borrowed from the parent array.
 			value.SetArrayBorrowed(true)
-		} else if value.Kind == bytecode.ValueStruct {
+		} else if value.Kind == bytecode.ValueStruct || value.Kind == bytecode.ValueEnum {
 			value.MarkArrayShared()
 		}
 		push(value)
@@ -331,7 +401,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			push(value)
 		} else {
 			value := *local
-			if value.Kind == bytecode.ValueStruct {
+			if value.Kind == bytecode.ValueStruct || value.Kind == bytecode.ValueEnum {
 				value.MarkArrayShared()
 			}
 			push(value)
@@ -352,7 +422,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 				x.MarkArrayShared()
 			}
 			x.ClearArrayBorrowed()
-		} else if x.Kind == bytecode.ValueStruct {
+		} else if x.Kind == bytecode.ValueStruct || x.Kind == bytecode.ValueEnum {
 			x.MarkArrayShared()
 		}
 		fr.locals[i.A] = x
@@ -440,15 +510,16 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		argsStart := len(v.stack) - i.B
 		args := append([]bytecode.Value(nil), v.stack[argsStart:]...)
 		for index := range args {
-			if args[index].Kind != bytecode.ValueArray {
-				continue
-			}
-			args[index].EnsureArrayStorage()
-			if args[index].IsArrayBorrowed() {
-				// The caller may retain an owner after this argument is passed.
+			if args[index].Kind == bytecode.ValueArray {
+				args[index].EnsureArrayStorage()
+				if args[index].IsArrayBorrowed() {
+					// The caller may retain an owner after this argument is passed.
+					args[index].MarkArrayShared()
+				}
+				args[index].ClearArrayBorrowed()
+			} else if args[index].Kind == bytecode.ValueStruct || args[index].Kind == bytecode.ValueEnum {
 				args[index].MarkArrayShared()
 			}
-			args[index].ClearArrayBorrowed()
 		}
 		v.stack = v.stack[:argsStart]
 		locals := make([]bytecode.Value, target.Locals)
@@ -518,6 +589,8 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 				x.MarkArrayShared()
 			}
 			x.ClearArrayBorrowed()
+		} else if x.Kind == bytecode.ValueStruct || x.Kind == bytecode.ValueEnum {
+			x.MarkArrayShared()
 		}
 		fr := v.frames[len(v.frames)-1]
 		v.activeLocalSlots -= len(fr.locals)

@@ -209,6 +209,12 @@ func validateFunctionTypes(p *Program, fi int, constantTypes []string, structTyp
 				if err := enqueue(ins.A); err != nil {
 					return err
 				}
+			case OpMatchEnum:
+				for _, target := range fn.MatchTables[ins.B].Targets {
+					if err := enqueue(target); err != nil {
+						return err
+					}
+				}
 			case OpJumpIfFalse, OpJumpIfTrue:
 				if err := enqueue(ins.A); err != nil {
 					return err
@@ -288,6 +294,62 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 			return false, fmt.Errorf("function %q instruction %d: field index %d is out of bounds for struct %q", fn.Name, pc, ins.A, structType.Name)
 		}
 		push(structType.Fields[ins.A].Type)
+	case OpBuildEnum:
+		enumType := p.EnumTypes[ins.A]
+		variant := enumType.Variants[ins.B]
+		cursor := s.stack
+		for payloadIndex := len(variant.PayloadTypes) - 1; payloadIndex >= 0; payloadIndex-- {
+			if cursor == nil {
+				return false, fmt.Errorf("function %q instruction %d: abstract stack underflow while building enum %s::%s", fn.Name, pc, enumType.Name, variant.Name)
+			}
+			got, want := cursor.typ, variant.PayloadTypes[payloadIndex]
+			if got != want {
+				return false, fmt.Errorf("function %q instruction %d: payload %d of %s::%s has type %s; expected %s", fn.Name, pc, payloadIndex+1, enumType.Name, variant.Name, got, want)
+			}
+			cursor = cursor.parent
+		}
+		s.stack = cursor
+		push(enumType.Name)
+	case OpMatchEnum:
+		local := s.locals[ins.A]
+		if !local.initialized {
+			return false, fmt.Errorf("function %q instruction %d: match subject local %d may be read before initialization", fn.Name, pc, ins.A)
+		}
+		if local.typ == "" {
+			return false, fmt.Errorf("function %q instruction %d: match subject local %d has no type", fn.Name, pc, ins.A)
+		}
+		table := fn.MatchTables[ins.B]
+		enumType := p.EnumTypes[table.EnumTypeID]
+		if local.typ != enumType.Name {
+			return false, fmt.Errorf("function %q instruction %d: MATCH_ENUM table expects %s, subject local has type %s", fn.Name, pc, enumType.Name, local.typ)
+		}
+	case OpGetEnumPayload:
+		local := s.locals[ins.A]
+		if !local.initialized {
+			return false, fmt.Errorf("function %q instruction %d: enum payload subject local %d may be read before initialization", fn.Name, pc, ins.A)
+		}
+		if local.typ == "" {
+			return false, fmt.Errorf("function %q instruction %d: enum payload subject local %d has no type", fn.Name, pc, ins.A)
+		}
+		enumIndex := -1
+		for i, candidate := range p.EnumTypes {
+			if candidate.Name == local.typ {
+				enumIndex = i
+				break
+			}
+		}
+		if enumIndex < 0 {
+			return false, fmt.Errorf("function %q instruction %d: GET_ENUM_PAYLOAD requires enum local, got %s", fn.Name, pc, local.typ)
+		}
+		enumType := p.EnumTypes[enumIndex]
+		if ins.B < 0 || ins.B >= len(enumType.Variants) {
+			return false, fmt.Errorf("function %q instruction %d: enum variant index %d out of bounds for %s", fn.Name, pc, ins.B, enumType.Name)
+		}
+		variant := enumType.Variants[ins.B]
+		if ins.C < 0 || ins.C >= len(variant.PayloadTypes) {
+			return false, fmt.Errorf("function %q instruction %d: payload index %d out of bounds for %s::%s", fn.Name, pc, ins.C, enumType.Name, variant.Name)
+		}
+		push(variant.PayloadTypes[ins.C])
 	case OpBuildArray:
 		if ins.A == 0 {
 			return false, fmt.Errorf("function %q instruction %d: cannot infer the element type of an empty array", fn.Name, pc)

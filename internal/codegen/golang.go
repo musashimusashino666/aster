@@ -59,6 +59,11 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 			return "", err
 		}
 	}
+	for _, enumType := range typed.IR.EnumTypes {
+		if err := g.irEnumType(enumType); err != nil {
+			return "", err
+		}
+	}
 	for _, f := range typed.IR.Functions {
 		if err := g.irFunction(f); err != nil {
 			return "", err

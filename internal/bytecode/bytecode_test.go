@@ -852,3 +852,37 @@ func TestValidateRejectsRecursiveStructLayout(t *testing.T) {
 		t.Fatalf("recursive struct layout should be rejected, got %v", err)
 	}
 }
+
+func TestRejectsMalformedEnumMatchTable(t *testing.T) {
+	p := stackVerifierProgram(0, nil,
+		Function{
+			Name: "main", Locals: 1, Return: "unit",
+			MatchTables: []MatchTable{{EnumTypeID: 0, Targets: []int{0}}},
+			Code:        []Instruction{{Op: OpHalt}},
+		},
+	)
+	p.EnumTypes = []EnumType{{Name: "State", Variants: []EnumVariant{{Name: "Ready"}, {Name: "Busy"}}}}
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "targets") {
+		t.Fatalf("expected malformed enum dispatch table rejection, got %v", err)
+	}
+}
+
+func TestRejectsOutOfRangeEnumPayloadInstruction(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{I64(42)},
+		Function{
+			Name: "main", Locals: 1, Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpBuildEnum, A: 0, B: 1, C: 1},
+				{Op: OpStoreLocal, A: 0},
+				{Op: OpGetEnumPayload, A: 0, B: 1, C: 9},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		},
+	)
+	p.EnumTypes = []EnumType{{Name: "Choice", Variants: []EnumVariant{{Name: "Empty"}, {Name: "Number", PayloadTypes: []string{"i64"}}}}}
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "payload index") {
+		t.Fatalf("expected payload-index verifier rejection, got %v", err)
+	}
+}

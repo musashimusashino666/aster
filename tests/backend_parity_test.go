@@ -981,3 +981,55 @@ print(nestedExtracted);`
 		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), got)
 	}
 }
+
+func TestEnumPayloadMatchVMNativeParity(t *testing.T) {
+	source := `enum Packet { Empty, Data(Array<i64>), Pair(i64, i64), }
+fn first(packet: Packet) -> i64 {
+	return match packet {
+		Packet::Empty => 0,
+		Packet::Data(values) => values[0],
+		Packet::Pair(left, right) => left + right,
+	};
+}
+let mut values = [10, 20];
+let packet = Packet::Data(values);
+values[0] = 99;
+print(first(packet));
+print(first(Packet::Pair(2, 3)));
+print(match Packet::Empty { Packet::Empty => 7, _ => 9, });
+`
+	tree, err := parser.Parse(source, "enum-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err = vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-enum-parity")
+	if err = toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("native backend failed: %v\n%s", err, nativeOutput)
+	}
+	if got, want := vmOutput.String(), "10\n5\n7\n"; got != want {
+		t.Fatalf("unexpected VM output: got %q want %q", got, want)
+	}
+	if got := string(nativeOutput); got != vmOutput.String() {
+		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), got)
+	}
+}
