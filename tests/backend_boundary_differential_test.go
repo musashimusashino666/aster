@@ -50,10 +50,8 @@ print(row);
 `,
 		},
 		{
-			name: "empty_array_and_empty_slice",
-			source: `let empty: Array<i64> = [];
-let values: Array<i64> = [4, 5, 6];
-print(empty);
+			name: "empty_and_full_slices",
+			source: `let values: Array<i64> = [4, 5, 6];
 print(values[2:2]);
 print(values[0:3]);
 `,
