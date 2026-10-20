@@ -52,6 +52,9 @@ func (p *Parser) declaration() (ast.Decl, error) {
 	if p.match(token.Fn) {
 		return p.function(p.previous())
 	}
+	if p.match(token.Struct) {
+		return p.structDeclaration(p.previous())
+	}
 	s, err := p.statement()
 	if err != nil {
 		return nil, err
@@ -109,6 +112,45 @@ func (p *Parser) function(start token.Token) (ast.Decl, error) {
 	}
 	return &ast.Function{At: start.Pos, Name: name.Lexeme, Params: params, ReturnType: ret, Body: body}, nil
 }
+func (p *Parser) structDeclaration(start token.Token) (*ast.StructDecl, error) {
+	name, err := p.consume(token.Ident, "expected struct name after 'struct'")
+	if err != nil {
+		return nil, err
+	}
+	open, err := p.consume(token.LBrace, "expected '{' after struct name")
+	if err != nil {
+		return nil, err
+	}
+	leave, err := p.enterNesting(open, "struct declaration")
+	if err != nil {
+		return nil, err
+	}
+	defer leave()
+
+	fields := []ast.StructField{}
+	for !p.check(token.RBrace) && !p.check(token.EOF) {
+		field, e := p.consume(token.Ident, "expected field name")
+		if e != nil {
+			return nil, e
+		}
+		if _, e = p.consume(token.Colon, "expected ':' after field name"); e != nil {
+			return nil, e
+		}
+		fieldType, e := p.typeRef()
+		if e != nil {
+			return nil, e
+		}
+		fields = append(fields, ast.StructField{At: field.Pos, Name: field.Lexeme, Type: fieldType})
+		if !p.match(token.Comma) {
+			break
+		}
+	}
+	if _, err = p.consume(token.RBrace, "expected '}' after struct fields"); err != nil {
+		return nil, err
+	}
+	return &ast.StructDecl{At: start.Pos, Name: name.Lexeme, Fields: fields}, nil
+}
+
 func (p *Parser) typeRef() (ast.TypeRef, error) {
 	return p.typeRefDepth(0)
 }
@@ -471,6 +513,19 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		return nil, 0, p.errorAtCode(t, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
 	}
 	for {
+		if p.check(token.Dot) && precCall >= min {
+			dot := p.advance()
+			field, err := p.consume(token.Ident, "expected field name after '.'")
+			if err != nil {
+				return nil, 0, err
+			}
+			leftDepth++
+			if leftDepth > maxSyntaxNestingDepth {
+				return nil, 0, p.errorAtCode(dot, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
+			}
+			left = &ast.FieldExpr{At: dot.Pos, Object: left, Name: field.Lexeme}
+			continue
+		}
 		if p.check(token.LBracket) && precCall >= min {
 			var err error
 			left, leftDepth, err = p.finishIndex(left, leftDepth)
