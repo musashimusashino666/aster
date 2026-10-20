@@ -56,9 +56,10 @@ func (*StructDecl) declNode()             {}
 
 // EnumDecl declares a closed nominal sum type. Variant payloads are positional.
 type EnumDecl struct {
-	At       token.Position
-	Name     string
-	Variants []EnumVariant
+	At         token.Position
+	Name       string
+	TypeParams []string
+	Variants   []EnumVariant
 }
 
 func (n *EnumDecl) Pos() token.Position { return n.At }
@@ -224,6 +225,7 @@ type EnumVariantExpr struct {
 	At          token.Position
 	EnumName    string
 	VariantName string
+	TypeArgs    []TypeRef
 	Args        []Expr
 	HasPayload  bool
 }
