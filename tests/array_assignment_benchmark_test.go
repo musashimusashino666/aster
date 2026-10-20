@@ -17,10 +17,12 @@ import (
 
 var arrayAssignmentBenchmarkSizes = []int{16, 64, 256}
 
+const arrayAssignmentBenchmarkRounds = 256
+
 func BenchmarkArrayElementAssignmentVM(b *testing.B) {
 	for _, size := range arrayAssignmentBenchmarkSizes {
-		b.Run(fmt.Sprintf("n=%d", size), func(b *testing.B) {
-			tree, err := parser.Parse(arrayAssignmentWorkloadSource(size), "array-assignment-benchmark.ast")
+		b.Run(fmt.Sprintf("n=%d/rounds=%d", size, arrayAssignmentBenchmarkRounds), func(b *testing.B) {
+			tree, err := parser.Parse(arrayAssignmentWorkloadSourceWithRounds(size, arrayAssignmentBenchmarkRounds), "array-assignment-benchmark.ast")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -40,14 +42,16 @@ func BenchmarkArrayElementAssignmentVM(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
+			assignments := float64(b.N) * float64(size) * float64(arrayAssignmentBenchmarkRounds)
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/assignments, "ns/assignment")
 		})
 	}
 }
 
 func BenchmarkArrayElementAssignmentNative(b *testing.B) {
 	for _, size := range arrayAssignmentBenchmarkSizes {
-		b.Run(fmt.Sprintf("n=%d", size), func(b *testing.B) {
-			tree, err := parser.Parse(arrayAssignmentWorkloadSource(size), "array-assignment-benchmark.ast")
+		b.Run(fmt.Sprintf("n=%d/rounds=%d", size, arrayAssignmentBenchmarkRounds), func(b *testing.B) {
+			tree, err := parser.Parse(arrayAssignmentWorkloadSourceWithRounds(size, arrayAssignmentBenchmarkRounds), "array-assignment-benchmark.ast")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -64,8 +68,8 @@ func BenchmarkArrayElementAssignmentNative(b *testing.B) {
 				b.Fatal(err)
 			}
 
-			// Compilation is excluded from the timed section. Each benchmark
-			// operation includes native process startup and program execution.
+			// Compilation is excluded. Each timed operation still launches a
+			// process, but 256 rounds amortize startup across many assignments.
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				cmd := exec.Command(bin)
@@ -75,6 +79,8 @@ func BenchmarkArrayElementAssignmentNative(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
+			assignments := float64(b.N) * float64(size) * float64(arrayAssignmentBenchmarkRounds)
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/assignments, "ns/assignment")
 		})
 	}
 }
