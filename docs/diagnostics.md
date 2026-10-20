@@ -1,8 +1,8 @@
-# Front-end diagnostic codes
+# Diagnostic codes
 
-Aster's lexer, parser, and type checker attach stable diagnostic codes to source errors. The human-readable message remains available, and the traditional `line:column: phase error: message` prefix is preserved; the code is appended as `[CODE]`.
+Aster attaches stable diagnostic codes to lexer, parser, type-checker, runtime, bytecode reader/verifier, and native toolchain errors. The human-readable message remains available. Source diagnostics preserve the `line:column: phase error: message` prefix; runtime errors include the source path when available and use `source:line:column: runtime error: message [CODE]`. Errors without a source location do not receive a fabricated line or column.
 
-These codes are intended for tests, editor integrations, and bug reports. A code identifies the error class; message text may become clearer over time. Codes are not yet assigned to every runtime, bytecode-loader, code-generation, or toolchain error. The `i64(f64)` conversion runtime diagnostic is `f64 value out of range for i64 conversion`; it is raised for NaN, infinities, and values outside `[-2^63, 2^63)`.
+Codes are intended for tests, editor integrations, and bug reports. A code identifies the failure class; message text may become clearer over time. Runtime classification is shared between VM and generated Native code and is regression-tested to preserve backend parity. The Go toolchain diagnostic wraps the original error, so `errors.Is` and `errors.As` remain usable. Runtime locations currently identify the operation's start position; end offsets/columns are not yet propagated as complete source spans. The `i64(f64)` conversion range failure is coded separately and covers NaN, infinities, and values outside `[-2^63, 2^63)`.
 
 ## Lexer
 
@@ -90,3 +90,53 @@ These codes are intended for tests, editor integrations, and bug reports. A code
 | `TYP049` | Slice bounds must be `i64` |
 | `TYP050` | Numeric conversion call does not have exactly one argument |
 | `TYP051` | Numeric conversion argument is not `i64` or `f64` |
+
+## Runtime
+
+| Code | Meaning |
+|---|---|
+| `RUN000` | Other runtime failure or unclassified runtime safeguard |
+| `RUN001` | Assertion failed |
+| `RUN002` | Integer arithmetic overflow |
+| `RUN003` | Division by zero |
+| `RUN004` | Remainder by zero |
+| `RUN005` | Non-finite floating-point result |
+| `RUN006` | Array index out of bounds |
+| `RUN007` | Invalid slice bounds |
+| `RUN008` | `f64` to `i64` conversion out of range |
+| `RUN009` | String byte-size limit exceeded |
+| `RUN010` | Rendered print value or array nesting limit exceeded |
+| `RUN011` | Cumulative stdout limit exceeded |
+| `RUN012` | Call-depth limit exceeded |
+| `RUN013` | VM instruction budget exceeded |
+| `RUN014` | VM operand-stack limit exceeded |
+| `RUN015` | Cumulative VM local-slot limit exceeded |
+| `RUN016` | Output writer failed |
+| `RUN017` | Array-size limit exceeded |
+
+## Bytecode input and verification
+
+| Code | Meaning |
+|---|---|
+| `BC000` | Other bytecode reader or verifier error |
+| `BC001` | Invalid bytecode file format |
+| `BC002` | Unsupported bytecode format version |
+| `BC003` | Bytecode resource limit exceeded |
+| `BC004` | Bytecode JSON decoding failed |
+| `BC005` | Bytecode structure, instruction, or control-flow validation failed |
+| `BC006` | Bytecode abstract-type, operand-stack, or local-state validation failed |
+
+## Native toolchain
+
+| Code | Meaning |
+|---|---|
+| `TOOL000` | Other native toolchain error |
+| `TOOL001` | Native toolchain operation canceled |
+| `TOOL002` | Native build or execution timed out |
+| `TOOL003` | Required Go or `gofmt` tool unavailable |
+| `TOOL004` | Formatting generated Go source failed |
+| `TOOL005` | Native Go build failed |
+| `TOOL006` | Built native program failed to execute |
+| `TOOL007` | Toolchain filesystem or output handling failed |
+
+Toolchain errors do not claim an Aster expression location: formatting, compilation, and process-launch failures often originate in generated Go code or the host environment. Their messages retain the Go tool output when available. Bytecode file errors include the supplied bytecode path, while malformed instructions may identify a function/instruction index rather than a source span.
