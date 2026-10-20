@@ -8,7 +8,9 @@ type Program struct {
 	SourceName string
 }
 type Node interface {
+	// Pos retains the existing diagnostic anchor for this node.
 	Pos() token.Position
+	// EndPos returns the exclusive end position of the node's source syntax.
 	EndPos() token.Position
 }
 type Decl interface {
