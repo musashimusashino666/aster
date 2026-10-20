@@ -105,4 +105,6 @@ const (
 	TypeIndexAssignmentMismatch = "TYP047"
 	TypeSliceNonArray           = "TYP048"
 	TypeSliceBoundType          = "TYP049"
+	TypeNumericCastArity        = "TYP050"
+	TypeNumericCastOperand      = "TYP051"
 )
