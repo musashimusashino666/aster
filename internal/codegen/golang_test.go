@@ -148,3 +148,34 @@ func TestGenerateTypedZeroArgumentUserCallHasValidArguments(t *testing.T) {
 		t.Fatalf("generated zero-argument call is missing location metadata:\n%s", source)
 	}
 }
+
+func TestGenerateArrayCOWRepresentationAndSharingBoundaries(t *testing.T) {
+	tree, err := parser.Parse(`fn identity(values: Array<i64>) -> Array<i64> {
+    let copy = values;
+    return copy;
+}
+let mut values: Array<i64> = [1, 2, 3];
+let snapshot = values;
+let returned = identity(values);
+values[0] = 9;
+print(snapshot);
+print(returned);`, "array-cow-codegen.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range []string{
+		"asterArray[int64]",
+		"asterNewArray([]int64{",
+		"asterShareValue(",
+		"PrepareArrayWrite",
+		"asterSetIndexPath(",
+	} {
+		if !strings.Contains(source, fragment) {
+			t.Errorf("generated Native source is missing %q:\\n%s", fragment, source)
+		}
+	}
+}
