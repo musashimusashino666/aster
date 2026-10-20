@@ -398,7 +398,9 @@ fn value(result: Result) -> i64 {
 	};
 }
 print(value(Result::Ok(7))); `
-	if err := checkSource(t, source); err != nil { t.Fatal(err) }
+	if err := checkSource(t, source); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRejectsNonExhaustiveEnumMatch(t *testing.T) {
