@@ -43,7 +43,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 		leadingTrivia := l.source[triviaStart:l.offset]
 		pos := l.position()
 		if l.atEnd() {
-			out = append(out, token.Token{Kind: token.EOF, Pos: pos, LeadingTrivia: leadingTrivia})
+			out = append(out, token.Token{Kind: token.EOF, Pos: pos, End: pos, LeadingTrivia: leadingTrivia})
 			return out, nil
 		}
 		start := l.offset
@@ -53,7 +53,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 				l.advance()
 			}
 			text := l.source[start:l.offset]
-			out = append(out, token.Token{Kind: keywordKind(text), Lexeme: text, Pos: pos, Raw: text, LeadingTrivia: leadingTrivia})
+			out = append(out, token.Token{Kind: keywordKind(text), Lexeme: text, Pos: pos, End: l.position(), Raw: text, LeadingTrivia: leadingTrivia})
 			continue
 		}
 		if ch >= '0' && ch <= '9' {
@@ -79,7 +79,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 					return nil, l.errorAt(pos, diagnostic.LexerInvalidFloat, "invalid floating-point literal")
 				}
 			}
-			out = append(out, token.Token{Kind: kind, Lexeme: text, Pos: pos, Raw: text, LeadingTrivia: leadingTrivia})
+			out = append(out, token.Token{Kind: kind, Lexeme: text, Pos: pos, End: l.position(), Raw: text, LeadingTrivia: leadingTrivia})
 			continue
 		}
 		if ch == '"' {
@@ -122,7 +122,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 			if !closed {
 				return nil, l.errorAt(pos, diagnostic.LexerUnterminatedString, "unterminated string literal")
 			}
-			out = append(out, token.Token{Kind: token.String, Lexeme: b.String(), Pos: pos, Raw: l.source[start:l.offset], LeadingTrivia: leadingTrivia})
+			out = append(out, token.Token{Kind: token.String, Lexeme: b.String(), Pos: pos, End: l.position(), Raw: l.source[start:l.offset], LeadingTrivia: leadingTrivia})
 			continue
 		}
 		kind := token.Illegal
@@ -208,7 +208,7 @@ func (l *Lexer) Lex() ([]token.Token, error) {
 			}
 			return nil, l.errorAt(pos, diagnostic.LexerUnexpectedCharacter, message)
 		}
-		out = append(out, token.Token{Kind: kind, Lexeme: l.source[start:l.offset], Pos: pos, Raw: l.source[start:l.offset], LeadingTrivia: leadingTrivia})
+		out = append(out, token.Token{Kind: kind, Lexeme: l.source[start:l.offset], Pos: pos, End: l.position(), Raw: l.source[start:l.offset], LeadingTrivia: leadingTrivia})
 	}
 }
 
