@@ -117,7 +117,6 @@ func BenchmarkArrayElementAssignmentNative(b *testing.B) {
 	}
 }
 
-
 // nestedArrayAssignmentWorkloadSource repeatedly updates one row in a nested
 // array, reading that same row in both the loop condition and the RHS. It
 // exposes Native COW implementations that treat temporary index reads as
