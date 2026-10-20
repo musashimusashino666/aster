@@ -25,7 +25,7 @@ const (
 	maxTotalInstructions        = 1 << 20
 	maxFunctionCount            = 100000
 	maxJSONNestingDepth         = 1024
-	maxArrayNestingDepth        = 256
+	maxArrayNestingDepth        = limits.MaxArrayNestingDepth
 	maxTypeNestingDepth         = langtypes.MaxNestingDepth
 	maxConstantValueNodes       = 2 << 20
 	maxTotalConstantStringBytes = 32 << 20
