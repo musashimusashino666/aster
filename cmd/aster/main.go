@@ -198,21 +198,71 @@ func commandCompile(args []string) error {
 		base := strings.TrimSuffix(fs.Arg(0), filepath.Ext(fs.Arg(0)))
 		path = base + ".abc.json"
 	}
-	f, err := os.Create(path)
-	if err != nil {
+	if err := writeBytecodeAtomically(path, bc); err != nil {
 		return err
-	}
-	encErr := bytecode.Write(f, bc)
-	closeErr := f.Close()
-	if encErr != nil {
-		return encErr
-	}
-	if closeErr != nil {
-		return closeErr
 	}
 	fmt.Printf("compiled %s -> %s\n", fs.Arg(0), path)
 	return nil
 }
+
+// writeBytecodeAtomically commits a fully encoded bytecode file only after
+// validation, encoding, syncing, and closing have all succeeded.
+func writeBytecodeAtomically(path string, program *bytecode.Program) error {
+	return writeOutputAtomically(path, func(w io.Writer) error {
+		return bytecode.Write(w, program)
+	})
+}
+
+// writeOutputAtomically writes to a temporary file on the destination filesystem
+// and renames it into place only after the writer has succeeded. A failed write
+// cannot truncate or leave a partial replacement of an existing output file.
+func writeOutputAtomically(path string, write func(io.Writer) error) error {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	mode := os.FileMode(0)
+	preserveMode := false
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+		preserveMode = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect output %s: %w", path, err)
+	}
+
+	tempDir, err := os.MkdirTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary output directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tempPath := filepath.Join(tempDir, base)
+	file, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
+	if err != nil {
+		return fmt.Errorf("create temporary output: %w", err)
+	}
+	if preserveMode {
+		if err := file.Chmod(mode); err != nil {
+			_ = file.Close()
+			return fmt.Errorf("preserve output permissions: %w", err)
+		}
+	}
+
+	if err := write(file); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write temporary output: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync temporary output: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close temporary output: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("replace output %s: %w", path, err)
+	}
+	return nil
+}
+
 func commandExec(args []string) error {
 	fs := flag.NewFlagSet("exec", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
