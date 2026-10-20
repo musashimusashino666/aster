@@ -326,7 +326,7 @@ func TestStringGrowthLimitMatchesBackends(t *testing.T) {
 
 func TestPrintedArrayOutputLimitMatchesBackends(t *testing.T) {
 	source := `let mut s: string = "x"; while len(s) < 8388608 { s=s+s; } let xs = [s, s]; print(xs);`
-	line, column := sourceMarkerPosition(t, source, "print(xs)", 0)
+	line, column := sourceMarkerPosition(t, source, "print(xs)", len("print"))
 	expected := fmt.Sprintf("%d:%d: runtime error: printed value exceeds 16777216-byte output limit", line, column)
 
 	tree, err := parser.Parse(source, "printed-array-limit.ast")
