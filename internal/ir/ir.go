@@ -707,6 +707,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 	case *ast.LiteralExpr:
 		return &LiteralExpr{
 			At:           n.Pos(),
+			EndAt:        n.EndPos(),
 			ResolvedType: resolvedType,
 			Kind:         n.Kind,
 			Int:          n.Int,
