@@ -13,11 +13,11 @@ import (
 )
 
 type expander struct {
-	templates map[string]*ast.Function
+	templates  map[string]*ast.Function
 	knownTypes map[string]bool
-	instances map[string]*ast.Function
-	ordered []*ast.Function
-	nextID int
+	instances  map[string]*ast.Function
+	ordered    []*ast.Function
+	nextID     int
 }
 
 // Expand specializes explicitly instantiated generic functions before type
@@ -251,45 +251,67 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 			out.Annotation = &v
 		}
 		value, err := e.rewriteExpr(n.Value, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		out.Value = value
 		return out, nil
 	case *ast.AssignStmt:
 		value, err := e.rewriteExpr(n.Value, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.AssignStmt{At: n.At, Name: n.Name, Value: value}, nil
 	case *ast.IndexAssignStmt:
 		target, err := e.rewriteExpr(n.Target, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		value, err := e.rewriteExpr(n.Value, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.IndexAssignStmt{At: n.At, Target: target, Value: value}, nil
 	case *ast.ExprStmt:
 		expr, err := e.rewriteExpr(n.Expr, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.ExprStmt{At: n.At, Expr: expr}, nil
 	case *ast.IfStmt:
 		cond, err := e.rewriteExpr(n.Condition, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		then, err := e.rewriteBlock(n.Then, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		var otherwise ast.Stmt
 		if n.Else != nil {
 			otherwise, err = e.rewriteStmt(n.Else, sub, depth)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 		}
 		return &ast.IfStmt{At: n.At, Condition: cond, Then: then, Else: otherwise}, nil
 	case *ast.WhileStmt:
 		cond, err := e.rewriteExpr(n.Condition, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		body, err := e.rewriteBlock(n.Body, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.WhileStmt{At: n.At, Condition: cond, Body: body}, nil
 	case *ast.ReturnStmt:
 		out := &ast.ReturnStmt{At: n.At}
 		if n.Value != nil {
 			value, err := e.rewriteExpr(n.Value, sub, depth)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			out.Value = value
 		}
 		return out, nil
@@ -306,23 +328,33 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 		return &ast.LiteralExpr{At: n.At, Kind: n.Kind, Text: n.Text, Int: n.Int, Float: n.Float, String: n.String, Bool: n.Bool}, nil
 	case *ast.FieldExpr:
 		object, err := e.rewriteExpr(n.Object, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.FieldExpr{At: n.At, Object: object, Name: n.Name}, nil
 	case *ast.UnaryExpr:
 		right, err := e.rewriteExpr(n.Right, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.UnaryExpr{At: n.At, Op: n.Op, Right: right}, nil
 	case *ast.BinaryExpr:
 		left, err := e.rewriteExpr(n.Left, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		right, err := e.rewriteExpr(n.Right, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.BinaryExpr{At: n.At, Left: left, Op: n.Op, Right: right}, nil
 	case *ast.CallExpr:
 		args := make([]ast.Expr, len(n.Args))
 		for i, arg := range n.Args {
 			value, err := e.rewriteExpr(arg, sub, depth)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			args[i] = value
 		}
 		id, named := n.Callee.(*ast.IdentifierExpr)
@@ -335,7 +367,9 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 				return nil, typeError(n.At, diagnostic.TypeGenericArgumentsOnNonGeneric, "function '%s' does not accept explicit type arguments", id.Name)
 			}
 			instanceName, err := e.instantiate(template, n.TypeArgs, n.At, sub, depth)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
 		}
 		if named {
@@ -344,23 +378,31 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 			}
 		}
 		callee, err := e.rewriteExpr(n.Callee, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.CallExpr{At: n.At, Callee: callee, Args: args}, nil
 	case *ast.EnumVariantExpr:
 		args := make([]ast.Expr, len(n.Args))
 		for i, arg := range n.Args {
 			value, err := e.rewriteExpr(arg, sub, depth)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			args[i] = value
 		}
 		return &ast.EnumVariantExpr{At: n.At, EnumName: n.EnumName, VariantName: n.VariantName, Args: args, HasPayload: n.HasPayload}, nil
 	case *ast.MatchExpr:
 		subject, err := e.rewriteExpr(n.Subject, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		arms := make([]ast.MatchArm, len(n.Arms))
 		for i, arm := range n.Arms {
 			value, err := e.rewriteExpr(arm.Expr, sub, depth)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			pattern := arm.Pattern
 			pattern.Bindings = append([]string(nil), arm.Pattern.Bindings...)
 			arms[i] = ast.MatchArm{At: arm.At, Pattern: pattern, Expr: value}
@@ -370,23 +412,35 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 		elements := make([]ast.Expr, len(n.Elements))
 		for i, item := range n.Elements {
 			value, err := e.rewriteExpr(item, sub, depth)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			elements[i] = value
 		}
 		return &ast.ArrayExpr{At: n.At, Elements: elements}, nil
 	case *ast.IndexExpr:
 		collection, err := e.rewriteExpr(n.Collection, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		index, err := e.rewriteExpr(n.Index, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.IndexExpr{At: n.At, Collection: collection, Index: index}, nil
 	case *ast.SliceExpr:
 		collection, err := e.rewriteExpr(n.Collection, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		start, err := e.rewriteExpr(n.Start, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		end, err := e.rewriteExpr(n.End, sub, depth)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		return &ast.SliceExpr{At: n.At, Collection: collection, Start: start, End: end}, nil
 	default:
 		return nil, typeError(expr.Pos(), diagnostic.TypeUnsupportedExpression, "generic expansion does not support expression %T", expr)
