@@ -24,10 +24,10 @@ type TypeResolver func(ast.Expr) (Type, bool)
 type FunctionResolver func(name string) (FunctionSignature, bool)
 
 type Program struct {
-	SourceName string
+	SourceName  string
 	StructTypes []StructType
-	Functions  []*Function
-	Body       []Stmt
+	Functions   []*Function
+	Body        []Stmt
 }
 
 type StructType struct {
@@ -250,12 +250,12 @@ func (n *SliceExpr) ExprType() Type      { return n.ResolvedType }
 type CallTarget string
 
 const (
-	CallUserFunction CallTarget = "user_function"
-	CallPrint        CallTarget = "print"
-	CallLen          CallTarget = "len"
-	CallAssert       CallTarget = "assert"
-	CallI64Cast      CallTarget = "i64_cast"
-	CallF64Cast      CallTarget = "f64_cast"
+	CallUserFunction      CallTarget = "user_function"
+	CallPrint             CallTarget = "print"
+	CallLen               CallTarget = "len"
+	CallAssert            CallTarget = "assert"
+	CallI64Cast           CallTarget = "i64_cast"
+	CallF64Cast           CallTarget = "f64_cast"
 	CallStructConstructor CallTarget = "struct_constructor"
 )
 
