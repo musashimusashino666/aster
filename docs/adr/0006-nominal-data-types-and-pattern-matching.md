@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-20
-- **Relationship:** Builds on [ADR 0003: Array value semantics](0003-array-value-semantics.md) and [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md). The rollout order is accepted; implementation status is tracked in the roadmap. PR #61 implements the initial non-generic-struct slice, while enums, user-defined generics, and `Option<T>` / `Result<T, E>` remain planned.
+- **Relationship:** Builds on [ADR 0003: Array value semantics](0003-array-value-semantics.md) and [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md). The rollout order is accepted; implementation status is tracked in the roadmap. PR #61 implements the initial non-generic-struct slice. PR #63 implements the initial non-generic enum and exhaustive `match` slice; user-defined generics and `Option<T>` / `Result<T, E>` remain planned.
 
 ## Context
 
@@ -115,7 +115,7 @@ Bytecode v7 and backend contract for enums/match:
 ## Bytecode and backend requirements
 
 - Add explicit aggregate type/field metadata to the normalized typed IR and bytecode program. The bytecode verifier must validate declared types, field indexes, constructor arity and operand types, enum tags/payloads, and match control flow before execution.
-- Because aggregate type metadata and operations change the bytecode contract, use an explicit format-version change rather than silently extending the current version 5 schema. Preserve the existing rejection of unsupported versions.
+- Because aggregate type metadata and operations change the bytecode contract, increment the bytecode format from version 6 to version 7 rather than silently extending the current schema. Preserve the existing rejection of unsupported versions.
 - Runtime values must not rely on source text or dynamic type guessing to find fields. The verifier and both backends must use the resolved type and field/variant identity.
 - Native code generation must use collision-free generated Go identifiers; source identifiers must never be emitted as trusted raw Go fragments.
 - Keep COW metadata out of the serialized representation. Add array-sharing boundary tests for struct construction, binding/rebinding, field extraction, function arguments/returns, and arrays nested within arrays/structs.
