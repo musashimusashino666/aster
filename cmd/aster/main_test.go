@@ -111,6 +111,14 @@ func TestWriteOutputAtomicallyReplacesSymlinkItself(t *testing.T) {
 	}
 }
 
+func TestBooleanFlagsBeforePositionals(t *testing.T) {
+	got := flagsBeforePositionalsAndBooleans([]string{"example.ast", "--check"}, []string{"--check"})
+	want := []string{"--check", "example.ast"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("normalized arguments = %#v, want %#v", got, want)
+	}
+}
+
 func TestCommandFmtWritesCanonicalSource(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "example.ast")
 	if err := os.WriteFile(path, []byte("fn  f(){return 1;}"), 0o600); err != nil {
