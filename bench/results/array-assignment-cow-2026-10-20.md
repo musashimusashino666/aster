@@ -56,4 +56,6 @@ Unit: ns/process.
 
 ## Decision
 
-This is positive performance evidence for the VM-only prototype and supports continuing the review. It does not replace the semantic review of sharing boundaries (function calls/returns, nested arrays, element replacement, constants, slices, and bytecode JSON compatibility). Do not merge PR #44 until that review and the current-head CI checks are complete.
+The same-runner results provide positive performance evidence for the VM-only COW implementation on this array-element-assignment workload. The semantic sharing-boundary regressions and current-head CI passed before PR #44 was merged.
+
+PR #44 was merged into `main` as commit `1b6c9b52c2ebabb5bf249e44105b331ba4c7b42d`. This change intentionally covers the VM only. Native COW remains a separate follow-up and should be evaluated with its own implementation and same-runner measurements. The reported speedups are specific to this workload; the 1024-element baseline's high dispersion remains a limitation.
