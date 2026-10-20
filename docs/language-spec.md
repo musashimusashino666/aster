@@ -4,7 +4,7 @@ This document describes the syntax and semantics implemented in the current prot
 
 ## Source model
 
-A source file is UTF-8 text; an optional leading UTF-8 BOM is ignored. The current lexer supports ASCII identifiers, decimal integer and floating-point literals, quoted strings with `\n`, `\r`, `\t`, `\0`, `\\`, and `\"` escapes, `//` line comments, and nested `/* ... */` comments. Lexer tokens retain a start position and an exclusive end position. Offsets and columns count UTF-8 bytes, and lines/columns are 1-based. End positions are not yet propagated through all AST/typed-IR nodes, bytecode instructions, or runtime diagnostics. Unexpected non-ASCII characters are reported by Unicode code point.
+A source file is UTF-8 text; an optional leading UTF-8 BOM is ignored. The current lexer supports ASCII identifiers, decimal integer and floating-point literals, quoted strings with `\n`, `\r`, `\t`, `\0`, `\\`, and `\"` escapes, `//` line comments, and nested `/* ... */` comments. Lexer tokens and lexer/parser diagnostics retain start positions and exclusive end positions. Offsets and columns count UTF-8 bytes, and lines/columns are 1-based. Complete spans are not yet propagated through all AST/typed-IR nodes, bytecode instructions, or runtime diagnostics. Unexpected non-ASCII characters are reported by Unicode code point.
 
 Identifiers begin with an ASCII letter or `_`, followed by ASCII letters, digits, or `_`. A file contains struct and enum declarations, function declarations, and top-level statements. Struct/enum type names and functions are visible throughout the file, including forward references and recursion. Imports and multiple compilation units are not supported yet.
 
