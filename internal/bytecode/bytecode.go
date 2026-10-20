@@ -637,6 +637,24 @@ func (p *Program) Validate() error {
 				if ins.A < 0 || ins.B != 0 {
 					return fmt.Errorf("function %q instruction %d has invalid field access operands", f.Name, pc)
 				}
+			case OpBuildEnum:
+				if ins.A < 0 || ins.A >= len(p.EnumTypes) {
+					return fmt.Errorf("function %q instruction %d references missing enum type %d", f.Name, pc, ins.A)
+				}
+				if ins.B < 0 || ins.B >= len(p.EnumTypes[ins.A].Variants) {
+					return fmt.Errorf("function %q instruction %d references missing variant %d of enum %q", f.Name, pc, ins.B, p.EnumTypes[ins.A].Name)
+				}
+				if ins.C != len(p.EnumTypes[ins.A].Variants[ins.B].PayloadTypes) {
+					return fmt.Errorf("function %q instruction %d builds %s::%s with payload count %d; expected %d", f.Name, pc, p.EnumTypes[ins.A].Name, p.EnumTypes[ins.A].Variants[ins.B].Name, ins.C, len(p.EnumTypes[ins.A].Variants[ins.B].PayloadTypes))
+				}
+			case OpMatchEnum:
+				if ins.A < 0 || ins.A >= f.Locals || ins.B < 0 || ins.B >= len(f.MatchTables) || ins.C != 0 {
+					return fmt.Errorf("function %q instruction %d has invalid enum match operands", f.Name, pc)
+				}
+			case OpGetEnumPayload:
+				if ins.A < 0 || ins.A >= f.Locals || ins.B < 0 || ins.C < 0 {
+					return fmt.Errorf("function %q instruction %d has invalid enum payload operands", f.Name, pc)
+				}
 			case OpIndex:
 			case OpSlice:
 				if ins.A != 0 || ins.B != 0 {
@@ -738,10 +756,16 @@ func validateFunctionStack(fn Function) error {
 				delta = 1
 			case OpBuildArray:
 				required, delta = ins.A, 1-ins.A
-			case OpBuildStruct:
-				required, delta = ins.B, 1-ins.B
+			case OpBuildStruct, OpBuildEnum:
+				count := ins.B
+				if ins.Op == OpBuildEnum { count = ins.C }
+				required, delta = count, 1-count
 			case OpGetField:
 				required = 1
+			case OpGetEnumPayload:
+				delta = 1
+			case OpMatchEnum:
+				// Dispatch is an explicit multi-successor control-flow edge.
 			case OpIndex:
 				required, delta = 2, -1
 			case OpSlice:
@@ -806,8 +830,10 @@ func validateFunctionStack(fn Function) error {
 
 			switch ins.Op {
 			case OpJump:
-				if err := enqueue(ins.A); err != nil {
-					return err
+				if err := enqueue(ins.A); err != nil { return err }
+			case OpMatchEnum:
+				for _, target := range fn.MatchTables[ins.B].Targets {
+					if err := enqueue(target); err != nil { return err }
 				}
 			case OpJumpIfFalse, OpJumpIfTrue:
 				if err := enqueue(ins.A); err != nil {
