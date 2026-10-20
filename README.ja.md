@@ -177,6 +177,7 @@ GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）でも
 - [`docs/diagnostics.md`](docs/diagnostics.md): 字句解析・構文解析・型検査の安定した診断コード
 - [`docs/security-model.md`](docs/security-model.md): 安全性の設計と未解決事項
 - [`docs/roadmap.md`](docs/roadmap.md): 段階的な開発計画
+- [`docs/adr/README.md`](docs/adr/README.md): 設計判断記録（ADR）の一覧・採番規則・参照方法
 - [`docs/contributing.md`](docs/contributing.md): 開発ルール
 - [`bench/README.md`](bench/README.md): ベンチマーク方法
 - [`CHANGELOG.md`](CHANGELOG.md): 変更履歴
