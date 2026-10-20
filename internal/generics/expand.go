@@ -106,7 +106,7 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 			if declaredFunctionNames[n.Name] {
 				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' conflicts with a function", n.Name)
 			}
-			if builtinTypeName(n.Name) || !langtypes.ValidName(n.Name) {
+			if reservedTypeName(n.Name) || !langtypes.ValidName(n.Name) {
 				return nil, typeError(n.Pos(), diagnostic.TypeInvalidStructName, "invalid or reserved struct name '%s'", n.Name)
 			}
 			if len(n.TypeParams) > 0 {
