@@ -992,5 +992,5 @@ func (p *Parser) errorAt(t token.Token, msg string) error {
 }
 
 func (p *Parser) errorAtCode(t token.Token, code, msg string) error {
-	return diagnostic.New(code, "parser", t.Pos, msg)
+	return diagnostic.NewSpan(code, "parser", t.Pos, t.End, msg)
 }
