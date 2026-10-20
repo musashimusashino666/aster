@@ -346,3 +346,67 @@ func TestGenericEnumInstantiationLimitAndCacheHit(t *testing.T) {
 		t.Fatalf("expected TYP089 at the exact generic enum instance limit, got %v", err)
 	}
 }
+
+
+func TestExpanderEnforcesCombinedMonomorphizationLimit(t *testing.T) {
+	e := &expander{
+		instances:        make(map[string]*ast.Function),
+		structInstances:  make(map[string]*ast.StructDecl),
+		enumInstances:    make(map[string]*ast.EnumDecl),
+		enumInstanceInfo: make(map[string]structInstanceInfo),
+		enumDecls:        make(map[string]*ast.EnumDecl),
+		knownTypes:       map[string]bool{"i64": true, "string": true, "f64": true},
+	}
+	for i := 0; i < limits.MaxGenericMonomorphizedDeclarations; i++ {
+		switch i % 3 {
+		case 0:
+			key := fmt.Sprintf("function-%d", i)
+			e.instances[key] = &ast.Function{Name: key}
+		case 1:
+			key := fmt.Sprintf("struct-%d", i)
+			e.structInstances[key] = &ast.StructDecl{Name: key}
+		case 2:
+			key := fmt.Sprintf("enum-%d", i)
+			instanceName := key
+			if i == 2 {
+				key = "Option<i64>"
+				instanceName = "__cached_option"
+			}
+			e.enumInstances[key] = &ast.EnumDecl{Name: instanceName}
+		}
+	}
+	if got := e.totalMonomorphizedInstances(); got != limits.MaxGenericMonomorphizedDeclarations {
+		t.Fatalf("total generic instances = %d, want %d", got, limits.MaxGenericMonomorphizedDeclarations)
+	}
+
+	template := &ast.EnumDecl{
+		Name: "Option", TypeParams: []string{"T"},
+		Variants: []ast.EnumVariant{{Name: "None"}},
+	}
+	// An existing canonical instance remains reusable even when the aggregate
+	// budget is full; it must not consume another unit of the budget.
+	name, err := e.instantiateEnum(template, []ast.TypeRef{{Name: "i64"}}, token.Position{Line: 2, Column: 1}, nil, 0)
+	if err != nil || name != "__cached_option" {
+		t.Fatalf("cached instance at aggregate limit = (%q, %v), want cache hit", name, err)
+	}
+
+	// One slot below the cap, a new instance is accepted and brings the total
+	// exactly to the cap. A subsequent distinct instance must fail closed.
+	for key := range e.structInstances {
+		delete(e.structInstances, key)
+		break
+	}
+	name, err = e.instantiateEnum(template, []ast.TypeRef{{Name: "string"}}, token.Position{Line: 4, Column: 1}, nil, 0)
+	if err != nil || name == "" {
+		t.Fatalf("instance just below aggregate limit = (%q, %v), want success", name, err)
+	}
+	if got := e.totalMonomorphizedInstances(); got != limits.MaxGenericMonomorphizedDeclarations {
+		t.Fatalf("total at aggregate limit = %d, want %d", got, limits.MaxGenericMonomorphizedDeclarations)
+	}
+	_, err = e.instantiateEnum(template, []ast.TypeRef{{Name: "f64"}}, token.Position{Line: 7, Column: 3}, nil, 0)
+	if err == nil || !strings.Contains(err.Error(), "TYP089") ||
+		!strings.Contains(err.Error(), fmt.Sprintf("%d", limits.MaxGenericMonomorphizedDeclarations)) ||
+		!strings.Contains(err.Error(), "7:3") {
+		t.Fatalf("expected positioned TYP089 at aggregate limit, got %v", err)
+	}
+}
