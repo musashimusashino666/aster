@@ -23,6 +23,19 @@ func irPositionArgs(node ir.Node) string {
 	return fmt.Sprintf("%d, %d", pos.Line, pos.Column)
 }
 
+// needsArrayShareAtBoundary reports expression forms that return an existing
+// array storage owner. Fresh literals and slices already have independent
+// outer storage; reads through an array index must be marked shared when their
+// result is stored or otherwise becomes independently mutable.
+func needsArrayShareAtBoundary(expr ir.Expr) bool {
+	switch expr.(type) {
+	case *ir.LocalExpr, *ir.IndexExpr:
+		return true
+	default:
+		return false
+	}
+}
+
 func (g *generator) irFunction(fn *ir.Function) error {
 	ret := string(fn.ReturnType)
 	if !langtypes.ValidName(ret) {
@@ -83,10 +96,8 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 			return fmt.Errorf("codegen: invalid IR local type %q for %q", t, n.Local.Name)
 		}
 		name := irLocalName(n.Local.ID)
-		if _, isArray := arrayElementType(t); isArray {
-			if _, isLocalCopy := n.Value.(*ir.LocalExpr); isLocalCopy {
-				expr = "asterShareValue(" + expr + ")"
-			}
+		if _, isArray := arrayElementType(t); isArray && needsArrayShareAtBoundary(n.Value) {
+			expr = "asterShareValue(" + expr + ")"
 		}
 		g.line(name + " := " + expr)
 		g.line("_ = " + name)
@@ -113,10 +124,8 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		if err != nil {
 			return err
 		}
-		if _, isArray := arrayElementType(string(n.Value.ExprType())); isArray {
-			if _, isLocalCopy := n.Value.(*ir.LocalExpr); isLocalCopy {
-				expr = "asterShareValue(" + expr + ")"
-			}
+		if _, isArray := arrayElementType(string(n.Value.ExprType())); isArray && needsArrayShareAtBoundary(n.Value) {
+			expr = "asterShareValue(" + expr + ")"
 		}
 		g.line(irLocalName(n.Target) + " = " + expr)
 		return nil
