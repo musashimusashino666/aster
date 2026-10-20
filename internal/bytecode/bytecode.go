@@ -371,7 +371,7 @@ func (p *Program) validateStructTypes() (map[string]StructType, error) {
 	}
 	for _, st := range p.StructTypes {
 		if err := visit(st.Name); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	return structTypesByName, nil
