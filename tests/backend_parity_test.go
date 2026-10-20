@@ -3,9 +3,11 @@ package tests
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -342,5 +344,116 @@ func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 				t.Fatalf("backend diagnostics differ: VM=%q native=%q", vmErr.Error(), got)
 			}
 		})
+	}
+}
+
+func generatedIntExpr(rng *rand.Rand, depth int) string {
+	literal := func() string { return strconv.Itoa(rng.Intn(19) - 9) }
+	if depth <= 0 {
+		return literal()
+	}
+	switch rng.Intn(7) {
+	case 0:
+		return literal()
+	case 1:
+		return "(-" + generatedIntExpr(rng, depth-1) + ")"
+	case 2, 3, 4:
+		ops := []string{"+", "-", "*"}
+		op := ops[rng.Intn(len(ops))]
+		return "(" + generatedIntExpr(rng, depth-1) + " " + op + " " + generatedIntExpr(rng, depth-1) + ")"
+	case 5:
+		return "(" + generatedIntExpr(rng, depth-1) + " / " + strconv.Itoa(rng.Intn(9)+1) + ")"
+	default:
+		return "(" + generatedIntExpr(rng, depth-1) + " % " + strconv.Itoa(rng.Intn(9)+1) + ")"
+	}
+}
+
+func generatedStringExpr(rng *rand.Rand, depth int) string {
+	if depth <= 0 || rng.Intn(3) == 0 {
+		literals := []string{"", "Aster", "vm", "native", "xyz", "012"}
+		return strconv.Quote(literals[rng.Intn(len(literals))])
+	}
+	return "(" + generatedStringExpr(rng, depth-1) + " + " + generatedStringExpr(rng, depth-1) + ")"
+}
+
+func generatedBoolExpr(rng *rand.Rand, depth int) string {
+	leaf := func() string {
+		switch rng.Intn(4) {
+		case 0:
+			return "true"
+		case 1:
+			return "false"
+		case 2:
+			return "(" + generatedIntExpr(rng, 2) + " < " + generatedIntExpr(rng, 2) + ")"
+		default:
+			return "(" + generatedStringExpr(rng, 1) + " == " + generatedStringExpr(rng, 1) + ")"
+		}
+	}
+	if depth <= 0 {
+		return leaf()
+	}
+	switch rng.Intn(6) {
+	case 0:
+		return leaf()
+	case 1:
+		return "(!" + generatedBoolExpr(rng, depth-1) + ")"
+	case 2:
+		return "(" + generatedBoolExpr(rng, depth-1) + " && " + generatedBoolExpr(rng, depth-1) + ")"
+	case 3:
+		return "(" + generatedBoolExpr(rng, depth-1) + " || " + generatedBoolExpr(rng, depth-1) + ")"
+	case 4:
+		return "(" + generatedIntExpr(rng, 2) + " != " + generatedIntExpr(rng, 2) + ")"
+	default:
+		return "(" + generatedStringExpr(rng, 1) + " < " + generatedStringExpr(rng, 1) + ")"
+	}
+}
+
+func TestDeterministicGeneratedProgramsMatchBackends(t *testing.T) {
+	// A fixed seed makes failures reproducible while exploring many typed expressions.
+	rng := rand.New(rand.NewSource(0xA57E))
+	var source strings.Builder
+	for i := 0; i < 64; i++ {
+		switch i % 4 {
+		case 0:
+			fmt.Fprintf(&source, "print(%s);\n", generatedIntExpr(rng, 3))
+		case 1:
+			fmt.Fprintf(&source, "print(%s);\n", generatedBoolExpr(rng, 3))
+		case 2:
+			fmt.Fprintf(&source, "print(%s);\n", generatedStringExpr(rng, 3))
+		default:
+			fmt.Fprintf(&source, "print([%s, %s, %s]);\n", generatedIntExpr(rng, 2), generatedIntExpr(rng, 2), generatedIntExpr(rng, 2))
+		}
+	}
+	programSource := source.String()
+	tree, err := parser.Parse(programSource, "generated-differential.ast")
+	if err != nil {
+		t.Fatalf("generated source did not parse: %v\nsource:\n%s", err, programSource)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatalf("generated source did not type-check: %v\nsource:\n%s", err, programSource)
+	}
+	bytecodeProgram, err := bytecode.Compile(typed.Tree)
+	if err != nil {
+		t.Fatalf("generated source did not compile to bytecode: %v\nsource:\n%s", err, programSource)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(bytecodeProgram, &vmOutput); err != nil {
+		t.Fatalf("generated VM program failed: %v\nsource:\n%s", err, programSource)
+	}
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatalf("generated source did not generate Go: %v\nsource:\n%s", err, programSource)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-generated-differential")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatalf("generated Go did not build: %v\nsource:\n%s", err, programSource)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated native program failed: %v\noutput:\n%s\nsource:\n%s", err, nativeOutput, programSource)
+	}
+	if vmOutput.String() != string(nativeOutput) {
+		t.Fatalf("generated backend output differs\nVM:\n%s\nnative:\n%s\nsource:\n%s", vmOutput.String(), nativeOutput, programSource)
 	}
 }
