@@ -1156,6 +1156,8 @@ print(match wrapped { Option::Some(values) => values[0], Option::None => 0, });
 print(unwrap(Option::Some(42)));
 let result: Result<i64, string> = Result::Ok(7);
 print(match result { Result::Ok(value) => value, Result::Err(message) => errorCode(message), });
+let failed: Result<i64, string> = Result::Err("error");
+print(match failed { Result::Ok(value) => value, Result::Err(message) => errorCode(message), });
 let empty: Option<i64> = Option::None;
 let nested: Option<Option<i64>> = Option::Some(Option::None);
 let peerInferred = Pair::Item(Option::None, 7);
@@ -1196,7 +1198,7 @@ print(match throughCall { Option::Some(value) => value, Option::None => 0, });
 	if err != nil {
 		t.Fatalf("Native generic enum program failed: %v\n%s", err, nativeOutput)
 	}
-	want := "1\n42\n7\n0\n0\n7\n42\n"
+	want := "1\n42\n7\n1\n0\n0\n7\n42\n"
 	if got := vmOutput.String(); got != want {
 		t.Fatalf("unexpected generic enum VM output: got %q want %q", got, want)
 	}
