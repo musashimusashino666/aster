@@ -791,7 +791,8 @@ func (p *Parser) finishEnumVariant(enumName, variant token.Token, typeArgs []ast
 		}
 	}
 	return &ast.EnumVariantExpr{
-		At: enumName.Pos, EnumName: enumName.Lexeme, VariantName: variant.Lexeme,
+		At: enumName.Pos, EndAt: p.previous().End,
+		EnumName: enumName.Lexeme, VariantName: variant.Lexeme,
 		TypeArgs: typeArgs, Args: args, HasPayload: hasPayload,
 	}, maxArgDepth + 1, nil
 }
@@ -891,6 +892,7 @@ func (p *Parser) matchPattern() (ast.MatchPattern, error) {
 			return ast.MatchPattern{}, err
 		}
 	}
+	pattern.EndAt = p.previous().End
 	return pattern, nil
 }
 
