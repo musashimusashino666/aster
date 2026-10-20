@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added mutable nested array-element assignment with copy-on-write path updates and VM/Native parity coverage; bumped JSON bytecode format to v3 for `SET_INDEX_PATH`.
+
 - Improved return-flow analysis for literal-boolean branches and literal-true loops; both backends lower constant conditions consistently.
 
 - Added abstract bytecode type verification for stack operations, function calls, returns, homogeneous arrays, and definite local initialization; bumped JSON bytecode format to v2 to carry parameter types.
