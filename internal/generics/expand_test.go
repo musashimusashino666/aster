@@ -235,14 +235,15 @@ let typed: Option<i64> = Option::None;`)
 	if len(instances) != 2 {
 		t.Fatalf("generic enum instances = %d, want Option<i64> and Option<string>", len(instances))
 	}
+	payloadTypes := map[string]bool{}
 	for _, enumDecl := range instances {
-		if len(enumDecl.Variants) != 2 || enumDecl.Variants[1].Payload[0].Name != map[bool]string{true: "i64", false: "string"}[strings.Contains(enumDecl.Name, "000001")] {
-			// The generated IDs are deterministic for this fixture; validate the payload
-			// types below in a less order-dependent way as the primary assertion.
-			if len(enumDecl.Variants) != 2 || (enumDecl.Variants[1].Payload[0].Name != "i64" && enumDecl.Variants[1].Payload[0].Name != "string") {
-				t.Fatalf("unexpected specialized enum payload: %#v", enumDecl)
-			}
+		if len(enumDecl.Variants) != 2 || len(enumDecl.Variants[1].Payload) != 1 {
+			t.Fatalf("unexpected specialized enum variants: %#v", enumDecl)
 		}
+		payloadTypes[enumDecl.Variants[1].Payload[0].Name] = true
+	}
+	if !payloadTypes["i64"] || !payloadTypes["string"] {
+		t.Fatalf("specialized payload types = %#v, want i64 and string", payloadTypes)
 	}
 	for _, decl := range expanded.Decls {
 		if sd, ok := decl.(*ast.StmtDecl); ok {
