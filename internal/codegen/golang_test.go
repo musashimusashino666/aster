@@ -73,7 +73,7 @@ func TestGenerateTypedWildcardMatchCodeGrowthIsLinear(t *testing.T) {
 	if len(generated) > 50*1024 {
 		t.Fatalf("generated source for %d nested wildcard matches is %d bytes; want linear growth below 50 KiB", depth, len(generated))
 	}
-	if got := strings.Count(generated, "switch "); got != depth {
+	if got := strings.Count(generated, "switch v_"); got != depth {
 		t.Fatalf("generated switch count = %d, want one switch per match (%d)", got, depth)
 	}
 }
