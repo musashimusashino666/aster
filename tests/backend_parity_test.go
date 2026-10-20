@@ -366,6 +366,45 @@ func TestPrintedArrayOutputLimitMatchesBackends(t *testing.T) {
 	}
 }
 
+func TestCallDepthLimitMatchesBackends(t *testing.T) {
+	source := `fn recurse(n: i64) -> i64 { return recurse(n + 1); } print(recurse(0));`
+	line, column := sourceMarkerPosition(t, source, "recurse(n + 1)", 0)
+	expected := fmt.Sprintf("%d:%d: runtime error: call depth limit exceeded (maximum 4096)", line, column)
+
+	tree, err := parser.Parse(source, "call-depth-limit.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checker.Check(tree); err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.Compile(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	vmErr := vm.Run(program, &vmOutput)
+	if vmErr == nil || vmErr.Error() != expected {
+		t.Fatalf("VM error = %v, want %q", vmErr, expected)
+	}
+
+	goSource, err := codegen.Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-call-depth-limit")
+	if err = toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, nativeErr := exec.Command(bin).CombinedOutput()
+	if nativeErr == nil {
+		t.Fatalf("native backend should reject excessive recursion, output=%q", nativeOutput)
+	}
+	if got := strings.TrimSpace(string(nativeOutput)); got != expected {
+		t.Fatalf("native error = %q, want %q", got, expected)
+	}
+}
+
 func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 	tests := []struct {
 		name       string
