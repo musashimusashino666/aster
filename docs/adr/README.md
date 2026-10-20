@@ -11,7 +11,8 @@ This directory is the canonical home for Aster Architecture Decision Records (AD
 | [ADR 0003: Array value semantics](0003-array-value-semantics.md) | Arrays have independent value semantics | Accepted | 2026-10-20 |
 | [ADR 0004: Copy-on-write array storage](0004-array-copy-on-write.md) | Copy-on-write implementation for array mutation | Accepted | 2026-10-20 |
 | [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md) | Current VM/Native resource guarantees and enforcement boundaries | Accepted | 2026-10-20 |
-| [ADR 0006: Nominal data types and pattern-matching rollout](0006-nominal-data-types-and-pattern-matching.md) | Proposed staged order for structs, enums/match, generics, and Option/Result | Proposed | 2026-10-20 |
+| [ADR 0006: Nominal data types and pattern-matching rollout](0006-nominal-data-types-and-pattern-matching.md) | Staged rollout for structs, enums/match, generics, and Option/Result | Accepted | 2026-10-20 |
+| [ADR 0007: User-defined generics and monomorphization](0007-user-defined-generics-and-monomorphization.md) | Generic syntax, inference, substitution, monomorphization, and resource bounds | Accepted | 2026-10-20 |
 
 ## Numbering and file names
 
