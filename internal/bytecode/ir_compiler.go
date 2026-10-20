@@ -289,6 +289,21 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 		}
 		c.emit(OpIndex, 0, 0, pos.Line, pos.Column)
 		return nil
+	case *ir.SliceExpr:
+		if err := c.compileExpr(n.Collection); err != nil {
+			return err
+		}
+		if err := c.compileExpr(n.Start); err != nil {
+			return err
+		}
+		if err := c.compileExpr(n.End); err != nil {
+			return err
+		}
+		if n.Op != ir.OpSliceChecked {
+			return fmt.Errorf("%d:%d: compiler: unsupported IR slice operation %q", pos.Line, pos.Column, n.Op)
+		}
+		c.emit(OpSlice, 0, 0, pos.Line, pos.Column)
+		return nil
 	case *ir.LocalExpr:
 		slot, err := c.slot(n.Symbol, n.Name, n)
 		if err != nil {
