@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added explicit `i64(value)` and `f64(value)` casts, documented truncation/range semantics, and VM/Native parity coverage; bumped JSON bytecode format to v5 for `TO_I64` and `TO_F64`.
+
 - Added mutable nested array-element assignment with copy-on-write path updates and VM/Native parity coverage; bumped JSON bytecode format to v3 for `SET_INDEX_PATH`.
 - Added checked half-open array slicing with independent result values and VM/Native parity coverage; bumped JSON bytecode format to v4 for `SLICE`.
 

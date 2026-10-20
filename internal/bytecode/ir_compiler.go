@@ -378,6 +378,24 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 			c.emit(OpBuiltin, 1, len(n.Args), pos.Line, pos.Column)
 		case ir.CallAssert:
 			c.emit(OpBuiltin, 2, len(n.Args), pos.Line, pos.Column)
+		case ir.CallI64Cast:
+			if len(n.Args) != 1 {
+				return fmt.Errorf("%d:%d: compiler: malformed i64 cast call", pos.Line, pos.Column)
+			}
+			if n.Args[0].ExprType() == "f64" {
+				c.emit(OpToI64, 0, 0, pos.Line, pos.Column)
+			} else if n.Args[0].ExprType() != "i64" {
+				return fmt.Errorf("%d:%d: compiler: invalid i64 cast source type %q", pos.Line, pos.Column, n.Args[0].ExprType())
+			}
+		case ir.CallF64Cast:
+			if len(n.Args) != 1 {
+				return fmt.Errorf("%d:%d: compiler: malformed f64 cast call", pos.Line, pos.Column)
+			}
+			if n.Args[0].ExprType() == "i64" {
+				c.emit(OpToF64, 0, 0, pos.Line, pos.Column)
+			} else if n.Args[0].ExprType() != "f64" {
+				return fmt.Errorf("%d:%d: compiler: invalid f64 cast source type %q", pos.Line, pos.Column, n.Args[0].ExprType())
+			}
 		case ir.CallUserFunction:
 			if n.Function < 0 || int(n.Function) >= len(c.program.Functions)-1 {
 				return fmt.Errorf("%d:%d: compiler: invalid IR function id %d", pos.Line, pos.Column, n.Function)

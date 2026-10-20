@@ -229,6 +229,8 @@ const (
 	CallPrint        CallTarget = "print"
 	CallLen          CallTarget = "len"
 	CallAssert       CallTarget = "assert"
+	CallI64Cast      CallTarget = "i64_cast"
+	CallF64Cast      CallTarget = "f64_cast"
 )
 
 type CallExpr struct {
@@ -646,6 +648,10 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			target = CallLen
 		case "assert":
 			target = CallAssert
+		case "i64":
+			target = CallI64Cast
+		case "f64":
+			target = CallF64Cast
 		default:
 			var exists bool
 			functionID, exists = l.functionIDs[callee.Name]

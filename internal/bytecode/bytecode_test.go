@@ -27,7 +27,7 @@ func TestRejectsUnknownOpcode(t *testing.T) {
 }
 
 func TestReadRejectsTrailingJSON(t *testing.T) {
-	input := `{"format":"aster-bytecode","version":4,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0} {}`
+	input := `{"format":"aster-bytecode","version":5,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0} {}`
 	if _, err := Read(strings.NewReader(input)); err == nil {
 		t.Fatal("expected trailing JSON rejection")
 	}
@@ -163,10 +163,10 @@ func TestValidateRejectsFallthroughPastFunctionEnd(t *testing.T) {
 }
 
 func FuzzReadBytecodeNeverPanics(f *testing.F) {
-	f.Add(`{"format":"aster-bytecode","version":4,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
+	f.Add(`{"format":"aster-bytecode","version":5,"constants":[],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
 	f.Add("")
 	f.Add("{}")
-	f.Add(`{"format":"aster-bytecode","version":4,"constants":[{"kind":"array","array":[]}],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
+	f.Add(`{"format":"aster-bytecode","version":5,"constants":[{"kind":"array","array":[]}],"functions":[{"name":"main","params":0,"locals":0,"return":"unit","code":[{"op":"HALT"}]}],"entry":0}`)
 	f.Fuzz(func(t *testing.T, input string) {
 		_, _ = Read(bytes.NewReader([]byte(input)))
 	})
@@ -177,7 +177,7 @@ func FuzzValidateInstructionOperandsNeverPanics(f *testing.F) {
 	f.Add(uint8(1), int16(-1), int16(3))
 	f.Add(uint8(255), int16(32767), int16(-32768))
 	ops := []Op{
-		OpConst, OpLoadLocal, OpBuildArray, OpIndex, OpSlice, OpSetIndexPath, OpStoreLocal, OpPop,
+		OpConst, OpLoadLocal, OpBuildArray, OpIndex, OpSlice, OpSetIndexPath, OpToI64, OpToF64, OpStoreLocal, OpPop,
 		OpNeg, OpNot, OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEqual,
 		OpNotEqual, OpLess, OpLessEqual, OpGreater, OpGreaterEqual,
 		OpJump, OpJumpIfFalse, OpJumpIfTrue, OpCall, OpBuiltin, OpReturn,
@@ -234,7 +234,7 @@ func TestValidateRejectsOversizedArrayConstant(t *testing.T) {
 
 func TestReadPreflightsOversizedConstantArrayBeforeDecode(t *testing.T) {
 	items := strings.Repeat("null,", MaxArrayLength)
-	input := "{\"format\":\"aster-bytecode\",\"version\":4,\"constants\":[{\"kind\":\"array\",\"array\":[" + items + "null]}],\"functions\":[{\"name\":\"main\",\"params\":0,\"locals\":0,\"return\":\"unit\",\"code\":[{\"op\":\"HALT\"}]}],\"entry\":0}"
+	input := "{\"format\":\"aster-bytecode\",\"version\":5,\"constants\":[{\"kind\":\"array\",\"array\":[" + items + "null]}],\"functions\":[{\"name\":\"main\",\"params\":0,\"locals\":0,\"return\":\"unit\",\"code\":[{\"op\":\"HALT\"}]}],\"entry\":0}"
 	_, err := Read(strings.NewReader(input))
 	if err == nil || !strings.Contains(err.Error(), "bytecode preflight: constant array exceeds") {
 		t.Fatalf("expected pre-decode array limit error, got %v", err)
@@ -681,5 +681,45 @@ func TestValidateRejectsNonArraySlice(t *testing.T) {
 	}})
 	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "SLICE requires Array<T>") {
 		t.Fatalf("expected non-array slice to be rejected, got %v", err)
+	}
+}
+
+func TestValidateAcceptsTypedNumericCasts(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{
+		I64(9007199254740993),
+		Value{Kind: ValueF64, F64: 4.75},
+	}, Function{Name: "main", Locals: 1, Return: "unit", Code: []Instruction{
+		{Op: OpConst, A: 0},
+		{Op: OpToF64},
+		{Op: OpPop},
+		{Op: OpConst, A: 1},
+		{Op: OpToI64},
+		{Op: OpStoreLocal, A: 0},
+		{Op: OpHalt},
+	}})
+	if err := p.Validate(); err != nil {
+		t.Fatalf("expected typed numeric casts to validate: %v", err)
+	}
+}
+
+func TestValidateRejectsNumericCastTypeMismatch(t *testing.T) {
+	p := stackVerifierProgram(0, []Value{I64(7)}, Function{Name: "main", Locals: 1, Return: "unit", Code: []Instruction{
+		{Op: OpConst, A: 0},
+		{Op: OpToI64},
+		{Op: OpStoreLocal, A: 0},
+		{Op: OpHalt},
+	}})
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "TO_I64 requires f64, got i64") {
+		t.Fatalf("expected invalid TO_I64 operand type to be rejected, got %v", err)
+	}
+}
+
+func TestValidateRejectsNumericCastOperands(t *testing.T) {
+	p := stackVerifierProgram(0, nil, Function{Name: "main", Return: "unit", Code: []Instruction{
+		{Op: OpToF64, A: 1},
+		{Op: OpHalt},
+	}})
+	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "invalid numeric cast operands") {
+		t.Fatalf("expected numeric cast operand fields to be rejected, got %v", err)
 	}
 }

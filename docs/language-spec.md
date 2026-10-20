@@ -42,13 +42,13 @@ Calls and operators are parsed with the following precedence, from low to high:
 
 ## Semantics
 
-The JSON bytecode format is versioned independently of source syntax. Version 2 introduced function parameter type metadata so the loader can verify call arguments, stack value types, return values, array element types, and local initialization before VM execution. Version 3 added `SET_INDEX_PATH` for checked nested array-element assignment. Version 4 adds `SLICE` for checked half-open array slicing. The current loader accepts version 4 and rejects older artifacts because they do not declare the instruction set and verification semantics required by the current VM.
+The JSON bytecode format is versioned independently of source syntax. Version 2 introduced function parameter type metadata so the loader can verify call arguments, stack value types, return values, array element types, and local initialization before VM execution. Version 3 added `SET_INDEX_PATH` for checked nested array-element assignment. Version 4 added `SLICE` for checked half-open array slicing. Version 5 adds `TO_I64` and `TO_F64` for explicit numeric casts. The current loader accepts version 5 and rejects older artifacts because they do not declare the instruction set and verification semantics required by the current VM.
 
 - Bindings are immutable by default. Assignment is permitted only to `let mut` variables.
 - A variable without a type annotation uses its initializer's type.
 - Nested type constructors such as `Array<Array<i64>>` are limited to 256 levels. The parser and type checker reject deeper types, and the bytecode verifier uses the same shared limit.
 - To bound recursive parsing and recursive AST traversal, syntax nesting is limited to 256 levels. The parser rejects excessively nested blocks, parenthesized/unary expressions, and expression ASTs made deep by operator, call, or index chains with a diagnostic error rather than passing an excessively deep tree to later stages.
-- Implicit numeric conversions are not performed.
+- Implicit numeric conversions are not performed. Explicit casts use `i64(value)` and `f64(value)`: both accept an `i64` or `f64` argument, and a cast to the same type leaves the value unchanged. `f64(i64_value)` uses IEEE-754 binary64 conversion and may lose integer precision. `i64(f64_value)` truncates the fractional part toward zero and rejects NaN, infinities, and values outside the half-open range `[-2^63, 2^63)` with a runtime error.
 - `if` and `while` conditions must have type `bool`.
 - A function without an explicit return type returns `unit`.
 - A non-unit function must not reach the end on any statically recognized path without returning a value of its declared type. Return-flow analysis recognizes direct returns, blocks, both branches of an unknown-condition `if/else`, literal-boolean `if` conditions (only the selected branch affects fallthrough), and literal-true `while` loops as non-fallthrough because `break` is not supported. A nonconstant `while` may execute zero times; a literal-false `while` executes no body and falls through.

@@ -2,7 +2,7 @@
 
 Aster's lexer, parser, and type checker attach stable diagnostic codes to source errors. The human-readable message remains available, and the traditional `line:column: phase error: message` prefix is preserved; the code is appended as `[CODE]`.
 
-These codes are intended for tests, editor integrations, and bug reports. A code identifies the error class; message text may become clearer over time. Codes are not yet assigned to every runtime, bytecode-loader, code-generation, or toolchain error.
+These codes are intended for tests, editor integrations, and bug reports. A code identifies the error class; message text may become clearer over time. Codes are not yet assigned to every runtime, bytecode-loader, code-generation, or toolchain error. The `i64(f64)` conversion runtime diagnostic is `f64 value out of range for i64 conversion`; it is raised for NaN, infinities, and values outside `[-2^63, 2^63)`.
 
 ## Lexer
 
@@ -88,3 +88,5 @@ These codes are intended for tests, editor integrations, and bug reports. A code
 | `TYP047` | Indexed assignment value type mismatch |
 | `TYP048` | Slicing a value that is not an array |
 | `TYP049` | Slice bounds must be `i64` |
+| `TYP050` | Numeric conversion call does not have exactly one argument |
+| `TYP051` | Numeric conversion argument is not `i64` or `f64` |

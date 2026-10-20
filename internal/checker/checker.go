@@ -218,7 +218,9 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 	}
 	return nil
 }
-func builtinName(n string) bool { return n == "print" || n == "len" || n == "assert" }
+func builtinName(n string) bool {
+	return n == "print" || n == "len" || n == "assert" || n == "i64" || n == "f64"
+}
 func typeFromName(s string) (Type, error) {
 	switch s {
 	case "i64":
@@ -587,6 +589,22 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			return "", typeError(n.Pos(), diagnostic.TypeCallTarget, "only named functions can be called")
 		}
 		args := n.Args
+		if id.Name == "i64" || id.Name == "f64" {
+			if len(args) != 1 {
+				return "", typeError(n.Pos(), diagnostic.TypeNumericCastArity, "%s conversion expects exactly one argument", id.Name)
+			}
+			argType, err := c.checkExpr(args[0])
+			if err != nil {
+				return "", err
+			}
+			if argType != I64 && argType != F64 {
+				return "", typeError(args[0].Pos(), diagnostic.TypeNumericCastOperand, "%s conversion requires i64 or f64, got %s", id.Name, argType)
+			}
+			if id.Name == "i64" {
+				return I64, nil
+			}
+			return F64, nil
+		}
 		if id.Name == "print" {
 			if len(args) != 1 {
 				return "", typeError(n.Pos(), diagnostic.TypePrintArity, "print expects exactly one argument")

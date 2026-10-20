@@ -125,7 +125,7 @@ print(sum(values));
 - `unit`: 戻り値のない関数の型。変数には保存できない。
 - `Array<T>`: 同じ型の値を格納する動的配列。`let mut` の要素代入と入れ子のインデックス代入に対応。`values[start:end]` の半開区間スライスは独立した配列値を返し、空スライスも許可します。空配列リテラルは未対応。
 
-組み込み関数は `print(value);`、`len(string_or_array)`、`assert(condition);` です。数値型間の暗黙変換はありません。
+組み込み関数は `print(value);`、`len(string_or_array)`、`assert(condition);` です。数値型間の暗黙変換はありません。明示変換には `i64(value)` と `f64(value)` を使います。`f64(i64値)` はIEEE 754のbinary64変換なので整数精度を失う場合があり、`i64(f64値)` は小数部をゼロ方向に切り捨て、`[-2^63, 2^63)` の範囲外、NaN、Infinityを実行時エラーにします。
 
 ## ディレクトリ構成
 
