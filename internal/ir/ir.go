@@ -55,10 +55,12 @@ type EnumVariant struct {
 
 type Node interface {
 	Pos() token.Position
+	EndPos() token.Position
 }
 
 type Function struct {
 	At         token.Position
+	EndAt      token.Position
 	ID         FunctionID
 	Name       string
 	Params     []Local
@@ -66,10 +68,12 @@ type Function struct {
 	Body       *BlockStmt
 }
 
-func (n *Function) Pos() token.Position { return n.At }
+func (n *Function) Pos() token.Position    { return n.At }
+func (n *Function) EndPos() token.Position { return n.EndAt }
 
 type Local struct {
 	At      token.Position
+	EndAt   token.Position
 	ID      SymbolID
 	Name    string
 	Type    Type
@@ -83,33 +87,40 @@ type Stmt interface {
 
 type BlockStmt struct {
 	At         token.Position
+	EndAt      token.Position
 	Statements []Stmt
 }
 
-func (n *BlockStmt) Pos() token.Position { return n.At }
-func (*BlockStmt) stmtNode()             {}
+func (n *BlockStmt) Pos() token.Position    { return n.At }
+func (n *BlockStmt) EndPos() token.Position { return n.EndAt }
+func (*BlockStmt) stmtNode()                {}
 
 type LetStmt struct {
 	At    token.Position
+	EndAt token.Position
 	Local Local
 	Value Expr
 }
 
-func (n *LetStmt) Pos() token.Position { return n.At }
-func (*LetStmt) stmtNode()             {}
+func (n *LetStmt) Pos() token.Position    { return n.At }
+func (n *LetStmt) EndPos() token.Position { return n.EndAt }
+func (*LetStmt) stmtNode()                {}
 
 type AssignStmt struct {
 	At     token.Position
+	EndAt  token.Position
 	Target SymbolID
 	Name   string
 	Value  Expr
 }
 
-func (n *AssignStmt) Pos() token.Position { return n.At }
-func (*AssignStmt) stmtNode()             {}
+func (n *AssignStmt) Pos() token.Position    { return n.At }
+func (n *AssignStmt) EndPos() token.Position { return n.EndAt }
+func (*AssignStmt) stmtNode()                {}
 
 type IndexAssignStmt struct {
 	At       token.Position
+	EndAt    token.Position
 	Target   SymbolID
 	Name     string
 	RootType Type
@@ -117,43 +128,52 @@ type IndexAssignStmt struct {
 	Value    Expr
 }
 
-func (n *IndexAssignStmt) Pos() token.Position { return n.At }
-func (*IndexAssignStmt) stmtNode()             {}
+func (n *IndexAssignStmt) Pos() token.Position    { return n.At }
+func (n *IndexAssignStmt) EndPos() token.Position { return n.EndAt }
+func (*IndexAssignStmt) stmtNode()                {}
 
 type ExprStmt struct {
-	At   token.Position
-	Expr Expr
+	At    token.Position
+	EndAt token.Position
+	Expr  Expr
 }
 
-func (n *ExprStmt) Pos() token.Position { return n.At }
-func (*ExprStmt) stmtNode()             {}
+func (n *ExprStmt) Pos() token.Position    { return n.At }
+func (n *ExprStmt) EndPos() token.Position { return n.EndAt }
+func (*ExprStmt) stmtNode()                {}
 
 type IfStmt struct {
 	At        token.Position
+	EndAt     token.Position
 	Condition Expr
 	Then      *BlockStmt
 	Else      Stmt
 }
 
-func (n *IfStmt) Pos() token.Position { return n.At }
-func (*IfStmt) stmtNode()             {}
+func (n *IfStmt) Pos() token.Position    { return n.At }
+func (n *IfStmt) EndPos() token.Position { return n.EndAt }
+func (*IfStmt) stmtNode()                {}
 
 type WhileStmt struct {
 	At        token.Position
+	EndAt     token.Position
 	Condition Expr
 	Body      *BlockStmt
 }
 
-func (n *WhileStmt) Pos() token.Position { return n.At }
-func (*WhileStmt) stmtNode()             {}
+func (n *WhileStmt) Pos() token.Position    { return n.At }
+func (n *WhileStmt) EndPos() token.Position { return n.EndAt }
+func (*WhileStmt) stmtNode()                {}
 
 type ReturnStmt struct {
 	At    token.Position
+	EndAt token.Position
 	Value Expr
 }
 
-func (n *ReturnStmt) Pos() token.Position { return n.At }
-func (*ReturnStmt) stmtNode()             {}
+func (n *ReturnStmt) Pos() token.Position    { return n.At }
+func (n *ReturnStmt) EndPos() token.Position { return n.EndAt }
+func (*ReturnStmt) stmtNode()                {}
 
 type Expr interface {
 	Node
@@ -163,6 +183,7 @@ type Expr interface {
 
 type LiteralExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	Kind         string
 	Int          int64
@@ -171,35 +192,41 @@ type LiteralExpr struct {
 	Bool         bool
 }
 
-func (n *LiteralExpr) Pos() token.Position { return n.At }
-func (*LiteralExpr) exprNode()             {}
-func (n *LiteralExpr) ExprType() Type      { return n.ResolvedType }
+func (n *LiteralExpr) Pos() token.Position    { return n.At }
+func (n *LiteralExpr) EndPos() token.Position { return n.EndAt }
+func (*LiteralExpr) exprNode()                {}
+func (n *LiteralExpr) ExprType() Type         { return n.ResolvedType }
 
 type LocalExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	Symbol       SymbolID
 	Name         string
 }
 
-func (n *LocalExpr) Pos() token.Position { return n.At }
-func (*LocalExpr) exprNode()             {}
-func (n *LocalExpr) ExprType() Type      { return n.ResolvedType }
+func (n *LocalExpr) Pos() token.Position    { return n.At }
+func (n *LocalExpr) EndPos() token.Position { return n.EndAt }
+func (*LocalExpr) exprNode()                {}
+func (n *LocalExpr) ExprType() Type         { return n.ResolvedType }
 
 type UnaryExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	Op           RuntimeOp
 	OperandType  Type
 	Right        Expr
 }
 
-func (n *UnaryExpr) Pos() token.Position { return n.At }
-func (*UnaryExpr) exprNode()             {}
-func (n *UnaryExpr) ExprType() Type      { return n.ResolvedType }
+func (n *UnaryExpr) Pos() token.Position    { return n.At }
+func (n *UnaryExpr) EndPos() token.Position { return n.EndAt }
+func (*UnaryExpr) exprNode()                {}
+func (n *UnaryExpr) ExprType() Type         { return n.ResolvedType }
 
 type BinaryExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	OperandType  Type
 	Op           RuntimeOp
@@ -207,22 +234,26 @@ type BinaryExpr struct {
 	Right        Expr
 }
 
-func (n *BinaryExpr) Pos() token.Position { return n.At }
-func (*BinaryExpr) exprNode()             {}
-func (n *BinaryExpr) ExprType() Type      { return n.ResolvedType }
+func (n *BinaryExpr) Pos() token.Position    { return n.At }
+func (n *BinaryExpr) EndPos() token.Position { return n.EndAt }
+func (*BinaryExpr) exprNode()                {}
+func (n *BinaryExpr) ExprType() Type         { return n.ResolvedType }
 
 type ArrayExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	Elements     []Expr
 }
 
-func (n *ArrayExpr) Pos() token.Position { return n.At }
-func (*ArrayExpr) exprNode()             {}
-func (n *ArrayExpr) ExprType() Type      { return n.ResolvedType }
+func (n *ArrayExpr) Pos() token.Position    { return n.At }
+func (n *ArrayExpr) EndPos() token.Position { return n.EndAt }
+func (*ArrayExpr) exprNode()                {}
+func (n *ArrayExpr) ExprType() Type         { return n.ResolvedType }
 
 type FieldExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	Object       Expr
 	StructID     int
@@ -230,12 +261,14 @@ type FieldExpr struct {
 	FieldName    string
 }
 
-func (n *FieldExpr) Pos() token.Position { return n.At }
-func (*FieldExpr) exprNode()             {}
-func (n *FieldExpr) ExprType() Type      { return n.ResolvedType }
+func (n *FieldExpr) Pos() token.Position    { return n.At }
+func (n *FieldExpr) EndPos() token.Position { return n.EndAt }
+func (*FieldExpr) exprNode()                {}
+func (n *FieldExpr) ExprType() Type         { return n.ResolvedType }
 
 type EnumExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	EnumID       int
 	VariantIndex int
@@ -243,12 +276,14 @@ type EnumExpr struct {
 	Args         []Expr
 }
 
-func (n *EnumExpr) Pos() token.Position { return n.At }
-func (*EnumExpr) exprNode()             {}
-func (n *EnumExpr) ExprType() Type      { return n.ResolvedType }
+func (n *EnumExpr) Pos() token.Position    { return n.At }
+func (n *EnumExpr) EndPos() token.Position { return n.EndAt }
+func (*EnumExpr) exprNode()                {}
+func (n *EnumExpr) ExprType() Type         { return n.ResolvedType }
 
 type MatchArm struct {
 	At             token.Position
+	EndAt          token.Position
 	Wildcard       bool
 	VariantIndexes []int
 	Bindings       []Local
@@ -257,6 +292,7 @@ type MatchArm struct {
 
 type MatchExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	EnumID       int
 	Subject      Expr
@@ -264,24 +300,28 @@ type MatchExpr struct {
 	Arms         []MatchArm
 }
 
-func (n *MatchExpr) Pos() token.Position { return n.At }
-func (*MatchExpr) exprNode()             {}
-func (n *MatchExpr) ExprType() Type      { return n.ResolvedType }
+func (n *MatchExpr) Pos() token.Position    { return n.At }
+func (n *MatchExpr) EndPos() token.Position { return n.EndAt }
+func (*MatchExpr) exprNode()                {}
+func (n *MatchExpr) ExprType() Type         { return n.ResolvedType }
 
 type IndexExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	Collection   Expr
 	Index        Expr
 	Op           RuntimeOp
 }
 
-func (n *IndexExpr) Pos() token.Position { return n.At }
-func (*IndexExpr) exprNode()             {}
-func (n *IndexExpr) ExprType() Type      { return n.ResolvedType }
+func (n *IndexExpr) Pos() token.Position    { return n.At }
+func (n *IndexExpr) EndPos() token.Position { return n.EndAt }
+func (*IndexExpr) exprNode()                {}
+func (n *IndexExpr) ExprType() Type         { return n.ResolvedType }
 
 type SliceExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	Collection   Expr
 	Start        Expr
@@ -289,9 +329,10 @@ type SliceExpr struct {
 	Op           RuntimeOp
 }
 
-func (n *SliceExpr) Pos() token.Position { return n.At }
-func (*SliceExpr) exprNode()             {}
-func (n *SliceExpr) ExprType() Type      { return n.ResolvedType }
+func (n *SliceExpr) Pos() token.Position    { return n.At }
+func (n *SliceExpr) EndPos() token.Position { return n.EndAt }
+func (*SliceExpr) exprNode()                {}
+func (n *SliceExpr) ExprType() Type         { return n.ResolvedType }
 
 type CallTarget string
 
@@ -307,6 +348,7 @@ const (
 
 type CallExpr struct {
 	At           token.Position
+	EndAt        token.Position
 	ResolvedType Type
 	Target       CallTarget
 	Function     FunctionID
@@ -315,9 +357,10 @@ type CallExpr struct {
 	Args         []Expr
 }
 
-func (n *CallExpr) Pos() token.Position { return n.At }
-func (*CallExpr) exprNode()             {}
-func (n *CallExpr) ExprType() Type      { return n.ResolvedType }
+func (n *CallExpr) Pos() token.Position    { return n.At }
+func (n *CallExpr) EndPos() token.Position { return n.EndAt }
+func (*CallExpr) exprNode()                {}
+func (n *CallExpr) ExprType() Type         { return n.ResolvedType }
 
 // RuntimeOp records the language-level operation selected after type checking.
 // Checked operations must trap rather than inherit unchecked Go arithmetic.
@@ -465,6 +508,7 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 		}
 		program.Functions = append(program.Functions, &Function{
 			At:         decl.Pos(),
+			EndAt:      decl.EndPos(),
 			ID:         l.functionIDs[decl.Name],
 			Name:       decl.Name,
 			ReturnType: signature.Return,
@@ -478,10 +522,11 @@ func Lower(tree *ast.Program, typeOf TypeResolver, functionOf FunctionResolver) 
 		signature, _ := functionOf(decl.Name)
 		for j, param := range decl.Params {
 			local := Local{
-				At:   param.At,
-				ID:   l.newSymbolID(),
-				Name: param.Name,
-				Type: signature.Params[j],
+				At:    param.At,
+				EndAt: param.EndAt,
+				ID:    l.newSymbolID(),
+				Name:  param.Name,
+				Type:  signature.Params[j],
 			}
 			if !l.scope.define(local) {
 				return nil, fmt.Errorf("%d:%d: ir: duplicate parameter %q", param.At.Line, param.At.Column, param.Name)
@@ -523,7 +568,7 @@ func (l *lowerer) lowerBlock(block *ast.BlockStmt, pushScope bool) (*BlockStmt, 
 		l.scope = newScope(old)
 		defer func() { l.scope = old }()
 	}
-	out := &BlockStmt{At: block.Pos()}
+	out := &BlockStmt{At: block.Pos(), EndAt: block.EndPos()}
 	for _, stmt := range block.Statements {
 		lowered, err := l.lowerStmt(stmt)
 		if err != nil {
@@ -564,11 +609,11 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		local := Local{At: n.Pos(), ID: l.newSymbolID(), Name: n.Name, Type: value.ExprType(), Mutable: n.Mutable}
+		local := Local{At: n.Pos(), EndAt: n.EndPos(), ID: l.newSymbolID(), Name: n.Name, Type: value.ExprType(), Mutable: n.Mutable}
 		if !l.scope.define(local) {
 			return nil, fmt.Errorf("%d:%d: ir: duplicate local %q", n.Pos().Line, n.Pos().Column, n.Name)
 		}
-		return &LetStmt{At: n.Pos(), Local: local, Value: value}, nil
+		return &LetStmt{At: n.Pos(), EndAt: n.EndPos(), Local: local, Value: value}, nil
 	case *ast.IndexAssignStmt:
 		root, indexNodes, ok := indexAssignmentParts(n.Target)
 		if !ok {
@@ -591,7 +636,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 			return nil, err
 		}
 		return &IndexAssignStmt{
-			At: n.Pos(), Target: target.ID, Name: target.Name, RootType: target.Type,
+			At: n.Pos(), EndAt: n.EndPos(), Target: target.ID, Name: target.Name, RootType: target.Type,
 			Indices: indices, Value: value,
 		}, nil
 	case *ast.AssignStmt:
@@ -603,13 +648,13 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &AssignStmt{At: n.Pos(), Target: target.ID, Name: target.Name, Value: value}, nil
+		return &AssignStmt{At: n.Pos(), EndAt: n.EndPos(), Target: target.ID, Name: target.Name, Value: value}, nil
 	case *ast.ExprStmt:
 		expr, err := l.lowerExpr(n.Expr)
 		if err != nil {
 			return nil, err
 		}
-		return &ExprStmt{At: n.Pos(), Expr: expr}, nil
+		return &ExprStmt{At: n.Pos(), EndAt: n.EndPos(), Expr: expr}, nil
 	case *ast.IfStmt:
 		condition, err := l.lowerExpr(n.Condition)
 		if err != nil {
@@ -626,7 +671,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 				return nil, err
 			}
 		}
-		return &IfStmt{At: n.Pos(), Condition: condition, Then: thenBlock, Else: elseStmt}, nil
+		return &IfStmt{At: n.Pos(), EndAt: n.EndPos(), Condition: condition, Then: thenBlock, Else: elseStmt}, nil
 	case *ast.WhileStmt:
 		condition, err := l.lowerExpr(n.Condition)
 		if err != nil {
@@ -636,7 +681,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &WhileStmt{At: n.Pos(), Condition: condition, Body: body}, nil
+		return &WhileStmt{At: n.Pos(), EndAt: n.EndPos(), Condition: condition, Body: body}, nil
 	case *ast.ReturnStmt:
 		var value Expr
 		var err error
@@ -646,7 +691,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 				return nil, err
 			}
 		}
-		return &ReturnStmt{At: n.Pos(), Value: value}, nil
+		return &ReturnStmt{At: n.Pos(), EndAt: n.EndPos(), Value: value}, nil
 	default:
 		return nil, fmt.Errorf("%d:%d: ir: unsupported statement %T", stmt.Pos().Line, stmt.Pos().Column, stmt)
 	}
@@ -662,6 +707,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 	case *ast.LiteralExpr:
 		return &LiteralExpr{
 			At:           n.Pos(),
+			EndAt:        n.EndPos(),
 			ResolvedType: resolvedType,
 			Kind:         n.Kind,
 			Int:          n.Int,
@@ -677,7 +723,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if local.Type != resolvedType {
 			return nil, fmt.Errorf("%d:%d: ir: resolved local type mismatch for %q", n.Pos().Line, n.Pos().Column, n.Name)
 		}
-		return &LocalExpr{At: n.Pos(), ResolvedType: resolvedType, Symbol: local.ID, Name: local.Name}, nil
+		return &LocalExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Symbol: local.ID, Name: local.Name}, nil
 	case *ast.UnaryExpr:
 		right, err := l.lowerExpr(n.Right)
 		if err != nil {
@@ -687,7 +733,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if !ok {
 			return nil, fmt.Errorf("%d:%d: ir: unsupported unary operator %q for %s", n.Pos().Line, n.Pos().Column, n.Op, right.ExprType())
 		}
-		return &UnaryExpr{At: n.Pos(), ResolvedType: resolvedType, Op: op, OperandType: right.ExprType(), Right: right}, nil
+		return &UnaryExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Op: op, OperandType: right.ExprType(), Right: right}, nil
 	case *ast.BinaryExpr:
 		left, err := l.lowerExpr(n.Left)
 		if err != nil {
@@ -702,7 +748,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			return nil, fmt.Errorf("%d:%d: ir: unsupported binary operator %q for %s", n.Pos().Line, n.Pos().Column, n.Op, left.ExprType())
 		}
 		return &BinaryExpr{
-			At: n.Pos(), ResolvedType: resolvedType, OperandType: left.ExprType(),
+			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, OperandType: left.ExprType(),
 			Op: op, Left: left, Right: right,
 		}, nil
 	case *ast.ArrayExpr:
@@ -714,7 +760,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			}
 			elements[i] = lowered
 		}
-		return &ArrayExpr{At: n.Pos(), ResolvedType: resolvedType, Elements: elements}, nil
+		return &ArrayExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Elements: elements}, nil
 	case *ast.EnumVariantExpr:
 		enumID, exists := l.enumIDs[n.EnumName]
 		if !exists {
@@ -738,7 +784,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			}
 			args[i] = lowered
 		}
-		return &EnumExpr{At: n.Pos(), ResolvedType: resolvedType, EnumID: enumID, VariantIndex: variantIndex, VariantName: n.VariantName, Args: args}, nil
+		return &EnumExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, EnumID: enumID, VariantIndex: variantIndex, VariantName: n.VariantName, Args: args}, nil
 	case *ast.MatchExpr:
 		subject, err := l.lowerExpr(n.Subject)
 		if err != nil {
@@ -748,11 +794,11 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if !exists {
 			return nil, fmt.Errorf("%d:%d: ir: unresolved match enum %q", n.Pos().Line, n.Pos().Column, subject.ExprType())
 		}
-		temp := Local{At: n.Pos(), ID: l.newSymbolID(), Name: "__match_subject", Type: subject.ExprType()}
+		temp := Local{At: n.Pos(), EndAt: n.EndPos(), ID: l.newSymbolID(), Name: "__match_subject", Type: subject.ExprType()}
 		arms := make([]MatchArm, 0, len(n.Arms))
 		covered := make(map[int]bool)
 		for _, arm := range n.Arms {
-			irArm := MatchArm{At: arm.At, Wildcard: arm.Pattern.Wildcard, Expr: nil}
+			irArm := MatchArm{At: arm.At, EndAt: arm.EndAt, Wildcard: arm.Pattern.Wildcard, Expr: nil}
 			var variantIndex int = -1
 			if arm.Pattern.Wildcard {
 				for i := range l.enumTypes[enumID].Variants {
@@ -781,7 +827,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 						l.scope = oldScope
 						return nil, fmt.Errorf("%d:%d: ir: too many enum pattern bindings", arm.At.Line, arm.At.Column)
 					}
-					local := Local{At: arm.Pattern.At, ID: l.newSymbolID(), Name: name, Type: variant.Payload[i]}
+					local := Local{At: arm.Pattern.At, EndAt: arm.Pattern.EndAt, ID: l.newSymbolID(), Name: name, Type: variant.Payload[i]}
 					if !l.scope.define(local) {
 						l.scope = oldScope
 						return nil, fmt.Errorf("%d:%d: ir: duplicate enum pattern binding %q", arm.At.Line, arm.At.Column, name)
@@ -807,7 +853,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			irArm.Expr = lowered
 			arms = append(arms, irArm)
 		}
-		return &MatchExpr{At: n.Pos(), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
+		return &MatchExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
 	case *ast.FieldExpr:
 		object, err := l.lowerExpr(n.Object)
 		if err != nil {
@@ -831,7 +877,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if fieldIndex < 0 {
 			return nil, fmt.Errorf("%d:%d: ir: unresolved field %q on %s", n.Pos().Line, n.Pos().Column, n.Name, object.ExprType())
 		}
-		return &FieldExpr{At: n.Pos(), ResolvedType: resolvedType, Object: object, StructID: structID, FieldIndex: fieldIndex, FieldName: n.Name}, nil
+		return &FieldExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Object: object, StructID: structID, FieldIndex: fieldIndex, FieldName: n.Name}, nil
 	case *ast.IndexExpr:
 		collection, err := l.lowerExpr(n.Collection)
 		if err != nil {
@@ -841,7 +887,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &IndexExpr{At: n.Pos(), ResolvedType: resolvedType, Collection: collection, Index: index, Op: OpIndexChecked}, nil
+		return &IndexExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Collection: collection, Index: index, Op: OpIndexChecked}, nil
 	case *ast.SliceExpr:
 		collection, err := l.lowerExpr(n.Collection)
 		if err != nil {
@@ -856,7 +902,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			return nil, err
 		}
 		return &SliceExpr{
-			At: n.Pos(), ResolvedType: resolvedType,
+			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType,
 			Collection: collection, Start: start, End: end, Op: OpSliceChecked,
 		}, nil
 	case *ast.CallExpr:
@@ -876,7 +922,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		functionID := FunctionID(-1)
 		if structID, isStruct := l.structIDs[callee.Name]; isStruct {
 			return &CallExpr{
-				At: n.Pos(), ResolvedType: resolvedType, Target: CallStructConstructor,
+				At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Target: CallStructConstructor,
 				StructID: structID, Function: FunctionID(-1), FunctionName: callee.Name, Args: args,
 			}, nil
 		}
@@ -900,7 +946,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			target = CallUserFunction
 		}
 		return &CallExpr{
-			At: n.Pos(), ResolvedType: resolvedType, Target: target,
+			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Target: target,
 			Function: functionID, FunctionName: callee.Name, Args: args,
 		}, nil
 	default:

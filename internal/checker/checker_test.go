@@ -707,3 +707,46 @@ func TestGenericEnumPreservesNestedConflictingInferenceDiagnostic(t *testing.T) 
 		t.Fatalf("expected nested conflicting inference diagnostic, got %v", err)
 	}
 }
+
+func TestAnalyzePropagatesASTEndPositionsIntoTypedIR(t *testing.T) {
+	source := "fn identity(value: i64) -> i64 { return value + 1; }\nlet answer = identity(41);"
+	tree, err := parser.Parse(source, "ir-spans.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	astFunction := tree.Decls[0].(*ast.Function)
+	irFunction := typed.IR.Functions[0]
+	if irFunction.EndPos() != astFunction.EndPos() {
+		t.Fatalf("typed function end = %+v, AST function end = %+v", irFunction.EndPos(), astFunction.EndPos())
+	}
+	if irFunction.Params[0].EndAt != astFunction.Params[0].EndPos() {
+		t.Fatalf("typed parameter end = %+v, AST parameter end = %+v", irFunction.Params[0].EndAt, astFunction.Params[0].EndPos())
+	}
+
+	astReturn := astFunction.Body.Statements[0].(*ast.ReturnStmt)
+	irReturn := irFunction.Body.Statements[0].(*ir.ReturnStmt)
+	if irReturn.EndPos() != astReturn.EndPos() {
+		t.Fatalf("typed return end = %+v, AST return end = %+v", irReturn.EndPos(), astReturn.EndPos())
+	}
+	astBinary := astReturn.Value.(*ast.BinaryExpr)
+	irBinary := irReturn.Value.(*ir.BinaryExpr)
+	if irBinary.EndPos() != astBinary.EndPos() {
+		t.Fatalf("typed binary expression end = %+v, AST end = %+v", irBinary.EndPos(), astBinary.EndPos())
+	}
+
+	astLet := tree.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	irLet := typed.IR.Body[0].(*ir.LetStmt)
+	if irLet.EndPos() != astLet.EndPos() || irLet.Local.EndAt != astLet.EndPos() {
+		t.Fatalf("typed let/local ends = %+v / %+v, AST let end = %+v", irLet.EndPos(), irLet.Local.EndAt, astLet.EndPos())
+	}
+	astCall := astLet.Value.(*ast.CallExpr)
+	irCall := irLet.Value.(*ir.CallExpr)
+	if irCall.EndPos() != astCall.EndPos() {
+		t.Fatalf("typed call end = %+v, AST call end = %+v", irCall.EndPos(), astCall.EndPos())
+	}
+}
