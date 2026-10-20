@@ -3,6 +3,11 @@ package diagnostic
 import (
 	"context"
 	"errors"
+	"go/ast"
+	goparser "go/parser"
+	gotoken "go/token"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -39,6 +44,143 @@ func TestRuntimeCodeAssignsStableFailureClasses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNativeRuntimeDiagnosticClassifierMatchesVM(t *testing.T) {
+	messages := []string{
+		"assertion failed",
+		"i64 overflow in addition",
+		"division by zero",
+		"remainder by zero",
+		"non-finite floating-point result",
+		"array index 4 out of bounds for length 2",
+		"slice bounds [2:1] out of bounds for length 3",
+		"f64 value out of range for i64 conversion",
+		"string length limit exceeded (maximum 16 bytes)",
+		"printed value exceeds 16-byte output limit",
+		"printed array nesting exceeds limit",
+		"stdout byte limit exceeded (maximum 64 bytes)",
+		"call depth limit exceeded (maximum 4)",
+		"instruction budget exceeded (100 steps)",
+		"operand stack limit exceeded",
+		"active local slot limit exceeded",
+		"write output: broken pipe",
+		"invalid array element count",
+		"array length limit exceeded",
+		"unexpected runtime condition",
+	}
+	for _, message := range messages {
+		t.Run(message, func(t *testing.T) {
+			gotNative := nativeRuntimeDiagnosticCodeForTest(t, message)
+			gotVM := RuntimeCode(message)
+			if gotNative != gotVM {
+				t.Fatalf("native runtime code = %q, VM runtime code = %q", gotNative, gotVM)
+			}
+		})
+	}
+}
+
+func nativeRuntimeDiagnosticCodeForTest(t *testing.T, message string) string {
+	t.Helper()
+	source, err := os.ReadFile("../codegen/preamble/runtime.go.tmpl")
+	if err != nil {
+		t.Fatalf("read native runtime template: %v", err)
+	}
+	start := strings.Index(string(source), "func asterRuntimeDiagnosticCode")
+	end := strings.Index(string(source), "\nfunc asterRuntimeError", start)
+	if start < 0 || end < 0 {
+		t.Fatal("native runtime classifier function was not found")
+	}
+	file, err := goparser.ParseFile(gotoken.NewFileSet(),
+		"runtime_classifier.go",
+		"package runtimeclassifier\nimport \"strings\"\n"+string(source[start:end]),
+		0)
+	if err != nil {
+		t.Fatalf("parse native runtime classifier: %v", err)
+	}
+	var classifier *ast.FuncDecl
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "asterRuntimeDiagnosticCode" {
+			classifier = fn
+			break
+		}
+	}
+	if classifier == nil {
+		t.Fatal("parsed native runtime classifier was not found")
+	}
+	for _, statement := range classifier.Body.List {
+		sw, ok := statement.(*ast.SwitchStmt)
+		if !ok {
+			continue
+		}
+		for _, item := range sw.Body.List {
+			clause, ok := item.(*ast.CaseClause)
+			if !ok {
+				continue
+			}
+			matched := len(clause.List) == 0
+			for _, condition := range clause.List {
+				if nativeClassifierConditionMatches(condition, message) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+			for _, body := range clause.Body {
+				ret, ok := body.(*ast.ReturnStmt)
+				if !ok || len(ret.Results) != 1 {
+					continue
+				}
+				literal, ok := ret.Results[0].(*ast.BasicLit)
+				if !ok || literal.Kind != gotoken.STRING {
+					t.Fatalf("unexpected return in native runtime classifier: %#v", body)
+				}
+				code, err := strconv.Unquote(literal.Value)
+				if err != nil {
+					t.Fatalf("decode native diagnostic code: %v", err)
+				}
+				return code
+			}
+		}
+	}
+	t.Fatalf("no classifier case matched %q", message)
+	return ""
+}
+
+func nativeClassifierConditionMatches(expr ast.Expr, message string) bool {
+	switch condition := expr.(type) {
+	case *ast.BinaryExpr:
+		switch condition.Op {
+		case gotoken.LAND:
+			return nativeClassifierConditionMatches(condition.X, message) &&
+				nativeClassifierConditionMatches(condition.Y, message)
+		case gotoken.LOR:
+			return nativeClassifierConditionMatches(condition.X, message) ||
+				nativeClassifierConditionMatches(condition.Y, message)
+		}
+	case *ast.CallExpr:
+		selector, ok := condition.Fun.(*ast.SelectorExpr)
+		if !ok || len(condition.Args) != 2 {
+			return false
+		}
+		value, ok := condition.Args[1].(*ast.BasicLit)
+		if !ok || value.Kind != gotoken.STRING {
+			return false
+		}
+		fragment, err := strconv.Unquote(value.Value)
+		if err != nil {
+			return false
+		}
+		switch selector.Sel.Name {
+		case "Contains":
+			return strings.Contains(message, fragment)
+		case "HasPrefix":
+			return strings.HasPrefix(message, fragment)
+		}
+	}
+	return false
 }
 
 func TestBytecodeCodeAssignsStableFailureClasses(t *testing.T) {
