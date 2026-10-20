@@ -23,14 +23,21 @@ type expander struct {
 	structTemplates    map[string]*ast.StructDecl
 	structInstances    map[string]*ast.StructDecl
 	structInstanceInfo map[string]structInstanceInfo
+	enumTemplates     map[string]*ast.EnumDecl
+	enumInstances     map[string]*ast.EnumDecl
+	enumInstanceInfo  map[string]structInstanceInfo
+	enumDecls         map[string]*ast.EnumDecl
 	knownTypes         map[string]bool
 	structFields       map[string]map[string]ast.TypeRef
 	instances          map[string]*ast.Function
 	ordered            []*ast.Function
 	orderedStructs     []*ast.StructDecl
+	orderedEnums       []*ast.EnumDecl
 	variables          map[string]ast.TypeRef
+	expectedReturn     *ast.TypeRef
 	nextID             int
 	nextStructID       int
+	nextEnumID         int
 }
 
 // Expand specializes explicitly instantiated generic functions before type
@@ -46,6 +53,10 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 		structTemplates:    map[string]*ast.StructDecl{},
 		structInstances:    map[string]*ast.StructDecl{},
 		structInstanceInfo: map[string]structInstanceInfo{},
+		enumTemplates:     map[string]*ast.EnumDecl{},
+		enumInstances:     map[string]*ast.EnumDecl{},
+		enumInstanceInfo:  map[string]structInstanceInfo{},
+		enumDecls:         map[string]*ast.EnumDecl{},
 		structFields:       map[string]map[string]ast.TypeRef{},
 		knownTypes: map[string]bool{
 			"i64": true, "f64": true, "bool": true, "string": true, "unit": true,
@@ -132,14 +143,44 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 			}
 			e.structFields[n.Name] = fields
 		case *ast.EnumDecl:
+			if _, conflictsWithStruct := structNames[n.Name]; conflictsWithStruct {
+				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateEnum, "enum name '%s' conflicts with a struct", n.Name)
+			}
+			if declaredFunctionNames[n.Name] {
+				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateEnum, "enum name '%s' conflicts with a function", n.Name)
+			}
+			if !langtypes.ValidName(n.Name) || reservedTypeName(n.Name) {
+				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateEnum, "invalid or reserved enum name '%s'", n.Name)
+			}
 			e.knownTypes[n.Name] = true
+			if len(n.TypeParams) > 0 {
+				if len(n.TypeParams) > limits.MaxGenericTypeParameters {
+					return nil, typeError(n.Pos(), diagnostic.TypeGenericInstantiationLimit, "generic enum '%s' declares %d type parameters; maximum is %d", n.Name, len(n.TypeParams), limits.MaxGenericTypeParameters)
+				}
+				seen := map[string]bool{}
+				for _, name := range n.TypeParams {
+					if !langtypes.ValidName(name) || reservedTypeName(name) || strings.HasPrefix(name, "__") || seen[name] {
+						return nil, typeError(n.Pos(), diagnostic.TypeInvalidGenericParameter, "invalid, reserved, or duplicate type parameter '%s' in enum '%s'", name, n.Name)
+					}
+					seen[name] = true
+				}
+				variantNames := map[string]bool{}
+				for _, variant := range n.Variants {
+					if !langtypes.ValidName(variant.Name) || variantNames[variant.Name] {
+						return nil, typeError(variant.At, diagnostic.TypeDuplicateEnumVariant, "invalid or duplicate variant '%s' in enum '%s'", variant.Name, n.Name)
+					}
+					variantNames[variant.Name] = true
+				}
+				e.enumTemplates[n.Name] = n
+			}
+			e.enumDecls[n.Name] = n
 		}
 	}
 
 	// Preserve AST node identity for programs that do not use generic templates.
 	// Existing TypedProgram.TypeOf callers may retain expression pointers from the
 	// parsed program, so avoid cloning the AST when expansion is unnecessary.
-	if len(e.templates) == 0 && len(e.structTemplates) == 0 {
+	if len(e.templates) == 0 && len(e.structTemplates) == 0 && len(e.enumTemplates) == 0 {
 		return program, nil
 	}
 
@@ -164,6 +205,15 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 				return nil, err
 			}
 			out.Decls = append(out.Decls, copy)
+		case *ast.EnumDecl:
+			if len(n.TypeParams) > 0 {
+				continue // generic templates are emitted only as concrete instances
+			}
+			copy, err := e.rewriteEnum(n, nil, 0)
+			if err != nil {
+				return nil, err
+			}
+			out.Decls = append(out.Decls, copy)
 		case *ast.StmtDecl:
 			stmt, err := e.rewriteStmt(n.Statement, nil, 0)
 			if err != nil {
@@ -176,6 +226,9 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 		}
 	}
 	out.Decls = append(out.Decls, structDecls(e.orderedStructs)...)
+	for _, enumDecl := range e.orderedEnums {
+		out.Decls = append(out.Decls, enumDecl)
+	}
 	out.Decls = append(out.Decls, funcDecls(e.ordered)...)
 	return out, nil
 }
@@ -266,7 +319,14 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 	for _, param := range instance.Params {
 		e.variables[param.Name] = cloneTypeRef(param.Type)
 	}
+	previousExpectedReturn := e.expectedReturn
+	e.expectedReturn = nil
+	if instance.ReturnType != nil {
+		expected := cloneTypeRef(*instance.ReturnType)
+		e.expectedReturn = &expected
+	}
 	body, err := e.rewriteBlock(template.Body, sub, depth)
+	e.expectedReturn = previousExpectedReturn
 	e.variables = previousVariables
 	if err != nil {
 		return "", err
@@ -329,6 +389,122 @@ func (e *expander) instantiateStruct(template *ast.StructDecl, args []ast.TypeRe
 	return name, nil
 }
 
+func (e *expander) instantiateEnum(template *ast.EnumDecl, args []ast.TypeRef, at token.Position, callerSub map[string]ast.TypeRef, callerDepth int) (string, error) {
+	if len(args) != len(template.TypeParams) {
+		return "", typeError(at, diagnostic.TypeGenericEnumArgumentCount, "generic enum '%s' expects %d type arguments, got %d", template.Name, len(template.TypeParams), len(args))
+	}
+	concrete := make([]ast.TypeRef, len(args))
+	for i, arg := range args {
+		resolved, err := e.resolveType(substituteType(arg, callerSub), at, callerDepth+1)
+		if err != nil {
+			return "", err
+		}
+		concrete[i] = resolved
+	}
+	parts := make([]string, len(concrete))
+	for i, arg := range concrete {
+		parts[i] = typeKey(arg)
+	}
+	key := template.Name + "<" + strings.Join(parts, ",") + ">"
+	if existing, ok := e.enumInstances[key]; ok {
+		return existing.Name, nil
+	}
+	depth := callerDepth + 1
+	if depth > limits.MaxGenericExpansionDepth {
+		return "", typeError(at, diagnostic.TypeGenericEnumInstantiationLimit, "generic enum expansion exceeds depth limit %d", limits.MaxGenericExpansionDepth)
+	}
+	if len(e.enumInstances) >= limits.MaxGenericEnumInstantiations {
+		return "", typeError(at, diagnostic.TypeGenericEnumInstantiationLimit, "generic enum instances exceed limit %d", limits.MaxGenericEnumInstantiations)
+	}
+	sub := make(map[string]ast.TypeRef, len(template.TypeParams))
+	for i, param := range template.TypeParams {
+		sub[param] = concrete[i]
+	}
+	e.nextEnumID++
+	name := fmt.Sprintf("__aster_generic_enum_%06d", e.nextEnumID)
+	instance := &ast.EnumDecl{At: template.At, Name: name}
+	// Register before resolving payloads so identical recursive applications
+	// reuse this nominal identity instead of recursively expanding forever.
+	e.enumInstances[key] = instance
+	e.enumInstanceInfo[name] = structInstanceInfo{template: template.Name, args: cloneTypeArgs(concrete)}
+	e.enumDecls[name] = instance
+	e.knownTypes[name] = true
+	e.orderedEnums = append(e.orderedEnums, instance)
+	instance.Variants = make([]ast.EnumVariant, len(template.Variants))
+	for i, variant := range template.Variants {
+		out := ast.EnumVariant{At: variant.At, Name: variant.Name, Payload: make([]ast.TypeRef, len(variant.Payload))}
+		for j, payload := range variant.Payload {
+			typ, err := e.resolveType(substituteType(payload, sub), payload.At, depth)
+			if err != nil {
+				return "", err
+			}
+			out.Payload[j] = typ
+		}
+		instance.Variants[i] = out
+	}
+	return name, nil
+}
+
+func (e *expander) inferEnumTypeArguments(template *ast.EnumDecl, variantName string, args []ast.Expr, at token.Position) ([]ast.TypeRef, error) {
+	var variant *ast.EnumVariant
+	for i := range template.Variants {
+		if template.Variants[i].Name == variantName {
+			variant = &template.Variants[i]
+			break
+		}
+	}
+	if variant == nil {
+		return nil, typeError(at, diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", template.Name, variantName)
+	}
+	if len(args) != len(variant.Payload) {
+		return nil, typeError(at, diagnostic.TypeEnumConstructorArity, "variant %s::%s requires %d payload arguments", template.Name, variantName, len(variant.Payload))
+	}
+	parameters := make(map[string]bool, len(template.TypeParams))
+	for _, param := range template.TypeParams {
+		parameters[param] = true
+	}
+	inferred := make(map[string]ast.TypeRef, len(template.TypeParams))
+	for i, pattern := range variant.Payload {
+		if !containsParameter(pattern, parameters) {
+			continue
+		}
+		actual, ok := e.inferExprType(args[i])
+		if !ok {
+			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericEnumInference, "cannot infer type arguments for %s::%s from payload %d; use %s::<...>::%s", template.Name, variantName, i+1, template.Name, variantName)
+		}
+		if err := e.unifyType(pattern, actual, parameters, inferred); err != nil {
+			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericEnumInference, "cannot infer type arguments for '%s' consistently: %v", template.Name, err)
+		}
+	}
+	out := make([]ast.TypeRef, len(template.TypeParams))
+	for i, param := range template.TypeParams {
+		typ, ok := inferred[param]
+		if !ok {
+			return nil, typeError(at, diagnostic.TypeGenericEnumInference, "cannot infer type parameter '%s' for enum '%s'; add a type annotation or use %s::<...>::%s", param, template.Name, template.Name, variantName)
+		}
+		out[i] = typ
+	}
+	return out, nil
+}
+
+func (e *expander) rewriteEnum(template *ast.EnumDecl, sub map[string]ast.TypeRef, depth int) (*ast.EnumDecl, error) {
+	out := &ast.EnumDecl{At: template.At, Name: template.Name, Variants: make([]ast.EnumVariant, len(template.Variants))}
+	// Keep the declaration visible while resolving its own payload types.
+	e.enumDecls[out.Name] = out
+	for i, variant := range template.Variants {
+		copy := ast.EnumVariant{At: variant.At, Name: variant.Name, Payload: make([]ast.TypeRef, len(variant.Payload))}
+		for j, payload := range variant.Payload {
+			typ, err := e.resolveType(substituteType(payload, sub), payload.At, depth)
+			if err != nil {
+				return nil, err
+			}
+			copy.Payload[j] = typ
+		}
+		out.Variants[i] = copy
+	}
+	return out, nil
+}
+
 func cloneTypeArgs(args []ast.TypeRef) []ast.TypeRef {
 	out := make([]ast.TypeRef, len(args))
 	for i, arg := range args {
@@ -388,6 +564,24 @@ func (e *expander) resolveType(typ ast.TypeRef, at token.Position, depth int) (a
 	}
 	if typ.Element != nil {
 		return ast.TypeRef{}, typeError(at, diagnostic.TypeGenericArgumentsOnNonGeneric, "type '%s' does not accept an Array-style type argument", typ.Name)
+	}
+	if template, isGeneric := e.enumTemplates[typ.Name]; isGeneric {
+		if len(typ.Args) == 0 {
+			return ast.TypeRef{}, typeError(at, diagnostic.TypeGenericEnumArgumentCount, "generic enum '%s' requires %d type arguments", typ.Name, len(template.TypeParams))
+		}
+		args := make([]ast.TypeRef, len(typ.Args))
+		for i, arg := range typ.Args {
+			resolved, err := e.resolveType(arg, at, depth+1)
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			args[i] = resolved
+		}
+		name, err := e.instantiateEnum(template, args, at, nil, depth)
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		return ast.TypeRef{Name: name, At: typ.At}, nil
 	}
 	if template, isGeneric := e.structTemplates[typ.Name]; isGeneric {
 		if len(typ.Args) == 0 {
@@ -555,6 +749,14 @@ func (e *expander) unifyType(pattern, actual ast.TypeRef, parameters map[string]
 		}
 		return nil
 	}
+	if info, ok := e.enumInstanceInfo[actual.Name]; ok && pattern.Name == info.template && len(pattern.Args) == len(info.args) {
+		for i := range pattern.Args {
+			if err := e.unifyType(pattern.Args[i], info.args[i], parameters, inferred); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	// Concrete parameter types are still checked by the regular checker after
 	// specialization; they do not participate in type-variable inference.
 	return nil
@@ -639,6 +841,21 @@ func (e *expander) inferExprType(expr ast.Expr) (ast.TypeRef, bool) {
 		}
 		return cloneTypeRef(*fn.ReturnType), true
 	case *ast.EnumVariantExpr:
+		if template, ok := e.enumTemplates[n.EnumName]; ok {
+			args := cloneTypeArgs(n.TypeArgs)
+			if len(args) == 0 {
+				var err error
+				args, err = e.inferEnumTypeArguments(template, n.VariantName, n.Args, n.At)
+				if err != nil {
+					return ast.TypeRef{}, false
+				}
+			}
+			name, err := e.instantiateEnum(template, args, n.At, nil, 0)
+			if err != nil {
+				return ast.TypeRef{}, false
+			}
+			return concrete(name)
+		}
 		return concrete(n.EnumName)
 	case *ast.MatchExpr:
 		if len(n.Arms) == 0 {
@@ -733,7 +950,14 @@ func (e *expander) rewriteFunction(fn *ast.Function, sub map[string]ast.TypeRef,
 		}
 		out.ReturnType = &ret
 	}
+	previousExpectedReturn := e.expectedReturn
+	e.expectedReturn = nil
+	if out.ReturnType != nil {
+		expected := cloneTypeRef(*out.ReturnType)
+		e.expectedReturn = &expected
+	}
 	body, err := e.rewriteBlock(fn.Body, sub, depth)
+	e.expectedReturn = previousExpectedReturn
 	e.variables = previousVariables
 	if err != nil {
 		return nil, err
@@ -770,7 +994,12 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 			}
 			out.Annotation = &v
 		}
-		value, err := e.rewriteExpr(n.Value, sub, depth)
+		var expected *ast.TypeRef
+		if out.Annotation != nil {
+			valueType := cloneTypeRef(*out.Annotation)
+			expected = &valueType
+		}
+		value, err := e.rewriteExprExpected(n.Value, sub, depth, expected)
 		if err != nil {
 			return nil, err
 		}
@@ -833,7 +1062,7 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 	case *ast.ReturnStmt:
 		out := &ast.ReturnStmt{At: n.At}
 		if n.Value != nil {
-			value, err := e.rewriteExpr(n.Value, sub, depth)
+			value, err := e.rewriteExprExpected(n.Value, sub, depth, e.expectedReturn)
 			if err != nil {
 				return nil, err
 			}
@@ -846,6 +1075,10 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 }
 
 func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth int) (ast.Expr, error) {
+	return e.rewriteExprExpected(expr, sub, depth, nil)
+}
+
+func (e *expander) rewriteExprExpected(expr ast.Expr, sub map[string]ast.TypeRef, depth int, expected *ast.TypeRef) (ast.Expr, error) {
 	switch n := expr.(type) {
 	case *ast.IdentifierExpr:
 		return &ast.IdentifierExpr{At: n.At, Name: n.Name}, nil
@@ -874,15 +1107,34 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 		}
 		return &ast.BinaryExpr{At: n.At, Left: left, Op: n.Op, Right: right}, nil
 	case *ast.CallExpr:
+		id, named := n.Callee.(*ast.IdentifierExpr)
+		var expectedArgs []*ast.TypeRef
+		if named && len(n.Args) > 0 {
+			if fn, ok := e.functions[id.Name]; ok {
+				if _, generic := e.templates[id.Name]; !generic && len(fn.Params) == len(n.Args) {
+					expectedArgs = make([]*ast.TypeRef, len(n.Args))
+					for i, param := range fn.Params {
+						typ, err := e.resolveType(substituteType(param.Type, sub), param.At, depth)
+						if err == nil {
+							valueType := cloneTypeRef(typ)
+							expectedArgs[i] = &valueType
+						}
+					}
+				}
+			}
+		}
 		args := make([]ast.Expr, len(n.Args))
 		for i, arg := range n.Args {
-			value, err := e.rewriteExpr(arg, sub, depth)
+			var argExpected *ast.TypeRef
+			if i < len(expectedArgs) {
+				argExpected = expectedArgs[i]
+			}
+			value, err := e.rewriteExprExpected(arg, sub, depth, argExpected)
 			if err != nil {
 				return nil, err
 			}
 			args[i] = value
 		}
-		id, named := n.Callee.(*ast.IdentifierExpr)
 		if len(n.TypeArgs) > 0 {
 			if !named {
 				return nil, typeError(n.At, diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit generic arguments require a named function or struct target")
@@ -933,35 +1185,112 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 		}
 		return &ast.CallExpr{At: n.At, Callee: callee, Args: args}, nil
 	case *ast.EnumVariantExpr:
+		enumName := n.EnumName
+		var enumDecl *ast.EnumDecl
+		if template, generic := e.enumTemplates[n.EnumName]; generic {
+			args := cloneTypeArgs(n.TypeArgs)
+			if len(args) == 0 && expected != nil {
+				expectedType, err := e.resolveType(substituteType(*expected, sub), n.At, depth)
+				if err != nil {
+					return nil, err
+				}
+				if info, ok := e.enumInstanceInfo[expectedType.Name]; ok && info.template == template.Name {
+					args = cloneTypeArgs(info.args)
+				}
+			}
+			if len(args) == 0 {
+				var err error
+				args, err = e.inferEnumTypeArguments(template, n.VariantName, n.Args, n.At)
+				if err != nil {
+					return nil, err
+				}
+			}
+			var err error
+			enumName, err = e.instantiateEnum(template, args, n.At, sub, depth)
+			if err != nil {
+				return nil, err
+			}
+			enumDecl = e.enumDecls[enumName]
+		} else {
+			if len(n.TypeArgs) > 0 {
+				return nil, typeError(n.At, diagnostic.TypeGenericArgumentsOnNonGeneric, "enum '%s' does not accept explicit type arguments", n.EnumName)
+			}
+			enumDecl = e.enumDecls[enumName]
+		}
+		var payloadTypes []ast.TypeRef
+		for _, variant := range enumDeclVariants(enumDecl) {
+			if variant.Name == n.VariantName {
+				payloadTypes = variant.Payload
+				break
+			}
+		}
 		args := make([]ast.Expr, len(n.Args))
 		for i, arg := range n.Args {
-			value, err := e.rewriteExpr(arg, sub, depth)
+			var payloadExpected *ast.TypeRef
+			if i < len(payloadTypes) {
+				valueType := cloneTypeRef(payloadTypes[i])
+				payloadExpected = &valueType
+			}
+			value, err := e.rewriteExprExpected(arg, sub, depth, payloadExpected)
 			if err != nil {
 				return nil, err
 			}
 			args[i] = value
 		}
-		return &ast.EnumVariantExpr{At: n.At, EnumName: n.EnumName, VariantName: n.VariantName, Args: args, HasPayload: n.HasPayload}, nil
+		return &ast.EnumVariantExpr{At: n.At, EnumName: enumName, VariantName: n.VariantName, Args: args, HasPayload: n.HasPayload}, nil
 	case *ast.MatchExpr:
 		subject, err := e.rewriteExpr(n.Subject, sub, depth)
 		if err != nil {
 			return nil, err
 		}
+		matchEnumName := ""
+		if subjectType, ok := e.inferExprType(subject); ok {
+			matchEnumName = subjectType.Name
+		}
+		var genericInfo structInstanceInfo
+		isGenericInstance := false
+		if info, ok := e.enumInstanceInfo[matchEnumName]; ok {
+			genericInfo, isGenericInstance = info, true
+		}
+		enumDecl := e.enumDecls[matchEnumName]
 		arms := make([]ast.MatchArm, len(n.Arms))
 		for i, arm := range n.Arms {
+			pattern := arm.Pattern
+			pattern.Bindings = append([]string(nil), arm.Pattern.Bindings...)
+			if isGenericInstance && pattern.EnumName == genericInfo.template {
+				pattern.EnumName = matchEnumName
+			}
+			previousVariables := e.variables
+			e.variables = cloneTypeScope(previousVariables)
+			if enumDecl != nil && !pattern.Wildcard {
+				for _, variant := range enumDecl.Variants {
+					if variant.Name == pattern.VariantName {
+						for j, binding := range pattern.Bindings {
+							if j < len(variant.Payload) {
+								e.variables[binding] = cloneTypeRef(variant.Payload[j])
+							}
+						}
+						break
+					}
+				}
+			}
 			value, err := e.rewriteExpr(arm.Expr, sub, depth)
+			e.variables = previousVariables
 			if err != nil {
 				return nil, err
 			}
-			pattern := arm.Pattern
-			pattern.Bindings = append([]string(nil), arm.Pattern.Bindings...)
 			arms[i] = ast.MatchArm{At: arm.At, Pattern: pattern, Expr: value}
 		}
 		return &ast.MatchExpr{At: n.At, Subject: subject, Arms: arms}, nil
 	case *ast.ArrayExpr:
 		elements := make([]ast.Expr, len(n.Elements))
+		var elementExpected *ast.TypeRef
+		if expected != nil && expected.Name == "Array" && expected.Element != nil {
+			valueType := cloneTypeRef(*expected.Element)
+			elementExpected = &valueType
+		}
 		for i, item := range n.Elements {
-			value, err := e.rewriteExpr(item, sub, depth)
+			value, err := e.rewriteExprExpected(item, sub, depth, elementExpected)
 			if err != nil {
 				return nil, err
 			}
