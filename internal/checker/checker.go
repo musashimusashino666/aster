@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/ir"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/token"
@@ -605,6 +606,59 @@ func AlwaysReturns(s ast.Stmt) bool {
 	}
 	return false
 }
+var checkerDiagnosticCodes = map[string]string{
+	"function '%s' is already declared": diagnostic.TypeDuplicateFunction,
+	"parameter name '%s' is reserved": diagnostic.TypeReservedParameter,
+	"%v": diagnostic.TypeInvalidTypeAnnotation,
+	"parameter '%s' cannot have type unit": diagnostic.TypeUnitParameter,
+	"function name '%s' is reserved": diagnostic.TypeReservedFunction,
+	"duplicate parameter '%s'": diagnostic.TypeDuplicateParameter,
+	"function '%s' must return %s on every path": diagnostic.TypeMissingReturn,
+	"unreachable statement": diagnostic.TypeUnreachableStatement,
+	"'%s' is reserved": diagnostic.TypeReservedBinding,
+	"variable '%s' is already declared in this scope": diagnostic.TypeDuplicateBinding,
+	"variables cannot have type unit": diagnostic.TypeUnitBinding,
+	"cannot assign %s to variable of type %s": diagnostic.TypeBindingTypeMismatch,
+	"variables cannot hold unit values; use the call as an expression statement": diagnostic.TypeUnitValueBinding,
+	"undefined variable '%s'": diagnostic.TypeUndefinedVariable,
+	"cannot assign to immutable variable '%s'; declare it with 'let mut'": diagnostic.TypeImmutableAssignment,
+	"cannot assign %s to variable '%s' of type %s": diagnostic.TypeAssignmentTypeMismatch,
+	"if condition must be bool, got %s": diagnostic.TypeIfCondition,
+	"while condition must be bool, got %s": diagnostic.TypeWhileCondition,
+	"return is only valid inside a function": diagnostic.TypeReturnOutsideFunction,
+	"return type mismatch: function returns %s but expression has type %s": diagnostic.TypeReturnMismatch,
+	"unsupported statement node %T": diagnostic.TypeUnsupportedStatement,
+	"cannot infer the element type of an empty array; provide at least one element": diagnostic.TypeEmptyArrayInference,
+	"arrays cannot contain unit values": diagnostic.TypeUnitArrayElement,
+	"array elements must have one type; expected %s, got %s": diagnostic.TypeHeterogeneousArray,
+	"type nesting exceeds limit %d": diagnostic.TypeNestingLimit,
+	"indexing requires an Array<T>, got %s": diagnostic.TypeIndexNonArray,
+	"array index must be i64, got %s": diagnostic.TypeIndexType,
+	"unary '-' requires a number, got %s": diagnostic.TypeUnaryMinusOperand,
+	"'!' requires bool, got %s": diagnostic.TypeNotOperand,
+	"operator '+' does not support %s and %s": diagnostic.TypePlusOperands,
+	"operator '%s' requires matching numeric types, got %s and %s": diagnostic.TypeNumericOperands,
+	"operator '%%' requires i64 operands": diagnostic.TypeRemainderOperands,
+	"operator '%s' requires matching numbers or strings": diagnostic.TypeOperatorOperands,
+	"cannot compare values of type %s and %s": diagnostic.TypeComparisonOperands,
+	"operator '%s' requires bool operands": diagnostic.TypeLogicalOperands,
+	"only named functions can be called": diagnostic.TypeCallTarget,
+	"print expects exactly one argument": diagnostic.TypePrintArity,
+	"print cannot display a unit value": diagnostic.TypePrintUnit,
+	"len expects exactly one argument": diagnostic.TypeLenArity,
+	"len accepts string or Array<T>, got %s": diagnostic.TypeLenArgument,
+	"assert expects exactly one argument": diagnostic.TypeAssertArity,
+	"assert expects bool, got %s": diagnostic.TypeAssertArgument,
+	"undefined function '%s'": diagnostic.TypeUndefinedFunction,
+	"function '%s' expects %d arguments, got %d": diagnostic.TypeFunctionArity,
+	"argument %d to '%s' has type %s; expected %s": diagnostic.TypeArgumentMismatch,
+	"unsupported expression node %T": diagnostic.TypeUnsupportedExpression,
+}
+
 func (c *Checker) err(pos token.Position, format string, args ...any) error {
-	return fmt.Errorf("%d:%d: type error: %s", pos.Line, pos.Column, fmt.Sprintf(format, args...))
+	code, ok := checkerDiagnosticCodes[format]
+	if !ok {
+		code = diagnostic.TypeGeneric
+	}
+	return diagnostic.New(code, "type", pos, fmt.Sprintf(format, args...))
 }
