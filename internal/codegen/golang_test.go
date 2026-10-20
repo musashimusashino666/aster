@@ -84,7 +84,7 @@ func TestGenerateStringConcatenationUsesRuntimeLimitHelper(t *testing.T) {
 func TestGenerateRejectsOversizedStringLiteral(t *testing.T) {
 	tree := &ast.Program{Decls: []ast.Decl{
 		&ast.StmtDecl{Statement: &ast.LetStmt{
-			Name: "value",
+			Name:  "value",
 			Value: &ast.LiteralExpr{Kind: "string", String: strings.Repeat("x", limits.MaxStringBytes+1)},
 		}},
 	}}
@@ -101,7 +101,7 @@ func TestGenerateRejectsOversizedArrayLiteral(t *testing.T) {
 	}
 	tree := &ast.Program{Decls: []ast.Decl{
 		&ast.StmtDecl{Statement: &ast.LetStmt{
-			Name: "values",
+			Name:  "values",
 			Value: &ast.ArrayExpr{Elements: elements},
 		}},
 	}}
