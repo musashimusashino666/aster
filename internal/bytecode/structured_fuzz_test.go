@@ -28,7 +28,7 @@ func FuzzValidateStructuredProgramsNeverPanics(f *testing.F) {
 		constantCount := int(at(0) % 6)
 		constants := make([]Value, constantCount)
 		for i := range constants {
-			switch at(10 + i)%5 {
+			switch at(10+i) % 5 {
 			case 0:
 				constants[i] = I64(int64(int8(at(20 + i))))
 			case 1:
@@ -58,8 +58,8 @@ func FuzzValidateStructuredProgramsNeverPanics(f *testing.F) {
 					Op:     ops[int(at(140+fi*12+pc))%len(ops)],
 					A:      int(int8(at(180 + fi*12 + pc))),
 					B:      int(int8(at(220 + fi*12 + pc))),
-					Line:   int(at(260 + fi*12 + pc) % 4),
-					Column: int(at(300 + fi*12 + pc) % 8),
+					Line:   int(at(260+fi*12+pc) % 4),
+					Column: int(at(300+fi*12+pc) % 8),
 				}
 			}
 			if at(340+fi)%16 == 0 {
