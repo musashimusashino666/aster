@@ -1,16 +1,16 @@
 # ADR 0006: Nominal data types and pattern-matching rollout
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-20
-- **Relationship:** Builds on [ADR 0003: Array value semantics](0003-array-value-semantics.md) and [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md). This proposal does not claim the features below are implemented.
+- **Relationship:** Builds on [ADR 0003: Array value semantics](0003-array-value-semantics.md) and [ADR 0005: Native resource guarantees and enforcement boundaries](0005-native-resource-guarantees.md). The rollout order is accepted; implementation status is tracked in the roadmap. PR #61 implements the initial non-generic-struct slice, while enums, user-defined generics, and `Option<T>` / `Result<T, E>` remain planned.
 
 ## Context
 
-Aster currently supports primitive types and `Array<T>`. Adding structs, enums, generics, `Option<T>`, and `Result<T, E>` at the same time would combine several independent changes: name resolution, recursive type validation, aggregate representation, bytecode verification, pattern exhaustiveness, and generic instantiation. The VM and Native backends share a typed IR, so new semantics should be resolved by the checker and carried through that IR rather than re-inferred by either backend.
+Aster supports primitive types, `Array<T>`, and the initial non-generic-struct subset. Adding structs, enums, generics, `Option<T>`, and `Result<T, E>` at the same time would combine several independent changes: name resolution, recursive type validation, aggregate representation, bytecode verification, pattern exhaustiveness, and generic instantiation. The VM and Native backends share a typed IR, so new semantics should be resolved by the checker and carried through that IR rather than re-inferred by either backend.
 
 Arrays already have explicit value semantics. Any aggregate that contains an array must preserve those semantics across bindings, function arguments and returns, field reads, and aggregate construction. A shallow Go-struct copy must not become an observable aliasing loophole.
 
-## Proposed decision
+## Decision
 
 Implement these features as separate, reviewable vertical slices, in this order:
 
@@ -21,7 +21,7 @@ Implement these features as separate, reviewable vertical slices, in this order:
 
 Each slice must have its own syntax/semantics tests, negative type-checking tests, bytecode malformed-input/verifier tests, VM/Native differential tests, and release documentation. Do not mark a feature complete merely because the parser accepts its syntax.
 
-### Struct source model (proposed)
+### Initial struct source model (implemented subset)
 
 Use nominal, module-local type names. A struct declaration lists fields in a stable order:
 
@@ -43,7 +43,7 @@ print(p.y);
 - Struct values are copied by value. Fields are read-only in the first slice; a whole mutable binding can be reassigned, but direct field assignment is deferred until aggregate mutation can preserve value semantics for nested arrays.
 - Arrays stored in fields retain the value semantics of ADR 0003. Reading an array field into another independently mutable value must establish the required COW sharing boundary, and arrays nested inside structs must not become mutable aliases across copies.
 - Initial struct support does not introduce default constructors, implicit field defaults, reflection APIs, serialization guarantees, or automatic structural equality. Unsupported operations must receive a checker diagnostic rather than falling through to a backend runtime error.
-- Recursive layouts must be handled deliberately. Direct by-value recursive cycles cannot be emitted as ordinary Go structs; the implementation slice must either reject such cycles with a type diagnostic or define a bounded representation before enabling them. Recursion guarded by `Array<T>` may be allowed only after the type-layout and COW tests prove it safe.
+- The initial slice rejects direct by-value recursive cycles with a type diagnostic and permits recursion guarded by `Array<T>`. The Bytecode verifier applies the same layout rule; this does not change the resource guarantees described by ADR 0005.
 - Printed struct representation must be specified and tested in both backends before structs are accepted as arguments to `print`; it must not leak Go's internal field names or COW metadata.
 
 Using a call-shaped constructor avoids making `Type { ... }` ambiguous with the existing `if condition { ... }` block syntax. The syntax can be reconsidered if a future parser design adds an unambiguous record-literal form.
@@ -84,10 +84,9 @@ No implicit fallthrough, exception-like control transfer, or unchecked tag cast 
 5. Benchmark representative construction, field reads, nested arrays, and function passing after correctness gates pass. Benchmarks inform optimization; they do not relax value semantics.
 6. Update the roadmap only for the exact slice that landed. Generics and `Option`/`Result` remain unchecked until their own implementation and test requirements are met.
 
-## Open questions before acceptance
+## Open questions for later slices and deferred enhancements
 
-- Whether recursive struct layouts through `Array<T>` are allowed in the first release or deferred.
 - Exact `match` arm grammar, pattern binding scope, and nested-pattern support.
 - Whether aggregate equality will be explicit, derived structurally, or unavailable in the initial releases.
-- The exact stable bytecode representation for nominal types and variants, including format versioning.
-- Whether direct struct-field mutation should be a later feature or part of the initial struct slice once aggregate COW paths are available.
+- The bytecode representation and verification rules for enum variants, payloads, and match dispatch, including the required format-version changes.
+- Whether direct struct-field mutation should be added later, once aggregate COW paths are available.

@@ -31,7 +31,7 @@ This roadmap is a planning document, not a commitment that work is already in pr
 - [x] Dynamically sized arrays, type checking, and bounds-safe reads
 - [x] Mutable array indexing with value semantics (checked nested assignment and copy-on-write path updates; follow [ADR 0003: Array value semantics](adr/0003-array-value-semantics.md))
 - [x] Half-open array slices (`values[start:end]`) returning independent array values; start is inclusive and end is exclusive
-- [ ] Non-generic structs: nominal declarations, construction, read-only field selection, and VM/Native value-semantics parity (see [ADR 0006](adr/0006-nominal-data-types-and-pattern-matching.md))
+- [x] Non-generic structs: nominal declarations, construction, read-only field selection, and VM/Native value-semantics parity (implemented by PR #61; direct field assignment, Struct display, and equality remain unsupported; see [ADR 0006](adr/0006-nominal-data-types-and-pattern-matching.md))
 - [ ] Enums with payloads and exhaustive `match` expressions
 - [ ] User-defined generics, including substitution and recursive-type/resource limits
 - [ ] Core `Option<T>` and `Result<T, E>` as generic enums with exhaustive matching
