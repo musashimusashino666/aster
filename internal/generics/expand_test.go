@@ -347,7 +347,6 @@ func TestGenericEnumInstantiationLimitAndCacheHit(t *testing.T) {
 	}
 }
 
-
 func TestExpanderEnforcesCombinedMonomorphizationLimit(t *testing.T) {
 	e := &expander{
 		instances:        make(map[string]*ast.Function),
