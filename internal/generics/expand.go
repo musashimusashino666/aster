@@ -558,7 +558,7 @@ func (e *expander) inferEnumTypeArgumentsWithContext(template *ast.EnumDecl, var
 	for i, param := range template.TypeParams {
 		typ, ok := inferred[param]
 		if !ok {
-			return nil, typeError(at, diagnostic.TypeGenericEnumInference, "cannot infer type parameter '%s' for enum '%s'; add a type annotation or use %s::<...>::%s", param, template.Name, template.Name, variantName)
+			return nil, typeError(at, diagnostic.TypeGenericEnumInference, "cannot infer type parameter '%s' for enum '%s'; provide an expected concrete enum type or use explicit type arguments such as %s::<...>::%s", param, template.Name, template.Name, variantName)
 		}
 		out[i] = typ
 	}
@@ -1150,7 +1150,12 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 		}
 		return out, nil
 	case *ast.AssignStmt:
-		value, err := e.rewriteExpr(n.Value, sub, depth)
+		var expected *ast.TypeRef
+		if variableType, ok := e.variables[n.Name]; ok {
+			valueType := cloneTypeRef(variableType)
+			expected = &valueType
+		}
+		value, err := e.rewriteExprExpected(n.Value, sub, depth, expected)
 		if err != nil {
 			return nil, err
 		}

@@ -260,6 +260,51 @@ let typed: Option<i64> = Option::None;`)
 	}
 }
 
+func TestExpandInfersPayloadFreeEnumAssignmentFromTargetType(t *testing.T) {
+	program := parse(t, `enum Option<T> { None, Some(T), }
+let mut current: Option<i64> = Option::Some(1);
+current = Option::None;`)
+	expanded, err := Expand(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var declaredEnum string
+	var assignedEnum string
+	for _, decl := range expanded.Decls {
+		statementDecl, ok := decl.(*ast.StmtDecl)
+		if !ok {
+			continue
+		}
+		switch stmt := statementDecl.Statement.(type) {
+		case *ast.LetStmt:
+			if stmt.Name != "current" {
+				continue
+			}
+			value, ok := stmt.Value.(*ast.EnumVariantExpr)
+			if !ok {
+				t.Fatalf("initializer was not rewritten to an enum variant: %#v", stmt.Value)
+			}
+			declaredEnum = value.EnumName
+		case *ast.AssignStmt:
+			if stmt.Name != "current" {
+				continue
+			}
+			value, ok := stmt.Value.(*ast.EnumVariantExpr)
+			if !ok {
+				t.Fatalf("assignment was not rewritten to an enum variant: %#v", stmt.Value)
+			}
+			assignedEnum = value.EnumName
+		}
+	}
+	if declaredEnum == "" || assignedEnum == "" {
+		t.Fatalf("did not find rewritten initializer and assignment: declared=%q assigned=%q", declaredEnum, assignedEnum)
+	}
+	if declaredEnum != assignedEnum {
+		t.Fatalf("Option::None assignment resolved to %q, want target enum instance %q", assignedEnum, declaredEnum)
+	}
+}
+
 func TestExpandMonomorphizesGenericEnumMatchBindings(t *testing.T) {
 	program := parse(t, `enum Option<T> { None, Some(T), }
 fn unwrap<T>(value: Option<T>) -> T {

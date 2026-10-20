@@ -55,10 +55,13 @@ func Format(source string) (string, error) {
 			continue
 		}
 
-		arrayTypeContext := i >= 2 &&
-			(tokens[i-2].Kind == token.Colon || tokens[i-2].Kind == token.Arrow)
+		typeArgumentContext := i >= 2 && f.hasPrev && f.prev.Kind == token.Ident && (tokens[i-2].Kind == token.Colon ||
+			tokens[i-2].Kind == token.Arrow ||
+			tokens[i-2].Raw == "fn" ||
+			tokens[i-2].Raw == "struct" ||
+			tokens[i-2].Raw == "enum")
 		genericOpen := current.Kind == token.Less &&
-			(f.genericDepth > 0 || (f.hasPrev && f.prev.Raw == "Array" && arrayTypeContext))
+			(f.genericDepth > 0 || (f.hasPrev && f.prev.Raw == "::") || typeArgumentContext)
 		genericClose := current.Kind == token.Greater && f.genericDepth > 0
 
 		if current.Kind == token.LBrace {
@@ -92,6 +95,7 @@ func Format(source string) (string, error) {
 			f.genericDepth--
 		}
 		f.setPrev(current, isPrefixOperator(tokens, i))
+		f.prevWasGenericClose = genericClose
 	}
 
 	if f.out.Len() == 0 {
@@ -104,21 +108,23 @@ func Format(source string) (string, error) {
 }
 
 type state struct {
-	out            strings.Builder
-	indent         int
-	atLineStart    bool
-	hasPrev        bool
-	prev           token.Token
-	prevWasPrefix  bool
-	pendingNewline bool
-	genericDepth   int
-	lastByte       byte
+	out                 strings.Builder
+	indent              int
+	atLineStart         bool
+	hasPrev             bool
+	prev                token.Token
+	prevWasPrefix       bool
+	prevWasGenericClose bool
+	pendingNewline      bool
+	genericDepth        int
+	lastByte            byte
 }
 
 func (f *state) setPrev(current token.Token, prefix bool) {
 	f.prev = current
 	f.hasPrev = true
 	f.prevWasPrefix = prefix
+	f.prevWasGenericClose = false
 }
 
 func (f *state) needsSpaceBefore(current token.Token, genericOpen, genericClose bool) bool {
@@ -137,10 +143,10 @@ func (f *state) needsSpaceBefore(current token.Token, genericOpen, genericClose 
 		return false
 	}
 	switch current.Kind {
-	case token.RParen, token.RBracket, token.Comma, token.Semicolon, token.Colon, token.RBrace:
+	case token.RParen, token.RBracket, token.Comma, token.Semicolon, token.Colon, token.DoubleColon, token.RBrace:
 		return false
 	case token.LParen:
-		return f.prev.Kind != token.Ident && f.prev.Kind != token.RParen && f.prev.Kind != token.RBracket
+		return !f.prevWasGenericClose && f.prev.Kind != token.Ident && f.prev.Kind != token.RParen && f.prev.Kind != token.RBracket
 	case token.LBracket:
 		return f.prev.Kind != token.Ident && f.prev.Kind != token.RParen && f.prev.Kind != token.RBracket
 	case token.LBrace:
@@ -175,8 +181,9 @@ func isOperator(kind token.Kind) bool {
 
 func isWord(kind token.Kind) bool {
 	switch kind {
-	case token.Ident, token.Int, token.Float, token.String, token.Fn, token.Let, token.Mut,
-		token.If, token.Else, token.While, token.Return, token.True, token.False:
+	case token.Ident, token.Int, token.Float, token.String, token.Fn, token.Struct, token.Enum,
+		token.Match, token.Let, token.Mut, token.If, token.Else, token.While, token.Return,
+		token.True, token.False:
 		return true
 	default:
 		return false

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"flag"
 	"fmt"
@@ -127,6 +128,12 @@ func commandCheck(args []string) error {
 // remain positional. The standard flag package stops parsing options at the
 // first positional argument.
 func flagsBeforePositionals(args []string, valueFlags ...string) []string {
+	return flagsBeforePositionalsAndBooleans(args, nil, valueFlags...)
+}
+
+// flagsBeforePositionalsAndBooleans moves recognized options before positional
+// arguments without consuming a filename after a standalone boolean flag.
+func flagsBeforePositionalsAndBooleans(args []string, booleanFlags []string, valueFlags ...string) []string {
 	var options, positionals []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -135,20 +142,29 @@ func flagsBeforePositionals(args []string, valueFlags ...string) []string {
 			break
 		}
 		matched := false
-		for _, name := range valueFlags {
-			if arg == name {
+		for _, name := range booleanFlags {
+			if arg == name || strings.HasPrefix(arg, name+"=") {
 				options = append(options, arg)
-				if i+1 < len(args) && args[i+1] != "--" {
-					options = append(options, args[i+1])
-					i++
-				}
 				matched = true
 				break
 			}
-			if strings.HasPrefix(arg, name+"=") {
-				options = append(options, arg)
-				matched = true
-				break
+		}
+		if !matched {
+			for _, name := range valueFlags {
+				if arg == name {
+					options = append(options, arg)
+					if i+1 < len(args) && args[i+1] != "--" {
+						options = append(options, args[i+1])
+						i++
+					}
+					matched = true
+					break
+				}
+				if strings.HasPrefix(arg, name+"=") {
+					options = append(options, arg)
+					matched = true
+					break
+				}
 			}
 		}
 		if !matched {
@@ -169,9 +185,20 @@ func commandRun(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: aster run [--engine vm|native] <file.ast>")
 	}
+	var nativeCtx context.Context
+	var cancelNative context.CancelFunc
+	if *engine == "native" {
+		nativeCtx, cancelNative = context.WithTimeout(context.Background(), toolchain.NativeRunTimeout)
+		defer cancelNative()
+	}
 	_, typed, err := readSource(fs.Arg(0))
 	if err != nil {
 		return err
+	}
+	if nativeCtx != nil {
+		if err := nativeCtx.Err(); err != nil {
+			return diagnostic.WrapToolchain(fmt.Errorf("native run deadline exceeded during source analysis: %w", err))
+		}
 	}
 	switch *engine {
 	case "vm":
@@ -181,11 +208,11 @@ func commandRun(args []string) error {
 		}
 		return vm.Run(bc, os.Stdout)
 	case "native":
-		src, err := codegen.GenerateTyped(typed)
+		src, err := codegen.GenerateTypedContext(nativeCtx, typed)
 		if err != nil {
 			return err
 		}
-		return toolchain.RunNative(src)
+		return toolchain.RunNativeContext(nativeCtx, src)
 	default:
 		return fmt.Errorf("unknown engine %q (choose vm or native)", *engine)
 	}
@@ -289,6 +316,7 @@ func writeOutputAtomically(path string, write func(io.Writer) error) error {
 // when --check is supplied. Symlink paths are resolved so formatting updates
 // the target file rather than replacing the symlink itself.
 func commandFmt(args []string) error {
+	args = flagsBeforePositionalsAndBooleans(args, []string{"--check"})
 	fs := flag.NewFlagSet("fmt", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	check := fs.Bool("check", false, "check formatting without changing the file")
@@ -367,11 +395,16 @@ func commandBuild(args []string) error {
 	if *target != "native" {
 		return fmt.Errorf("target %q is not implemented; only --target native is supported in Aster %s", *target, version)
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), toolchain.NativeBuildTimeout)
+	defer cancel()
 	_, typed, err := readSource(fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	goSource, err := codegen.GenerateTyped(typed)
+	if err := ctx.Err(); err != nil {
+		return diagnostic.WrapToolchain(fmt.Errorf("native build deadline exceeded during source analysis: %w", err))
+	}
+	goSource, err := codegen.GenerateTypedContext(ctx, typed)
 	if err != nil {
 		return err
 	}
@@ -383,7 +416,7 @@ func commandBuild(args []string) error {
 			output += ".exe"
 		}
 	}
-	if err = toolchain.BuildNative(goSource, output); err != nil {
+	if err = toolchain.BuildNativeContext(ctx, goSource, output); err != nil {
 		return err
 	}
 	fmt.Printf("built %s\n", output)

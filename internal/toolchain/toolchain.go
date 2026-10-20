@@ -14,8 +14,17 @@ import (
 	"github.com/aster-lang/aster/internal/diagnostic"
 )
 
-const nativeBuildTimeout = 2 * time.Minute
-const nativeRunTimeout = 5 * time.Minute
+const (
+	// NativeBuildTimeout bounds native source generation and host-toolchain work
+	// for a CLI build invocation.
+	NativeBuildTimeout = 2 * time.Minute
+	// NativeRunTimeout bounds native source generation, build, and execution
+	// for a CLI native-run invocation.
+	NativeRunTimeout = 5 * time.Minute
+
+	nativeBuildTimeout = NativeBuildTimeout
+	nativeRunTimeout   = NativeRunTimeout
+)
 
 // BuildNative formats and compiles goSource, atomically replacing output on
 // success. The host Go toolchain is bounded by nativeBuildTimeout.

@@ -33,12 +33,18 @@ func isAggregateType(t string) bool {
 }
 
 func (g *generator) irStructType(structType ir.StructType) error {
+	if err := g.checkContext(); err != nil {
+		return err
+	}
 	if !langtypes.ValidName(structType.Name) {
 		return fmt.Errorf("codegen: invalid IR struct name %q", structType.Name)
 	}
 	g.line("type " + irStructTypeName(structType.Name) + " struct {")
 	g.indent++
 	for i, field := range structType.Fields {
+		if err := g.checkContext(); err != nil {
+			return err
+		}
 		if !langtypes.ValidName(string(field.Type)) || field.Type == "unit" {
 			return fmt.Errorf("codegen: invalid IR field type %q in struct %q", field.Type, structType.Name)
 		}
@@ -49,6 +55,9 @@ func (g *generator) irStructType(structType ir.StructType) error {
 	g.line("func (v " + irStructTypeName(structType.Name) + ") MarkArrayShared() {")
 	g.indent++
 	for i := range structType.Fields {
+		if err := g.checkContext(); err != nil {
+			return err
+		}
 		g.line(fmt.Sprintf("asterMarkArrayShared(v.f_%d)", i))
 	}
 	g.indent--
@@ -78,10 +87,16 @@ func validateEnumResourceLimits(enumTypes []ir.EnumType) error {
 }
 
 func (g *generator) irEnumType(enumType ir.EnumType) error {
+	if err := g.checkContext(); err != nil {
+		return err
+	}
 	if !langtypes.ValidName(enumType.Name) || len(enumType.Variants) == 0 {
 		return fmt.Errorf("codegen: invalid IR enum %q", enumType.Name)
 	}
 	for i, variant := range enumType.Variants {
+		if err := g.checkContext(); err != nil {
+			return err
+		}
 		if !langtypes.ValidName(variant.Name) {
 			return fmt.Errorf("codegen: invalid IR variant name %q in enum %q", variant.Name, enumType.Name)
 		}
@@ -91,6 +106,9 @@ func (g *generator) irEnumType(enumType ir.EnumType) error {
 		g.line("type asterPayload_" + enumType.Name + "_" + strconv.Itoa(i) + " struct {")
 		g.indent++
 		for j, typ := range variant.Payload {
+			if err := g.checkContext(); err != nil {
+				return err
+			}
 			if !langtypes.ValidName(string(typ)) || typ == "unit" {
 				return fmt.Errorf("codegen: invalid enum payload type %q in %s::%s", typ, enumType.Name, variant.Name)
 			}
@@ -103,6 +121,9 @@ func (g *generator) irEnumType(enumType ir.EnumType) error {
 	g.indent++
 	g.line("tag int")
 	for i, variant := range enumType.Variants {
+		if err := g.checkContext(); err != nil {
+			return err
+		}
 		if len(variant.Payload) > 0 {
 			g.line(fmt.Sprintf("v_%d asterPayload_%s_%d", i, enumType.Name, i))
 		}
@@ -114,12 +135,18 @@ func (g *generator) irEnumType(enumType ir.EnumType) error {
 	g.line("switch v.tag {")
 	g.indent++
 	for i, variant := range enumType.Variants {
+		if err := g.checkContext(); err != nil {
+			return err
+		}
 		if len(variant.Payload) == 0 {
 			continue
 		}
 		g.line(fmt.Sprintf("case %d:", i))
 		g.indent++
 		for j, typ := range variant.Payload {
+			if err := g.checkContext(); err != nil {
+				return err
+			}
 			if isAggregateType(string(typ)) {
 				g.line(fmt.Sprintf("asterMarkArrayShared(v.v_%d.p_%d)", i, j))
 			}
@@ -153,12 +180,18 @@ func needsArrayShareAtBoundary(expr ir.Expr) bool {
 }
 
 func (g *generator) irFunction(fn *ir.Function) error {
+	if err := g.checkContext(); err != nil {
+		return err
+	}
 	ret := string(fn.ReturnType)
 	if !langtypes.ValidName(ret) {
 		return fmt.Errorf("codegen: invalid IR return type %q for function %q", ret, fn.Name)
 	}
 	params := make([]string, len(fn.Params))
 	for i, param := range fn.Params {
+		if err := g.checkContext(); err != nil {
+			return err
+		}
 		paramType := string(param.Type)
 		if !langtypes.ValidName(paramType) || param.Type == "unit" {
 			return fmt.Errorf("codegen: invalid IR parameter type %q for function %q", paramType, fn.Name)
@@ -194,6 +227,9 @@ func (g *generator) irBlockContents(block *ir.BlockStmt) error {
 }
 
 func (g *generator) irStatement(stmt ir.Stmt) error {
+	if err := g.checkContext(); err != nil {
+		return err
+	}
 	switch n := stmt.(type) {
 	case *ir.BlockStmt:
 		g.line("{")
@@ -365,34 +401,36 @@ func (g *generator) irMatchExpression(n *ir.MatchExpr) (string, error) {
 		if len(arm.VariantIndexes) == 0 {
 			return "", fmt.Errorf("codegen: empty match arm target list")
 		}
-		variantIndex := -1
-		if len(arm.VariantIndexes) == 1 {
-			variantIndex = arm.VariantIndexes[0]
+		targets := make([]string, len(arm.VariantIndexes))
+		for i, target := range arm.VariantIndexes {
+			targets[i] = strconv.Itoa(target)
 		}
-		for _, target := range arm.VariantIndexes {
-			parts = append(parts, fmt.Sprintf("case %d:", target))
-			if len(arm.Bindings) > 0 && variantIndex != target {
-				return "", fmt.Errorf("codegen: payload bindings must belong to a single enum variant")
-			}
-			for payloadIndex, binding := range arm.Bindings {
-				value := fmt.Sprintf("%s.v_%d.p_%d", subjectName, target, payloadIndex)
-				if isAggregateType(string(binding.Type)) {
-					value = "asterShareValue(" + value + ")"
-				}
-				parts = append(parts, irLocalName(binding.ID)+" := "+value)
-			}
-			value, err := g.irExpression(arm.Expr)
-			if err != nil {
-				return "", err
-			}
-			parts = append(parts, "return "+value)
+		parts = append(parts, "case "+strings.Join(targets, ", ")+":")
+		if len(arm.Bindings) > 0 && len(arm.VariantIndexes) != 1 {
+			return "", fmt.Errorf("codegen: payload bindings must belong to a single enum variant")
 		}
+		variantIndex := arm.VariantIndexes[0]
+		for payloadIndex, binding := range arm.Bindings {
+			value := fmt.Sprintf("%s.v_%d.p_%d", subjectName, variantIndex, payloadIndex)
+			if isAggregateType(string(binding.Type)) {
+				value = "asterShareValue(" + value + ")"
+			}
+			parts = append(parts, irLocalName(binding.ID)+" := "+value)
+		}
+		value, err := g.irExpression(arm.Expr)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, "return "+value)
 	}
 	parts = append(parts, "}; panic("+strconv.Quote("invalid enum match dispatch")+") }()")
 	return strings.Join(parts, "\n"), nil
 }
 
 func (g *generator) irExpression(expr ir.Expr) (string, error) {
+	if err := g.checkContext(); err != nil {
+		return "", err
+	}
 	switch n := expr.(type) {
 	case *ir.LiteralExpr:
 		switch n.Kind {
