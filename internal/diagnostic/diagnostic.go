@@ -15,14 +15,25 @@ type Diagnostic struct {
 	Code     string
 	Phase    string
 	Message  string
-	Position token.Position
-	Source   string
-	Cause    error
+	Position        token.Position
+	EndPosition     token.Position
+	HasEndPosition  bool
+	Source          string
+	Cause           error
 }
 
 // New constructs a diagnostic with a stable code, phase, position, and message.
 func New(code, phase string, position token.Position, message string) *Diagnostic {
 	return &Diagnostic{Code: code, Phase: phase, Position: position, Message: message}
+}
+
+// NewSpan constructs a diagnostic with an exclusive end position. The rendered
+// error string intentionally keeps the legacy start-only location format.
+func NewSpan(code, phase string, start, end token.Position, message string) *Diagnostic {
+	return &Diagnostic{
+		Code: code, Phase: phase, Position: start,
+		EndPosition: end, HasEndPosition: true, Message: message,
+	}
 }
 
 func (d *Diagnostic) Error() string {
@@ -48,6 +59,15 @@ func (d *Diagnostic) Unwrap() error { return d.Cause }
 // End positions are not currently retained by every compiler/runtime node.
 func NewAtSource(code, phase, source string, position token.Position, message string) *Diagnostic {
 	return &Diagnostic{Code: code, Phase: phase, Source: source, Position: position, Message: message}
+}
+
+// NewAtSourceSpan constructs a source-path diagnostic with an exclusive end
+// position. Its Error string remains compatible with start-only diagnostics.
+func NewAtSourceSpan(code, phase, source string, start, end token.Position, message string) *Diagnostic {
+	return &Diagnostic{
+		Code: code, Phase: phase, Source: source, Position: start,
+		EndPosition: end, HasEndPosition: true, Message: message,
+	}
 }
 
 // WrapBytecode assigns a stable code to a bytecode reader/verifier error.
