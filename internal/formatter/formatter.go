@@ -346,4 +346,3 @@ func (f *state) newline() {
 	}
 	f.atLineStart = true
 }
-
