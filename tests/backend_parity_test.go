@@ -741,7 +741,7 @@ func TestConstantConditionFlowBackendParity(t *testing.T) {
 }
 
 func TestIndexedArrayAssignmentBackendParityAndValueSemantics(t *testing.T) {
-	source := \`fn replaceFirst(values: Array<i64>) -> Array<i64> {
+	source := `fn replaceFirst(values: Array<i64>) -> Array<i64> {
     let mut copy: Array<i64> = values;
     copy[0] = 9;
     return copy;
@@ -756,7 +756,7 @@ alias[1] = row;
 alias[1][0] = 6;
 print(alias);
 print(row);
-print(replaceFirst([4, 5]));\`
+print(replaceFirst([4, 5]));`
 	tree, err := parser.Parse(source, "indexed-assignment-parity.ast")
 	if err != nil {
 		t.Fatal(err)
@@ -792,7 +792,7 @@ print(replaceFirst([4, 5]));\`
 	if vmOutput.String() != nativeOutput.String() {
 		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), nativeOutput.String())
 	}
-	want := "[[1 9] [3 4]]\\n[[1 2] [3 4]]\\n[[1 9] [6 8]]\\n[7 8]\\n[9 5]\\n"
+	want := "[[1 9] [3 4]]\n[[1 2] [3 4]]\n[[1 9] [6 8]]\n[7 8]\n[9 5]\n"
 	if got := vmOutput.String(); got != want {
 		t.Fatalf("output = %q, want %q", got, want)
 	}
