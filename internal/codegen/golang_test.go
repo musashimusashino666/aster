@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"go/format"
 	"strconv"
 	"strings"
 	"testing"
@@ -177,5 +178,15 @@ print(returned);`, "array-cow-codegen.ast")
 		if !strings.Contains(source, fragment) {
 			t.Errorf("generated Native source is missing %q:\\n%s", fragment, source)
 		}
+	}
+}
+
+func TestNativeRuntimePreambleIsFormattedGoSource(t *testing.T) {
+	formatted, err := format.Source([]byte(nativePreamble))
+	if err != nil {
+		t.Fatalf("embedded runtime preamble is not valid Go source: %v", err)
+	}
+	if string(formatted) != nativePreamble {
+		t.Fatal("embedded runtime preamble must remain gofmt-formatted")
 	}
 }
