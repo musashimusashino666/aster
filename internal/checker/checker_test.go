@@ -689,6 +689,8 @@ func TestGenericEnumReportsConstructorBoundaryDiagnostics(t *testing.T) {
 		{name: "wrong generic payload arity", source: `enum Option<T> { None, Some(T) } let value = Option::Some();`, code: "TYP067"},
 		{name: "conflicting payload inference", source: `enum Pair<T> { Both(T, T) } let value = Pair::Both(1, "wrong");`, code: "TYP088"},
 		{name: "explicit payload mismatch", source: `enum Option<T> { None, Some(T) } let value: Option<i64> = Option::<i64>::Some("wrong");`, code: "TYP068"},
+		{name: "nested unknown variant is not masked", source: `enum Option<T> { None, Some(T) } let value = Option::Some(Option::Missing(1));`, code: "TYP066"},
+		{name: "nested generic call arity is not masked", source: `enum Option<T> { None, Some(T) } fn identity<T>(value: T) -> T { return value; } let value = Option::Some(identity::<i64, string>(1));`, code: "TYP080"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := checkSource(t, tc.source)
