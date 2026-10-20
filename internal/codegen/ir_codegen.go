@@ -368,7 +368,7 @@ func (g *generator) irMatchExpression(n *ir.MatchExpr) (string, error) {
 		}
 	}
 	parts = append(parts, "}; panic("+strconv.Quote("invalid enum match dispatch")+") }()")
-	return strings.Join(parts, "; "), nil
+	return strings.Join(parts, "\n"), nil
 }
 
 func (g *generator) irExpression(expr ir.Expr) (string, error) {
