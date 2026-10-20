@@ -328,7 +328,7 @@ func (p *Program) validateStructTypes() error {
 		}
 		seen := make(map[string]struct{}, len(st.Fields))
 		for _, field := range st.Fields {
-			if field.Name == "" || len(field.Name) > maxTypeNameBytes || !langtypes.ValidName(field.Name) {
+			if field.Name == "" || len(field.Name) > maxTypeNameBytes || (!langtypes.ValidName(field.Name) && field.Name != "Array") {
 				return fmt.Errorf("struct %q has invalid field name %q", st.Name, field.Name)
 			}
 			if _, exists := seen[field.Name]; exists {
