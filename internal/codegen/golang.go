@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/langtypes"
 )
 
@@ -30,33 +31,55 @@ func (s *typeScope) find(n string) (string, bool) {
 }
 
 type generator struct {
-	tree    *ast.Program
-	out     bytes.Buffer
-	indent  int
-	scope   *typeScope
-	returns map[string]string
+	typed  *checker.TypedProgram
+	tree   *ast.Program
+	out    bytes.Buffer
+	indent int
+	scope  *typeScope
 }
 
 // Generate returns native-backend source. The resulting file can be compiled by
 // the Go toolchain; users of Aster do not need to edit the generated source.
+// Generate type-checks tree and lowers the resulting typed program to Go.
+// Call GenerateTyped when the checker result is already available.
 func Generate(tree *ast.Program) (string, error) {
-	g := &generator{tree: tree, returns: map[string]string{}}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		return "", err
+	}
+	return GenerateTyped(typed)
+}
+
+// GenerateTyped lowers checker-produced semantic metadata and its AST to Go.
+// Expression types and function signatures are read from the checker result;
+// the native backend does not independently re-infer them.
+func GenerateTyped(typed *checker.TypedProgram) (string, error) {
+	if typed == nil || typed.Tree == nil {
+		return "", fmt.Errorf("codegen: nil typed program")
+	}
+	tree := typed.Tree
+	g := &generator{typed: typed, tree: tree}
 	for _, d := range tree.Decls {
-		if f, ok := d.(*ast.Function); ok {
-			ret := "unit"
-			if f.ReturnType != nil {
-				ret = sourceTypeName(*f.ReturnType)
+		f, ok := d.(*ast.Function)
+		if !ok {
+			continue
+		}
+		info, ok := typed.Function(f.Name)
+		if !ok {
+			return "", fmt.Errorf("codegen: checker has no signature for function %q", f.Name)
+		}
+		ret := info.Return.String()
+		if !langtypes.ValidName(ret) {
+			return "", fmt.Errorf("codegen: invalid return type %q for function %q", ret, f.Name)
+		}
+		if len(info.Params) != len(f.Params) {
+			return "", fmt.Errorf("codegen: checker parameter count mismatch for function %q", f.Name)
+		}
+		for _, paramType := range info.Params {
+			name := paramType.String()
+			if !langtypes.ValidName(name) || paramType == checker.Unit {
+				return "", fmt.Errorf("codegen: invalid parameter type %q for function %q", name, f.Name)
 			}
-			if !langtypes.ValidName(ret) {
-				return "", fmt.Errorf("codegen: invalid return type %q for function %q", ret, f.Name)
-			}
-			for _, param := range f.Params {
-				paramType := sourceTypeName(param.Type)
-				if !langtypes.ValidName(paramType) || paramType == "unit" {
-					return "", fmt.Errorf("codegen: invalid parameter type %q for function %q", paramType, f.Name)
-				}
-			}
-			g.returns[f.Name] = ret
 		}
 	}
 	g.writePreamble()
@@ -120,13 +143,17 @@ func (g *generator) writePreamble() {
 }
 func (g *generator) function(f *ast.Function) error {
 	g.scope = newTypeScope(nil)
+	info, ok := g.typed.Function(f.Name)
+	if !ok {
+		return fmt.Errorf("codegen: checker has no signature for function %q", f.Name)
+	}
 	params := make([]string, 0, len(f.Params))
-	for _, p := range f.Params {
-		pt := sourceTypeName(p.Type)
+	for i, p := range f.Params {
+		pt := info.Params[i].String()
 		params = append(params, "v_"+p.Name+" "+goType(pt))
 		g.scope.types[p.Name] = pt
 	}
-	ret := g.returns[f.Name]
+	ret := info.Return.String()
 	g.line(fmt.Sprintf("func asterFn_%s(%s) %s {", f.Name, strings.Join(params, ", "), goType(ret)))
 	g.indent++
 	if err := g.blockContents(f.Body); err != nil {
@@ -165,12 +192,9 @@ func (g *generator) statement(s ast.Stmt) error {
 		if err != nil {
 			return err
 		}
-		t, err := g.exprType(n.Value)
+		t, err := g.typeOf(n.Value)
 		if err != nil {
 			return fmt.Errorf("codegen: infer initializer type for %q: %w", n.Name, err)
-		}
-		if n.Annotation != nil {
-			t = sourceTypeName(*n.Annotation)
 		}
 		if !langtypes.ValidName(t) || t == "unit" {
 			return fmt.Errorf("codegen: invalid variable type %q for %q", t, n.Name)
@@ -278,7 +302,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 			}
 			items[i] = x
 		}
-		arrayType, err := g.exprType(n)
+		arrayType, err := g.typeOf(n)
 		if err != nil {
 			return "", err
 		}
@@ -304,7 +328,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 			return "", err
 		}
 		if n.Op == "-" {
-			rightType, err := g.exprType(n.Right)
+			rightType, err := g.typeOf(n.Right)
 			if err != nil {
 				return "", err
 			}
@@ -325,7 +349,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		t, err := g.exprType(n.Left)
+		t, err := g.typeOf(n.Left)
 		if err != nil {
 			return "", err
 		}
@@ -364,7 +388,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 			return "asterPrint(" + joined + ")", nil
 		case "len":
 			if len(n.Args) == 1 {
-				argType, err := g.exprType(n.Args[0])
+				argType, err := g.typeOf(n.Args[0])
 				if err != nil {
 					return "", err
 				}
@@ -381,78 +405,12 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 	}
 	return "", fmt.Errorf("codegen: unsupported expression %T", e)
 }
-func (g *generator) exprType(e ast.Expr) (string, error) {
-	switch n := e.(type) {
-	case *ast.LiteralExpr:
-		switch n.Kind {
-		case "i64", "f64", "bool", "string":
-			return n.Kind, nil
-		default:
-			return "", fmt.Errorf("unknown literal kind %q", n.Kind)
-		}
-	case *ast.IdentifierExpr:
-		if t, ok := g.scope.find(n.Name); ok {
-			return t, nil
-		}
-		return "", fmt.Errorf("unknown identifier %q", n.Name)
-	case *ast.ArrayExpr:
-		if len(n.Elements) == 0 {
-			return "", fmt.Errorf("cannot infer the type of an empty array")
-		}
-		elementType, err := g.exprType(n.Elements[0])
-		if err != nil {
-			return "", fmt.Errorf("infer array element type: %w", err)
-		}
-		arrayType := "Array<" + elementType + ">"
-		if !langtypes.ValidName(arrayType) {
-			return "", fmt.Errorf("type nesting exceeds limit %d", langtypes.MaxNestingDepth)
-		}
-		return arrayType, nil
-	case *ast.IndexExpr:
-		collectionType, err := g.exprType(n.Collection)
-		if err != nil {
-			return "", err
-		}
-		elementType, ok := arrayElementType(collectionType)
-		if !ok {
-			return "", fmt.Errorf("cannot infer indexed element type from %q", collectionType)
-		}
-		return elementType, nil
-	case *ast.UnaryExpr:
-		return g.exprType(n.Right)
-	case *ast.BinaryExpr:
-		switch n.Op {
-		case "&&", "||", "==", "!=", "<", "<=", ">", ">=":
-			return "bool", nil
-		default:
-			return g.exprType(n.Left)
-		}
-	case *ast.CallExpr:
-		id, ok := n.Callee.(*ast.IdentifierExpr)
-		if !ok {
-			return "", fmt.Errorf("cannot infer return type for non-identifier callee %T", n.Callee)
-		}
-		switch id.Name {
-		case "print", "assert":
-			return "unit", nil
-		case "len":
-			return "i64", nil
-		default:
-			if ret, ok := g.returns[id.Name]; ok {
-				return ret, nil
-			}
-			return "", fmt.Errorf("unknown function %q", id.Name)
-		}
-	default:
-		return "", fmt.Errorf("unsupported expression type %T", e)
+func (g *generator) typeOf(e ast.Expr) (string, error) {
+	t, ok := g.typed.TypeOf(e)
+	if !ok {
+		return "", fmt.Errorf("codegen: checker has no type for expression %T", e)
 	}
-}
-
-func sourceTypeName(t ast.TypeRef) string {
-	if t.Element != nil {
-		return t.Name + "<" + sourceTypeName(*t.Element) + ">"
-	}
-	return t.Name
+	return t.String(), nil
 }
 
 func goType(t string) string {
