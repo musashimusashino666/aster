@@ -55,12 +55,11 @@ func Format(source string) (string, error) {
 			continue
 		}
 
-		typeArgumentContext := i >= 2 && f.hasPrev && f.prev.Kind == token.Ident && (
-			tokens[i-2].Kind == token.Colon ||
-				tokens[i-2].Kind == token.Arrow ||
-				tokens[i-2].Raw == "fn" ||
-				tokens[i-2].Raw == "struct" ||
-				tokens[i-2].Raw == "enum")
+		typeArgumentContext := i >= 2 && f.hasPrev && f.prev.Kind == token.Ident && (tokens[i-2].Kind == token.Colon ||
+			tokens[i-2].Kind == token.Arrow ||
+			tokens[i-2].Raw == "fn" ||
+			tokens[i-2].Raw == "struct" ||
+			tokens[i-2].Raw == "enum")
 		genericOpen := current.Kind == token.Less &&
 			(f.genericDepth > 0 || (f.hasPrev && f.prev.Raw == "::") || typeArgumentContext)
 		genericClose := current.Kind == token.Greater && f.genericDepth > 0
