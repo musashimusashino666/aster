@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/ir"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/token"
 )
@@ -34,6 +35,7 @@ type FunctionInfo struct {
 // backends must not independently infer these semantic facts.
 type TypedProgram struct {
 	Tree            *ast.Program
+	IR              *ir.Program
 	expressionTypes map[ast.Expr]Type
 	functions       map[string]FunctionInfo
 }
@@ -111,11 +113,34 @@ func Analyze(program *ast.Program) (*TypedProgram, error) {
 	if err := c.checkProgram(program); err != nil {
 		return nil, err
 	}
-	return &TypedProgram{
+	typed := &TypedProgram{
 		Tree:            program,
 		expressionTypes: c.expressionTypes,
 		functions:       c.functions,
-	}, nil
+	}
+	normalized, err := ir.Lower(
+		program,
+		func(expr ast.Expr) (ir.Type, bool) {
+			t, ok := typed.TypeOf(expr)
+			return ir.Type(t), ok
+		},
+		func(name string) (ir.FunctionSignature, bool) {
+			info, ok := typed.Function(name)
+			if !ok {
+				return ir.FunctionSignature{}, false
+			}
+			params := make([]ir.Type, len(info.Params))
+			for i, param := range info.Params {
+				params[i] = ir.Type(param)
+			}
+			return ir.FunctionSignature{Params: params, Return: ir.Type(info.Return)}, true
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	typed.IR = normalized
+	return typed, nil
 }
 
 func (c *Checker) checkProgram(program *ast.Program) error {
