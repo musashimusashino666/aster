@@ -58,9 +58,11 @@ type Position struct {
 }
 
 type Token struct {
-	Kind   Kind     `json:"kind"`
-	Lexeme string   `json:"lexeme"`
-	Pos    Position `json:"pos"`
+	Kind          Kind     `json:"kind"`
+	Lexeme        string   `json:"lexeme"`
+	Pos           Position `json:"pos"`
+	Raw           string   `json:"-"`
+	LeadingTrivia string   `json:"-"`
 }
 
 func (t Token) String() string {
