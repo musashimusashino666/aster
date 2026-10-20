@@ -46,6 +46,9 @@ jobs:
           - name: Bytecode instruction verifier
             package: ./internal/bytecode
             target: FuzzValidateInstructionOperandsNeverPanics
+          - name: Structured bytecode verifier
+            package: ./internal/bytecode
+            target: FuzzValidateStructuredProgramsNeverPanics
 
     steps:
       - name: Check out source
