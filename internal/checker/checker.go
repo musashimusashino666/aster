@@ -59,6 +59,7 @@ func (p *TypedProgram) Function(name string) (FunctionInfo, bool) {
 	info.Params = append([]Type(nil), info.Params...)
 	return info, true
 }
+
 type Variable struct {
 	Type    Type
 	Mutable bool
@@ -560,6 +561,7 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 	}
 	return "", c.err(e.Pos(), "unsupported expression node %T", e)
 }
+
 // AlwaysReturns reports whether the conservative return-flow analysis guarantees a return.
 func AlwaysReturns(s ast.Stmt) bool {
 	switch n := s.(type) {
