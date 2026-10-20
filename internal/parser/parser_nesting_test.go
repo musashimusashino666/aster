@@ -18,7 +18,6 @@ func TestParenthesizedExpressionNestingLimit(t *testing.T) {
 	}
 }
 
-
 func TestNestedArrayExpressionNestingLimit(t *testing.T) {
 	validDepth := maxSyntaxNestingDepth - 1
 	valid := "let value = " + strings.Repeat("[", validDepth) + "1" + strings.Repeat("]", validDepth) + ";"
