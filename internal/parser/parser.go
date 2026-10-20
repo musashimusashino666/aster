@@ -138,6 +138,9 @@ func (p *Parser) enumDeclaration(start token.Token) (*ast.EnumDecl, error) {
 		}
 		payload := []ast.TypeRef{}
 		if p.match(token.LParen) {
+			if p.check(token.RParen) {
+				return nil, p.errorAt(variant, "zero-payload enum variants must omit parentheses")
+			}
 			if !p.check(token.RParen) {
 				for {
 					typ, typeErr := p.typeRef()
