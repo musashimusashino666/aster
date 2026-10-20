@@ -257,6 +257,37 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		}
 		local.typ = got
 		local.initialized = true
+	case OpBuildStruct:
+		if ins.A < 0 || ins.A >= len(p.StructTypes) {
+			return false, fmt.Errorf("function %q instruction %d: invalid struct metadata index %d", fn.Name, pc, ins.A)
+		}
+		structType := p.StructTypes[ins.A]
+		cursor := s.stack
+		for fieldIndex := len(structType.Fields) - 1; fieldIndex >= 0; fieldIndex-- {
+			if cursor == nil {
+				return false, fmt.Errorf("function %q instruction %d: abstract stack underflow while building struct %q", fn.Name, pc, structType.Name)
+			}
+			got, want := cursor.typ, structType.Fields[fieldIndex].Type
+			if got != want {
+				return false, fmt.Errorf("function %q instruction %d: constructor field %q of %s has type %s; expected %s", fn.Name, pc, structType.Fields[fieldIndex].Name, structType.Name, got, want)
+			}
+			cursor = cursor.parent
+		}
+		s.stack = cursor
+		push(structType.Name)
+	case OpGetField:
+		receiverType, err := pop()
+		if err != nil {
+			return false, err
+		}
+		structType := p.structTypeByName(receiverType)
+		if structType.Name == "" {
+			return false, fmt.Errorf("function %q instruction %d: GET_FIELD requires a struct receiver, got %s", fn.Name, pc, receiverType)
+		}
+		if ins.A < 0 || ins.A >= len(structType.Fields) {
+			return false, fmt.Errorf("function %q instruction %d: field index %d is out of bounds for struct %q", fn.Name, pc, ins.A, structType.Name)
+		}
+		push(structType.Fields[ins.A].Type)
 	case OpBuildArray:
 		if ins.A == 0 {
 			return false, fmt.Errorf("function %q instruction %d: cannot infer the element type of an empty array", fn.Name, pc)
@@ -442,6 +473,9 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 			if got == "unit" {
 				return false, fmt.Errorf("function %q instruction %d: print cannot display unit values", fn.Name, pc)
 			}
+			if !printableProgramType(p, got) {
+				return false, fmt.Errorf("function %q instruction %d: print cannot display values of type %s", fn.Name, pc, got)
+			}
 			push("unit")
 		case 1:
 			if got != "string" {
@@ -478,6 +512,19 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 		return false, fmt.Errorf("function %q instruction %d: cannot type-verify opcode %q", fn.Name, pc, ins.Op)
 	}
 	return false, nil
+}
+
+
+func printableProgramType(p *Program, typ string) bool {
+	switch typ {
+	case "i64", "f64", "bool", "string":
+		return true
+	}
+	if strings.HasPrefix(typ, "Array<") && strings.HasSuffix(typ, ">") {
+		return printableProgramType(p, typ[len("Array<"):len(typ)-1])
+	}
+	// Struct printing is deliberately not part of the first struct slice.
+	return false
 }
 
 func abstractBinaryResult(fn string, pc int, op Op, left, right string) (string, error) {
