@@ -171,7 +171,7 @@ func TestVMRejectsExcessiveActiveLocalSlots(t *testing.T) {
 }
 
 func TestIndexedArrayAssignmentUsesValueSemantics(t *testing.T) {
-	source := \`let mut original: Array<Array<i64>> = [[1, 2], [3, 4]];
+	source := `let mut original: Array<Array<i64>> = [[1, 2], [3, 4]];
 let mut values: Array<Array<i64>> = original;
 values[0][1] = 9;
 print(values);
@@ -180,12 +180,12 @@ let mut row: Array<i64> = [7, 8];
 values[1] = row;
 values[1][0] = 6;
 print(values);
-print(row);\`
+print(row);`
 	out, err := runSource(t, source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[[1 9] [3 4]]\\n[[1 2] [3 4]]\\n[[1 9] [6 8]]\\n[7 8]\\n"
+	want := "[[1 9] [3 4]]\n[[1 2] [3 4]]\n[[1 9] [6 8]]\n[7 8]\n"
 	if out != want {
 		t.Fatalf("output = %q, want %q", out, want)
 	}
