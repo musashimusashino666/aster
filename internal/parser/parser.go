@@ -690,6 +690,7 @@ func (p *Parser) matchPattern() (ast.MatchPattern, error) {
 				if !p.match(token.Comma) { break }
 				if p.check(token.RParen) { break }
 			}
+		}
 		if _, err = p.consume(token.RParen, "expected ')' after pattern bindings"); err != nil {
 			return ast.MatchPattern{}, err
 		}
