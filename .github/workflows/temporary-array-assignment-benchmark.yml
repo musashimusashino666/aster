@@ -1,0 +1,19 @@
+name: Temporary array assignment benchmark
+
+on:
+  push:
+    branches:
+      - perf/amortize-native-array-benchmark
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Run array assignment benchmarks
+        run: go test ./tests -run '^$' -bench '^BenchmarkArrayElementAssignment' -benchmem -count=5
