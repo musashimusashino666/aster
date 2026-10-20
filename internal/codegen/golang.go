@@ -61,7 +61,7 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	g.line("func main() {")
 	g.indent++
 	g.line("asterCallDepth = 1")
-	g.line("defer func() { if r := recover(); r != nil { msg := fmt.Sprint(r); if !strings.Contains(msg, \"runtime error:\") { msg = \"runtime error: \" + msg }; fmt.Fprintln(os.Stderr, msg); os.Exit(1) } }()")
+	g.line("defer func() { if recovered := recover(); recovered != nil { if failure, ok := recovered.(asterRuntimeFailure); ok { fmt.Fprintln(os.Stderr, failure.Error()); os.Exit(1) }; panic(recovered) } }()")
 	for _, stmt := range typed.IR.Body {
 		if err := g.irStatement(stmt); err != nil {
 			return "", err
