@@ -14,7 +14,7 @@ import (
 	"github.com/aster-lang/aster/internal/limits"
 )
 
-const FormatVersion = 5
+const FormatVersion = 6
 
 // Per-value allocation limits enforced by bytecode validation and the VM.
 // String limits are measured in UTF-8 bytes, not Unicode code points.
@@ -33,6 +33,8 @@ const (
 	maxTotalConstantArrayItems  = 1 << 18
 	maxTypedVerifierStateCells  = 1 << 20
 	maxTotalParameterTypes      = 1 << 20
+	maxStructTypeCount          = 1 << 16
+	maxStructFieldCount         = 1 << 16
 )
 
 const maxTypeNameBytes = langtypes.MaxTypeNameBytes
@@ -46,6 +48,7 @@ const (
 	ValueBool   ValueKind = "bool"
 	ValueString ValueKind = "string"
 	ValueArray  ValueKind = "array"
+	ValueStruct ValueKind = "struct"
 )
 
 // arrayStorage tracks whether the backing storage is shared by more than one
@@ -57,12 +60,14 @@ type arrayStorage struct {
 }
 
 type Value struct {
-	Kind   ValueKind `json:"kind"`
-	I64    int64     `json:"i64,omitempty"`
-	F64    float64   `json:"f64,omitempty"`
-	Bool   bool      `json:"bool,omitempty"`
-	String string    `json:"string,omitempty"`
-	Array  []Value   `json:"array,omitempty"`
+	Kind       ValueKind `json:"kind"`
+	I64        int64     `json:"i64,omitempty"`
+	F64        float64   `json:"f64,omitempty"`
+	Bool       bool      `json:"bool,omitempty"`
+	String     string    `json:"string,omitempty"`
+	Array      []Value   `json:"array,omitempty"`
+	StructName string    `json:"struct_name,omitempty"`
+	Fields     []Value   `json:"fields,omitempty"`
 
 	arrayStorage  *arrayStorage `json:"-"`
 	arrayBorrowed bool          `json:"-"`
@@ -73,24 +78,28 @@ type Value struct {
 // +0.0 when bytecode is written and read back.
 func (v Value) MarshalJSON() ([]byte, error) {
 	type valueJSON struct {
-		Kind   ValueKind `json:"kind"`
-		I64    int64     `json:"i64,omitempty"`
-		F64    *float64  `json:"f64,omitempty"`
-		Bool   bool      `json:"bool,omitempty"`
-		String string    `json:"string,omitempty"`
-		Array  []Value   `json:"array,omitempty"`
+		Kind       ValueKind `json:"kind"`
+		I64        int64     `json:"i64,omitempty"`
+		F64        *float64  `json:"f64,omitempty"`
+		Bool       bool      `json:"bool,omitempty"`
+		String     string    `json:"string,omitempty"`
+		Array      []Value   `json:"array,omitempty"`
+		StructName string    `json:"struct_name,omitempty"`
+		Fields     []Value   `json:"fields,omitempty"`
 	}
 	var f64 *float64
 	if v.Kind == ValueF64 {
 		f64 = &v.F64
 	}
 	return json.Marshal(valueJSON{
-		Kind:   v.Kind,
-		I64:    v.I64,
-		F64:    f64,
-		Bool:   v.Bool,
-		String: v.String,
-		Array:  v.Array,
+		Kind:       v.Kind,
+		I64:        v.I64,
+		F64:        f64,
+		Bool:       v.Bool,
+		String:     v.String,
+		Array:      v.Array,
+		StructName: v.StructName,
+		Fields:     v.Fields,
 	})
 }
 
@@ -109,16 +118,37 @@ func (v *Value) EnsureArrayStorage() {
 	}
 	v.arrayStorage.childrenInitialized = true
 	for i := range v.Array {
-		v.Array[i].EnsureArrayStorage()
+		v.Array[i].EnsureAggregateStorage()
+	}
+}
+
+// EnsureAggregateStorage initializes array sharing metadata throughout an
+// aggregate, including arrays nested in struct fields.
+func (v *Value) EnsureAggregateStorage() {
+	if v == nil {
+		return
+	}
+	switch v.Kind {
+	case ValueArray:
+		v.EnsureArrayStorage()
+	case ValueStruct:
+		for i := range v.Fields {
+			v.Fields[i].EnsureAggregateStorage()
+		}
 	}
 }
 
 // MarkArrayShared conservatively records that another independently mutable
 // value may still refer to this array's backing storage.
 func (v *Value) MarkArrayShared() {
-	v.EnsureArrayStorage()
-	if v.Kind == ValueArray {
+	v.EnsureAggregateStorage()
+	switch v.Kind {
+	case ValueArray:
 		v.arrayStorage.shared = true
+	case ValueStruct:
+		for i := range v.Fields {
+			v.Fields[i].MarkArrayShared()
+		}
 	}
 }
 
@@ -131,9 +161,7 @@ func (v *Value) PrepareArrayWrite() {
 	}
 	items := append([]Value(nil), v.Array...)
 	for i := range items {
-		if items[i].Kind == ValueArray {
-			items[i].MarkArrayShared()
-		}
+		items[i].MarkArrayShared()
 	}
 	v.Array = items
 	v.arrayStorage = &arrayStorage{childrenInitialized: true}
@@ -169,6 +197,16 @@ func Array(v []Value) Value {
 	value.EnsureArrayStorage()
 	return value
 }
+
+func Struct(name string, fields []Value) Value {
+	value := Value{Kind: ValueStruct, StructName: name, Fields: append([]Value(nil), fields...)}
+	value.EnsureAggregateStorage()
+	for i := range value.Fields {
+		value.Fields[i].MarkArrayShared()
+		value.Fields[i].ClearArrayBorrowed()
+	}
+	return value
+}
 func (v Value) StringValue() string {
 	switch v.Kind {
 	case ValueUnit:
@@ -187,6 +225,8 @@ func (v Value) StringValue() string {
 			parts[i] = item.StringValue()
 		}
 		return "[" + strings.Join(parts, " ") + "]"
+	case ValueStruct:
+		return "<struct " + v.StructName + ">"
 	}
 	return "<invalid>"
 }
@@ -197,6 +237,8 @@ const (
 	OpConst        Op = "CONST"
 	OpLoadLocal    Op = "LOAD_LOCAL"
 	OpBuildArray   Op = "BUILD_ARRAY"
+	OpBuildStruct  Op = "BUILD_STRUCT"
+	OpGetField     Op = "GET_FIELD"
 	OpIndex        Op = "INDEX"
 	OpSlice        Op = "SLICE"
 	OpToI64        Op = "TO_I64"
@@ -241,13 +283,115 @@ type Function struct {
 	Return     string        `json:"return"`
 	Code       []Instruction `json:"code"`
 }
+type StructType struct {
+	Name   string        `json:"name"`
+	Fields []StructField `json:"fields"`
+}
+
+type StructField struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
 type Program struct {
-	Format    string     `json:"format"`
-	Version   int        `json:"version"`
-	Source    string     `json:"source,omitempty"`
-	Constants []Value    `json:"constants"`
-	Functions []Function `json:"functions"`
-	Entry     int        `json:"entry"`
+	Format      string       `json:"format"`
+	Version     int          `json:"version"`
+	Source      string       `json:"source,omitempty"`
+	StructTypes []StructType `json:"struct_types,omitempty"`
+	Constants   []Value      `json:"constants"`
+	Functions   []Function   `json:"functions"`
+	Entry       int          `json:"entry"`
+}
+
+// validateStructTypes validates nominal metadata from untrusted bytecode,
+// including duplicate names/fields, field types, and by-value layout cycles.
+func (p *Program) validateStructTypes() (map[string]StructType, error) {
+	if len(p.StructTypes) > maxStructTypeCount {
+		return nil, fmt.Errorf("struct type metadata exceeds safety limit")
+	}
+	types := make(map[string]struct{}, len(p.StructTypes))
+	structTypesByName := make(map[string]StructType, len(p.StructTypes))
+	for i, st := range p.StructTypes {
+		if st.Name == "" || len(st.Name) > maxTypeNameBytes || !langtypes.ValidName(st.Name) {
+			return nil, fmt.Errorf("struct type %d has invalid name %q", i, st.Name)
+		}
+		switch st.Name {
+		case "i64", "f64", "bool", "string", "unit", "Array":
+			return nil, fmt.Errorf("struct type %q uses a reserved name", st.Name)
+		}
+		if _, exists := types[st.Name]; exists {
+			return nil, fmt.Errorf("duplicate struct type %q", st.Name)
+		}
+		types[st.Name] = struct{}{}
+		structTypesByName[st.Name] = st
+		if len(st.Fields) > maxStructFieldCount {
+			return nil, fmt.Errorf("struct %q exceeds field-count safety limit", st.Name)
+		}
+		seen := make(map[string]struct{}, len(st.Fields))
+		for _, field := range st.Fields {
+			if field.Name == "" || len(field.Name) > maxTypeNameBytes || (!langtypes.ValidName(field.Name) && field.Name != "Array") {
+				return nil, fmt.Errorf("struct %q has invalid field name %q", st.Name, field.Name)
+			}
+			if _, exists := seen[field.Name]; exists {
+				return nil, fmt.Errorf("struct %q has duplicate field %q", st.Name, field.Name)
+			}
+			seen[field.Name] = struct{}{}
+		}
+	}
+	for _, st := range p.StructTypes {
+		for _, field := range st.Fields {
+			if field.Type == "unit" || !p.validProgramTypeName(field.Type, structTypesByName) {
+				return nil, fmt.Errorf("struct %q field %q has invalid type %q", st.Name, field.Name, field.Type)
+			}
+		}
+	}
+	state := make(map[string]uint8)
+	var visit func(string) error
+	visit = func(name string) error {
+		if state[name] == 1 {
+			return fmt.Errorf("struct %q has a recursive by-value layout", name)
+		}
+		if state[name] == 2 {
+			return nil
+		}
+		state[name] = 1
+		st := structTypesByName[name]
+		for _, field := range st.Fields {
+			if _, arr := abstractArrayElementType(field.Type); arr {
+				continue
+			}
+			if _, ok := types[field.Type]; ok {
+				if err := visit(field.Type); err != nil {
+					return err
+				}
+			}
+		}
+		state[name] = 2
+		return nil
+	}
+	for _, st := range p.StructTypes {
+		if err := visit(st.Name); err != nil {
+			return nil, err
+		}
+	}
+	return structTypesByName, nil
+}
+
+func (p *Program) validProgramTypeName(name string, structTypesByName map[string]StructType) bool {
+	if !langtypes.ValidName(name) {
+		return false
+	}
+	if strings.HasPrefix(name, "Array<") && strings.HasSuffix(name, ">") {
+		element := name[len("Array<") : len(name)-1]
+		return element != "unit" && p.validProgramTypeName(element, structTypesByName)
+	}
+	switch name {
+	case "i64", "f64", "bool", "string", "unit":
+		return true
+	default:
+		_, ok := structTypesByName[name]
+		return ok
+	}
 }
 
 func (p *Program) Validate() error {
@@ -265,6 +409,10 @@ func (p *Program) Validate() error {
 	}
 	if len(p.Constants) > maxConstantPoolEntries {
 		return fmt.Errorf("constant pool exceeds safety limit")
+	}
+	structTypesByName, err := p.validateStructTypes()
+	if err != nil {
+		return err
 	}
 	totalConstantValues := 0
 	totalConstantStringBytes := 0
@@ -298,11 +446,11 @@ func (p *Program) Validate() error {
 			return fmt.Errorf("function %q has %d parameters but %d parameter types", f.Name, f.Params, len(f.ParamTypes))
 		}
 		for pi, typ := range f.ParamTypes {
-			if !validTypeName(typ) || typ == "unit" {
+			if !p.validProgramTypeName(typ, structTypesByName) || typ == "unit" {
 				return fmt.Errorf("function %q parameter %d has invalid type %q", f.Name, pi, typ)
 			}
 		}
-		if !validTypeName(f.Return) {
+		if !p.validProgramTypeName(f.Return, structTypesByName) {
 			return fmt.Errorf("function %q has invalid return type %q", f.Name, f.Return)
 		}
 		if len(f.Code) == 0 {
@@ -321,6 +469,17 @@ func (p *Program) Validate() error {
 			case OpBuildArray:
 				if ins.A < 0 || ins.A > MaxArrayLength {
 					return fmt.Errorf("function %q instruction %d has invalid array element count %d", f.Name, pc, ins.A)
+				}
+			case OpBuildStruct:
+				if ins.A < 0 || ins.A >= len(p.StructTypes) {
+					return fmt.Errorf("function %q instruction %d references missing struct type %d", f.Name, pc, ins.A)
+				}
+				if ins.B != len(p.StructTypes[ins.A].Fields) {
+					return fmt.Errorf("function %q instruction %d builds struct %q with %d fields; expected %d", f.Name, pc, p.StructTypes[ins.A].Name, ins.B, len(p.StructTypes[ins.A].Fields))
+				}
+			case OpGetField:
+				if ins.A < 0 || ins.B != 0 {
+					return fmt.Errorf("function %q instruction %d has invalid field access operands", f.Name, pc)
 				}
 			case OpIndex:
 			case OpSlice:
@@ -387,7 +546,7 @@ func (p *Program) Validate() error {
 		typedStateCells += len(f.Code) * f.Locals
 	}
 	for fi := range p.Functions {
-		if err := validateFunctionTypes(p, fi, constantTypes); err != nil {
+		if err := validateFunctionTypes(p, fi, constantTypes, structTypesByName); err != nil {
 			return err
 		}
 	}
@@ -423,6 +582,10 @@ func validateFunctionStack(fn Function) error {
 				delta = 1
 			case OpBuildArray:
 				required, delta = ins.A, 1-ins.A
+			case OpBuildStruct:
+				required, delta = ins.B, 1-ins.B
+			case OpGetField:
+				required = 1
 			case OpIndex:
 				required, delta = 2, -1
 			case OpSlice:

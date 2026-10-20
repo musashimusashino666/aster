@@ -255,3 +255,27 @@ func TestExplicitFloatToIntegerCastRejectsOutOfRange(t *testing.T) {
 		t.Fatalf("expected out-of-range numeric conversion error, got %v", err)
 	}
 }
+
+func TestVMStructConstructionFieldReadsAndArrayValueSemantics(t *testing.T) {
+	source := `struct Point { x: i64, y: i64 }
+struct Box { point: Point, values: Array<i64> }
+fn pass(value: Box) -> Box { return value; }
+let mut original: Array<i64> = [1, 2];
+let boxValue = Box(Point(3, 4), original);
+let returned = pass(boxValue);
+let mut extracted: Array<i64> = returned.values;
+extracted[0] = 9;
+print(returned.point.x);
+print(original);
+print(boxValue.values);
+print(returned.values);
+print(extracted);`
+	got, err := runSource(t, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "3\n[1 2]\n[1 2]\n[1 2]\n[9 2]\n"
+	if got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}

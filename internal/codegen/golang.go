@@ -54,6 +54,11 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 		}
 	}
 	g.writePreamble()
+	for _, structType := range typed.IR.StructTypes {
+		if err := g.irStructType(structType); err != nil {
+			return "", err
+		}
+	}
 	for _, f := range typed.IR.Functions {
 		if err := g.irFunction(f); err != nil {
 			return "", err
@@ -79,6 +84,8 @@ func (g *generator) writePreamble() {
 
 func goType(t string) string {
 	switch t {
+	case "unit":
+		return "struct{}"
 	case "i64":
 		return "int64"
 	case "f64":
@@ -91,7 +98,7 @@ func goType(t string) string {
 		if elem, ok := arrayElementType(t); ok {
 			return "asterArray[" + goType(elem) + "]"
 		}
-		return "struct{}"
+		return "asterType_" + t
 	}
 }
 func arrayElementType(t string) (string, bool) {

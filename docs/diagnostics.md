@@ -90,6 +90,17 @@ Codes are intended for tests, editor integrations, and bug reports. A code ident
 | `TYP049` | Slice bounds must be `i64` |
 | `TYP050` | Numeric conversion call does not have exactly one argument |
 | `TYP051` | Numeric conversion argument is not `i64` or `f64` |
+| `TYP052` | Duplicate, reserved, or conflicting struct declaration |
+| `TYP053` | Duplicate struct field |
+| `TYP054` | Struct field has an invalid or unsupported type |
+| `TYP055` | Field selection applied to a non-struct value |
+| `TYP056` | Unknown struct field |
+| `TYP057` | Struct constructor has the wrong arity |
+| `TYP058` | Struct constructor argument type mismatch |
+| `TYP059` | Direct recursive by-value struct layout |
+| `TYP060` | Struct printing is not yet supported |
+| `TYP061` | Invalid or reserved struct type name |
+| `TYP062` | Invalid struct field name
 
 ## Runtime
 

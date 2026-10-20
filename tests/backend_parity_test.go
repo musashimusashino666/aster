@@ -924,3 +924,60 @@ func TestExplicitFloatToIntegerRangeMatchesBackends(t *testing.T) {
 		t.Fatalf("native error = %q, want %q", got, expected)
 	}
 }
+
+func TestStructFieldBackendParityAndArrayValueSemantics(t *testing.T) {
+	source := `struct Point { x: i64, y: i64 }
+struct Box { point: Point, values: Array<i64> }
+fn pass(value: Box) -> Box { return value; }
+let mut original: Array<i64> = [1, 2];
+let boxValue = Box(Point(3, 4), original);
+let returned = pass(boxValue);
+let mut extracted: Array<i64> = returned.values;
+extracted[0] = 9;
+let mut nestedOriginal: Array<i64> = [5, 6];
+let boxes: Array<Box> = [Box(Point(7, 8), nestedOriginal)];
+let mut nestedExtracted: Array<i64> = boxes[0].values;
+nestedExtracted[0] = 99;
+print(returned.point.x);
+print(original);
+print(boxValue.values);
+print(returned.values);
+print(extracted);
+print(nestedOriginal);
+print(boxes[0].values);
+print(nestedExtracted);`
+	tree, err := parser.Parse(source, "struct-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-struct-parity")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("native execution failed: %v\n%s", err, nativeOutput)
+	}
+	if got, want := vmOutput.String(), "3\n[1 2]\n[1 2]\n[1 2]\n[9 2]\n[5 6]\n[5 6]\n[99 6]\n"; got != want {
+		t.Fatalf("VM output = %q, want %q", got, want)
+	}
+	if got := string(nativeOutput); got != vmOutput.String() {
+		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), got)
+	}
+}

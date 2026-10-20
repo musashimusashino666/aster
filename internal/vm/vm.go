@@ -152,18 +152,66 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		start := len(v.stack) - i.A
 		items := append([]bytecode.Value(nil), v.stack[start:]...)
 		for index := range items {
-			if items[index].Kind != bytecode.ValueArray {
-				continue
-			}
-			items[index].EnsureArrayStorage()
-			if items[index].IsArrayBorrowed() {
-				// The source array remains live outside this newly built container.
+			items[index].EnsureAggregateStorage()
+			if items[index].Kind == bytecode.ValueArray {
+				if items[index].IsArrayBorrowed() {
+					// The source array remains live outside this newly built container.
+					items[index].MarkArrayShared()
+				}
+				items[index].ClearArrayBorrowed()
+			} else if items[index].Kind == bytecode.ValueStruct {
+				// The source struct remains live; arrays within its fields must
+				// detach if either value later mutates an extracted array field.
 				items[index].MarkArrayShared()
 			}
-			items[index].ClearArrayBorrowed()
 		}
 		v.stack = v.stack[:start]
 		push(bytecode.Array(items))
+	case bytecode.OpBuildStruct:
+		if i.A < 0 || i.A >= len(v.program.StructTypes) {
+			return v.fault(i, "invalid struct type index %d", i.A)
+		}
+		structType := v.program.StructTypes[i.A]
+		if i.B != len(structType.Fields) || i.B > len(v.stack) {
+			return v.fault(i, "struct %s construction requires %d field values, stack has %d", structType.Name, len(structType.Fields), len(v.stack))
+		}
+		start := len(v.stack) - i.B
+		fields := append([]bytecode.Value(nil), v.stack[start:]...)
+		for index := range fields {
+			fields[index].EnsureAggregateStorage()
+		}
+		v.stack = v.stack[:start]
+		push(bytecode.Struct(structType.Name, fields))
+	case bytecode.OpGetField:
+		receiver, err := pop()
+		if err != nil {
+			return err
+		}
+		if receiver.Kind != bytecode.ValueStruct {
+			return v.fault(i, "field selection requires a struct value, got %s", receiver.Kind)
+		}
+		if receiver.StructName == "" || i.A < 0 || i.A >= len(receiver.Fields) {
+			return v.fault(i, "invalid field index %d for struct %q", i.A, receiver.StructName)
+		}
+		structType := -1
+		for index, candidate := range v.program.StructTypes {
+			if candidate.Name == receiver.StructName {
+				structType = index
+				break
+			}
+		}
+		if structType < 0 || len(v.program.StructTypes[structType].Fields) != len(receiver.Fields) {
+			return v.fault(i, "invalid runtime layout for struct %q", receiver.StructName)
+		}
+		value := receiver.Fields[i.A]
+		value.EnsureAggregateStorage()
+		if value.Kind == bytecode.ValueArray {
+			value.MarkArrayShared()
+			value.SetArrayBorrowed(true)
+		} else if value.Kind == bytecode.ValueStruct {
+			value.MarkArrayShared()
+		}
+		push(value)
 	case bytecode.OpIndex:
 		index, err := pop()
 		if err != nil {
@@ -187,6 +235,8 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			value.EnsureArrayStorage()
 			// INDEX returns a value borrowed from the parent array.
 			value.SetArrayBorrowed(true)
+		} else if value.Kind == bytecode.ValueStruct {
+			value.MarkArrayShared()
 		}
 		push(value)
 	case bytecode.OpSlice:
@@ -214,10 +264,8 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		items := make([]bytecode.Value, int(end.I64-start.I64))
 		copy(items, collection.Array[int(start.I64):int(end.I64)])
 		for index := range items {
-			if items[index].Kind == bytecode.ValueArray {
-				items[index].EnsureArrayStorage()
-				items[index].MarkArrayShared()
-			}
+			items[index].EnsureAggregateStorage()
+			items[index].MarkArrayShared()
 		}
 		push(bytecode.Array(items))
 	case bytecode.OpToI64:
@@ -282,7 +330,11 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			value.SetArrayBorrowed(true)
 			push(value)
 		} else {
-			push(*local)
+			value := *local
+			if value.Kind == bytecode.ValueStruct {
+				value.MarkArrayShared()
+			}
+			push(value)
 		}
 	case bytecode.OpStoreLocal:
 		x, err := pop()
@@ -300,6 +352,8 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 				x.MarkArrayShared()
 			}
 			x.ClearArrayBorrowed()
+		} else if x.Kind == bytecode.ValueStruct {
+			x.MarkArrayShared()
 		}
 		fr.locals[i.A] = x
 	case bytecode.OpPop:

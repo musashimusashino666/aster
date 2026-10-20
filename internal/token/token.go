@@ -14,6 +14,7 @@ const (
 	String  Kind = "STRING"
 
 	Fn     Kind = "fn"
+	Struct Kind = "struct"
 	Let    Kind = "let"
 	Mut    Kind = "mut"
 	If     Kind = "if"
@@ -32,6 +33,7 @@ const (
 	Comma     Kind = ","
 	Colon     Kind = ":"
 	Semicolon Kind = ";"
+	Dot       Kind = "."
 	Arrow     Kind = "->"
 
 	Assign       Kind = "="

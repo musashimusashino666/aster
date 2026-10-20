@@ -31,6 +31,18 @@ type FunctionInfo struct {
 	Decl   *ast.Function
 }
 
+type StructFieldInfo struct {
+	Name string
+	Type Type
+	Decl ast.StructField
+}
+
+type StructInfo struct {
+	Name   string
+	Fields []StructFieldInfo
+	Decl   *ast.StructDecl
+}
+
 // TypedProgram is the checked view of an AST. Expression types and function
 // signatures are produced by the checker and consumed by backend generators;
 // backends must not independently infer these semantic facts.
@@ -39,6 +51,7 @@ type TypedProgram struct {
 	IR              *ir.Program
 	expressionTypes map[ast.Expr]Type
 	functions       map[string]FunctionInfo
+	structs         map[string]StructInfo
 }
 
 // TypeOf returns the checker's resolved type for expr.
@@ -92,6 +105,7 @@ func (s *scope) define(name string, v Variable) bool {
 
 type Checker struct {
 	functions       map[string]FunctionInfo
+	structs         map[string]StructInfo
 	expressionTypes map[ast.Expr]Type
 	currentReturn   Type
 	inFunction      bool
@@ -100,7 +114,7 @@ type Checker struct {
 
 // Check validates program without retaining expression-type metadata.
 func Check(program *ast.Program) error {
-	c := &Checker{functions: map[string]FunctionInfo{}}
+	c := &Checker{functions: map[string]FunctionInfo{}, structs: map[string]StructInfo{}}
 	return c.checkProgram(program)
 }
 
@@ -109,6 +123,7 @@ func Check(program *ast.Program) error {
 func Analyze(program *ast.Program) (*TypedProgram, error) {
 	c := &Checker{
 		functions:       map[string]FunctionInfo{},
+		structs:         map[string]StructInfo{},
 		expressionTypes: map[ast.Expr]Type{},
 	}
 	if err := c.checkProgram(program); err != nil {
@@ -145,6 +160,66 @@ func Analyze(program *ast.Program) (*TypedProgram, error) {
 }
 
 func (c *Checker) checkProgram(program *ast.Program) error {
+	// Register nominal types before checking function signatures so fields,
+	// parameters, and return types may refer to later declarations.
+	functionNames := make(map[string]struct{})
+	for _, d := range program.Decls {
+		if f, ok := d.(*ast.Function); ok {
+			functionNames[f.Name] = struct{}{}
+		}
+	}
+	for _, d := range program.Decls {
+		s, ok := d.(*ast.StructDecl)
+		if !ok {
+			continue
+		}
+		if !langtypes.ValidName(s.Name) {
+			return typeError(s.Pos(), diagnostic.TypeInvalidStructName, "invalid or reserved struct name '%s'", s.Name)
+		}
+		if builtinName(s.Name) || s.Name == "Array" {
+			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' is reserved", s.Name)
+		}
+		if _, exists := functionNames[s.Name]; exists {
+			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' conflicts with a function", s.Name)
+		}
+		if _, exists := c.structs[s.Name]; exists {
+			return typeError(s.Pos(), diagnostic.TypeDuplicateStruct, "struct '%s' is already declared", s.Name)
+		}
+		c.structs[s.Name] = StructInfo{Name: s.Name, Decl: s}
+	}
+	// Populate field metadata now that all nominal names are known.
+	for _, d := range program.Decls {
+		s, ok := d.(*ast.StructDecl)
+		if !ok {
+			continue
+		}
+		fields := make([]StructFieldInfo, 0, len(s.Fields))
+		seen := make(map[string]struct{})
+		for _, field := range s.Fields {
+			if len(field.Name) > langtypes.MaxTypeNameBytes || (!langtypes.ValidName(field.Name) && field.Name != "Array") {
+				return typeError(field.At, diagnostic.TypeInvalidStructFieldName, "invalid struct field name '%s'", field.Name)
+			}
+			if _, exists := seen[field.Name]; exists {
+				return typeError(field.At, diagnostic.TypeDuplicateStructField, "field '%s' is duplicated in struct '%s'", field.Name, s.Name)
+			}
+			seen[field.Name] = struct{}{}
+			typ, err := c.typeFromRef(field.Type)
+			if err != nil {
+				return typeError(field.At, diagnostic.TypeInvalidTypeAnnotation, "%v", err)
+			}
+			if typ == Unit {
+				return typeError(field.At, diagnostic.TypeInvalidStructField, "struct fields cannot have type unit")
+			}
+			fields = append(fields, StructFieldInfo{Name: field.Name, Type: typ, Decl: field})
+		}
+		info := c.structs[s.Name]
+		info.Fields = fields
+		c.structs[s.Name] = info
+	}
+	if err := c.validateStructLayoutCycles(); err != nil {
+		return err
+	}
+
 	// First pass enables forward calls and recursion.
 	for _, d := range program.Decls {
 		f, ok := d.(*ast.Function)
@@ -159,7 +234,7 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 			if builtinName(p.Name) {
 				return typeError(p.At, diagnostic.TypeReservedParameter, "parameter name '%s' is reserved", p.Name)
 			}
-			t, err := typeFromRef(p.Type)
+			t, err := c.typeFromRef(p.Type)
 			if err != nil {
 				return typeError(p.At, diagnostic.TypeInvalidTypeAnnotation, "%v", err)
 			}
@@ -170,7 +245,7 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 		}
 		ret := Unit
 		if f.ReturnType != nil {
-			t, err := typeFromRef(*f.ReturnType)
+			t, err := c.typeFromRef(*f.ReturnType)
 			if err != nil {
 				return typeError(f.ReturnType.At, diagnostic.TypeInvalidTypeAnnotation, "%v", err)
 			}
@@ -227,27 +302,18 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 func builtinName(n string) bool {
 	return n == "print" || n == "len" || n == "assert" || n == "i64" || n == "f64"
 }
-func typeFromName(s string) (Type, error) {
-	switch s {
-	case "i64":
-		return I64, nil
-	case "f64":
-		return F64, nil
-	case "bool":
-		return Bool, nil
-	case "string":
-		return String, nil
-	case "unit":
-		return Unit, nil
-	default:
-		return "", fmt.Errorf("unknown type '%s'", s)
-	}
-}
+
+// typeFromRef preserves the package-level helper used by primitive/Array
+// type-depth tests. Named types require a Checker with its declaration table.
 func typeFromRef(r ast.TypeRef) (Type, error) {
-	return typeFromRefDepth(r, 0)
+	return (&Checker{structs: map[string]StructInfo{}}).typeFromRef(r)
 }
 
-func typeFromRefDepth(r ast.TypeRef, depth int) (Type, error) {
+func (c *Checker) typeFromRef(r ast.TypeRef) (Type, error) {
+	return c.typeFromRefDepth(r, 0)
+}
+
+func (c *Checker) typeFromRefDepth(r ast.TypeRef, depth int) (Type, error) {
 	if r.Name == "Array" {
 		if r.Element == nil {
 			return "", fmt.Errorf("type Array requires an element type, e.g. Array<i64>")
@@ -255,7 +321,7 @@ func typeFromRefDepth(r ast.TypeRef, depth int) (Type, error) {
 		if depth >= langtypes.MaxNestingDepth {
 			return "", fmt.Errorf("type nesting exceeds limit %d", langtypes.MaxNestingDepth)
 		}
-		elem, err := typeFromRefDepth(*r.Element, depth+1)
+		elem, err := c.typeFromRefDepth(*r.Element, depth+1)
 		if err != nil {
 			return "", err
 		}
@@ -267,7 +333,66 @@ func typeFromRefDepth(r ast.TypeRef, depth int) (Type, error) {
 	if r.Element != nil {
 		return "", fmt.Errorf("type '%s' does not accept a generic type argument", r.Name)
 	}
-	return typeFromName(r.Name)
+	switch r.Name {
+	case "i64":
+		return I64, nil
+	case "f64":
+		return F64, nil
+	case "bool":
+		return Bool, nil
+	case "string":
+		return String, nil
+	case "unit":
+		return Unit, nil
+	default:
+		if _, ok := c.structs[r.Name]; ok {
+			return Type(r.Name), nil
+		}
+		return "", fmt.Errorf("unknown type '%s'", r.Name)
+	}
+}
+
+// validateStructLayoutCycles rejects direct by-value recursive layouts. Arrays
+// are an indirection boundary and therefore do not add a layout dependency.
+func (c *Checker) validateStructLayoutCycles() error {
+	state := make(map[string]uint8)
+	var visit func(string) error
+	visit = func(name string) error {
+		switch state[name] {
+		case 1:
+			info := c.structs[name]
+			return typeError(info.Decl.Pos(), diagnostic.TypeRecursiveStruct, "struct '%s' has a recursive by-value layout", name)
+		case 2:
+			return nil
+		}
+		state[name] = 1
+		info := c.structs[name]
+		for _, field := range info.Fields {
+			if _, isArray := arrayElement(field.Type); isArray {
+				continue
+			}
+			if _, isStruct := c.structs[string(field.Type)]; isStruct {
+				if err := visit(string(field.Type)); err != nil {
+					return err
+				}
+			}
+		}
+		state[name] = 2
+		return nil
+	}
+	for name := range c.structs {
+		if err := visit(name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func printableType(t Type) bool {
+	if elem, ok := arrayElement(t); ok {
+		return printableType(elem)
+	}
+	return t == I64 || t == F64 || t == Bool || t == String
 }
 func arrayElement(t Type) (Type, bool) {
 	s := string(t)
@@ -313,7 +438,7 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 			return false, err
 		}
 		if n.Annotation != nil {
-			annotated, e := typeFromRef(*n.Annotation)
+			annotated, e := c.typeFromRef(*n.Annotation)
 			if e != nil {
 				return false, typeError(n.Annotation.At, diagnostic.TypeInvalidTypeAnnotation, "%v", e)
 			}
@@ -444,6 +569,31 @@ func (c *Checker) checkExpr(e ast.Expr) (Type, error) {
 	return t, err
 }
 
+// checkExprExpected checks an expression using a known expected type. In particular,
+// an empty array literal is well-typed when its element type is supplied by the
+// surrounding struct field; the same context is propagated to nested arrays.
+func (c *Checker) checkExprExpected(e ast.Expr, expected Type) (Type, error) {
+	array, ok := e.(*ast.ArrayExpr)
+	elemType, isArray := arrayElement(expected)
+	if !ok || !isArray {
+		return c.checkExpr(e)
+	}
+	for _, item := range array.Elements {
+		got, err := c.checkExprExpected(item, elemType)
+		if err != nil {
+			return "", err
+		}
+		if got != elemType {
+			return "", typeError(item.Pos(), diagnostic.TypeHeterogeneousArray,
+				"array elements must have one type; expected %s, got %s", elemType, got)
+		}
+	}
+	if c.expressionTypes != nil {
+		c.expressionTypes[e] = expected
+	}
+	return expected, nil
+}
+
 // checkExprImpl performs type inference/checking. Recursive children are routed
 // through checkExpr so every successfully checked expression is recorded.
 func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
@@ -484,6 +634,21 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			return "", typeError(n.Pos(), diagnostic.TypeNestingLimit, "type nesting exceeds limit %d", langtypes.MaxNestingDepth)
 		}
 		return arrayType, nil
+	case *ast.FieldExpr:
+		objectType, err := c.checkExpr(n.Object)
+		if err != nil {
+			return "", err
+		}
+		info, ok := c.structs[string(objectType)]
+		if !ok {
+			return "", typeError(n.Pos(), diagnostic.TypeFieldOnNonStruct, "field selection requires a struct value, got %s", objectType)
+		}
+		for _, field := range info.Fields {
+			if field.Name == n.Name {
+				return field.Type, nil
+			}
+		}
+		return "", typeError(n.Pos(), diagnostic.TypeUnknownStructField, "struct '%s' has no field '%s'", info.Name, n.Name)
 	case *ast.IndexExpr:
 		collectionType, err := c.checkExpr(n.Collection)
 		if err != nil {
@@ -622,6 +787,9 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			if argType == Unit {
 				return "", typeError(args[0].Pos(), diagnostic.TypePrintUnit, "print cannot display a unit value")
 			}
+			if !printableType(argType) {
+				return "", typeError(args[0].Pos(), diagnostic.TypePrintStructUnsupported, "print does not yet support values of type %s", argType)
+			}
 			return Unit, nil
 		}
 		if id.Name == "len" {
@@ -651,6 +819,22 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 				return "", typeError(n.Pos(), diagnostic.TypeAssertArgument, "assert expects bool, got %s", t)
 			}
 			return Unit, nil
+		}
+		if structInfo, isStruct := c.structs[id.Name]; isStruct {
+			if len(args) != len(structInfo.Fields) {
+				return "", typeError(n.Pos(), diagnostic.TypeStructConstructorArity, "struct '%s' expects %d fields, got %d", id.Name, len(structInfo.Fields), len(args))
+			}
+			for i, arg := range args {
+				got, err := c.checkExprExpected(arg, structInfo.Fields[i].Type)
+				if err != nil {
+					return "", err
+				}
+				want := structInfo.Fields[i].Type
+				if got != want {
+					return "", typeError(arg.Pos(), diagnostic.TypeStructFieldMismatch, "field '%s' of struct '%s' expects %s, got %s", structInfo.Fields[i].Name, id.Name, want, got)
+				}
+			}
+			return Type(id.Name), nil
 		}
 		fn, ok := c.functions[id.Name]
 		if !ok {

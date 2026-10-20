@@ -723,3 +723,132 @@ func TestValidateRejectsNumericCastOperands(t *testing.T) {
 		t.Fatalf("expected numeric cast operand fields to be rejected, got %v", err)
 	}
 }
+
+func TestValidateTypedStructBytecode(t *testing.T) {
+	program := &Program{
+		Format:  "aster-bytecode",
+		Version: FormatVersion,
+		StructTypes: []StructType{{
+			Name:   "Point",
+			Fields: []StructField{{Name: "x", Type: "i64"}},
+		}},
+		Constants: []Value{I64(42)},
+		Functions: []Function{{
+			Name:   "main",
+			Locals: 1,
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpBuildStruct, A: 0, B: 1},
+				{Op: OpStoreLocal, A: 0},
+				{Op: OpLoadLocal, A: 0},
+				{Op: OpGetField, A: 0},
+				{Op: OpBuiltin, A: 0, B: 1},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		}},
+		Entry: 0,
+	}
+	if err := program.Validate(); err != nil {
+		t.Fatalf("valid struct bytecode was rejected: %v", err)
+	}
+
+	program.Functions[0].Code[4].A = 1
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "field index 1 is out of bounds") {
+		t.Fatalf("invalid field index should be rejected, got %v", err)
+	}
+}
+
+func TestValidateRejectsInvalidStructMetadata(t *testing.T) {
+	tests := []struct {
+		name    string
+		structs []StructType
+		want    string
+	}{
+		{
+			name:    "duplicate struct name",
+			structs: []StructType{{Name: "Point"}, {Name: "Point"}},
+			want:    "duplicate struct type",
+		},
+		{
+			name: "duplicate field name",
+			structs: []StructType{{Name: "Point", Fields: []StructField{
+				{Name: "x", Type: "i64"},
+				{Name: "x", Type: "i64"},
+			}}},
+			want: "duplicate field",
+		},
+		{
+			name:    "unknown field type",
+			structs: []StructType{{Name: "Point", Fields: []StructField{{Name: "x", Type: "Missing"}}}},
+			want:    "has invalid type",
+		},
+		{
+			name:    "unit field type",
+			structs: []StructType{{Name: "Point", Fields: []StructField{{Name: "x", Type: "unit"}}}},
+			want:    "has invalid type",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			program := &Program{
+				Format:      "aster-bytecode",
+				Version:     FormatVersion,
+				StructTypes: tt.structs,
+				Functions: []Function{{
+					Name:   "main",
+					Return: "unit",
+					Code:   []Instruction{{Op: OpHalt}},
+				}},
+				Entry: 0,
+			}
+			if err := program.Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("invalid struct metadata should be rejected with %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsStructConstructorFieldTypeMismatch(t *testing.T) {
+	program := &Program{
+		Format:      "aster-bytecode",
+		Version:     FormatVersion,
+		StructTypes: []StructType{{Name: "Point", Fields: []StructField{{Name: "x", Type: "i64"}}}},
+		Constants:   []Value{Bool(true)},
+		Functions: []Function{{
+			Name:   "main",
+			Return: "unit",
+			Code: []Instruction{
+				{Op: OpConst, A: 0},
+				{Op: OpBuildStruct, A: 0, B: 1},
+				{Op: OpPop},
+				{Op: OpHalt},
+			},
+		}},
+		Entry: 0,
+	}
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "constructor field") {
+		t.Fatalf("struct constructor field type mismatch should be rejected, got %v", err)
+	}
+}
+
+func TestValidateRejectsRecursiveStructLayout(t *testing.T) {
+	program := &Program{
+		Format:  "aster-bytecode",
+		Version: FormatVersion,
+		StructTypes: []StructType{
+			{Name: "A", Fields: []StructField{{Name: "b", Type: "B"}}},
+			{Name: "B", Fields: []StructField{{Name: "a", Type: "A"}}},
+		},
+		Functions: []Function{{
+			Name:   "main",
+			Return: "unit",
+			Code:   []Instruction{{Op: OpHalt}},
+		}},
+		Entry: 0,
+	}
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "recursive by-value layout") {
+		t.Fatalf("recursive struct layout should be rejected, got %v", err)
+	}
+}
