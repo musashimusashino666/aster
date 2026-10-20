@@ -19,6 +19,7 @@ const asterMinI64 int64 = -1 << 63
 
 var asterCallDepth int
 var asterStdoutBytes int64
+var asterSourceName string
 
 func asterPrint(v any, line, column int) struct{} {
 	var out strings.Builder
@@ -98,6 +99,7 @@ func asterAddString(a, b string, line, column int) string {
 }
 
 type asterRuntimeFailure struct {
+	code    string
 	message string
 }
 
@@ -105,11 +107,61 @@ func (failure asterRuntimeFailure) Error() string {
 	return failure.message
 }
 
-func asterRuntimeError(line, column int, message string) {
-	if line > 0 && column > 0 {
-		panic(asterRuntimeFailure{message: fmt.Sprintf("%d:%d: runtime error: %s", line, column, message)})
+// Keep this classification in sync with internal/diagnostic.RuntimeCode.
+func asterRuntimeDiagnosticCode(message string) string {
+	switch {
+	case strings.Contains(message, "assertion failed"):
+		return "RUN001"
+	case strings.Contains(message, "division by zero"):
+		return "RUN003"
+	case strings.Contains(message, "remainder by zero"):
+		return "RUN004"
+	case strings.Contains(message, "overflow"):
+		return "RUN002"
+	case strings.Contains(message, "non-finite floating-point result"):
+		return "RUN005"
+	case strings.Contains(message, "array index") && strings.Contains(message, "out of bounds"):
+		return "RUN006"
+	case strings.Contains(message, "slice bounds"):
+		return "RUN007"
+	case strings.Contains(message, "out of range for i64 conversion"):
+		return "RUN008"
+	case strings.Contains(message, "string length limit exceeded"):
+		return "RUN009"
+	case strings.Contains(message, "printed value exceeds") || strings.Contains(message, "printed array nesting"):
+		return "RUN010"
+	case strings.Contains(message, "stdout byte limit exceeded"):
+		return "RUN011"
+	case strings.Contains(message, "call depth limit exceeded"):
+		return "RUN012"
+	case strings.Contains(message, "instruction budget exceeded"):
+		return "RUN013"
+	case strings.Contains(message, "operand stack limit exceeded"):
+		return "RUN014"
+	case strings.Contains(message, "active local slot limit exceeded"):
+		return "RUN015"
+	case strings.HasPrefix(message, "write output:"):
+		return "RUN016"
+	case strings.Contains(message, "invalid array element count") || strings.Contains(message, "array length limit exceeded"):
+		return "RUN017"
+	default:
+		return "RUN000"
 	}
-	panic(asterRuntimeFailure{message: "runtime error: " + message})
+}
+
+func asterRuntimeError(line, column int, message string) {
+	code := asterRuntimeDiagnosticCode(message)
+	message = fmt.Sprintf("%s [%s]", message, code)
+	if line > 0 && column > 0 {
+		if asterSourceName != "" {
+			panic(asterRuntimeFailure{code: code, message: fmt.Sprintf("%s:%d:%d: runtime error: %s", asterSourceName, line, column, message)})
+		}
+		panic(asterRuntimeFailure{code: code, message: fmt.Sprintf("%d:%d: runtime error: %s", line, column, message)})
+	}
+	if asterSourceName != "" {
+		panic(asterRuntimeFailure{code: code, message: fmt.Sprintf("%s: runtime error: %s", asterSourceName, message)})
+	}
+	panic(asterRuntimeFailure{code: code, message: "runtime error: " + message})
 }
 
 func asterAssert(ok bool, line, column int) struct{} {
