@@ -70,10 +70,14 @@ func TestRejectsPositiveI64MinimumMagnitude(t *testing.T) {
 	}
 }
 
-func TestArrayElementAssignmentHasSpecificDiagnostic(t *testing.T) {
-	_, err := Parse("let values = [1]; values[0] = 2;", "test.ast")
-	if err == nil || !strings.Contains(err.Error(), "array element assignment is not supported") {
-		t.Fatalf("expected array assignment diagnostic, got %v", err)
+func TestParsesSimpleArrayElementAssignment(t *testing.T) {
+	program, err := Parse("let mut values = [1]; values[0] = 2;", "test.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt := program.Decls[1].(*ast.StmtDecl).Statement
+	if _, ok := stmt.(*ast.IndexAssignStmt); !ok {
+		t.Fatalf("statement type = %T, want *ast.IndexAssignStmt", stmt)
 	}
 }
 
