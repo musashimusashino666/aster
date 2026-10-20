@@ -345,7 +345,6 @@ func TestChecksExplicitNumericCasts(t *testing.T) {
 	}
 }
 
-
 func TestChecksStructConstructionAndFieldSelection(t *testing.T) {
 	valid := `struct Point { x: i64, y: i64 }
 struct Box { point: Point, values: Array<i64> }
