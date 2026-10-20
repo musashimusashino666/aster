@@ -110,3 +110,43 @@ func TestWriteOutputAtomicallyReplacesSymlinkItself(t *testing.T) {
 		t.Fatalf("symlink target was changed: %q", gotTarget)
 	}
 }
+
+
+func TestCommandFmtWritesCanonicalSource(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "example.ast")
+	if err := os.WriteFile(path, []byte("fn  f(){return 1;}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := commandFmt([]string{path}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "fn f() {\n    return 1;\n}\n"
+	if string(got) != want {
+		t.Fatalf("formatted source = %q, want %q", got, want)
+	}
+	if err := commandFmt([]string{"--check", path}); err != nil {
+		t.Fatalf("formatted source did not pass --check: %v", err)
+	}
+}
+
+func TestCommandFmtCheckDoesNotModifyUnformattedSource(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "example.ast")
+	source := []byte("fn  f(){return 1;}")
+	if err := os.WriteFile(path, source, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := commandFmt([]string{"--check", path}); err == nil {
+		t.Fatal("expected --check to reject unformatted source")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(source) {
+		t.Fatalf("--check modified source: got %q, want original %q", got, source)
+	}
+}
