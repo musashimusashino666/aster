@@ -6,6 +6,7 @@ package codegen
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aster-lang/aster/internal/ast"
@@ -61,6 +62,7 @@ func GenerateTyped(typed *checker.TypedProgram) (string, error) {
 	g.line("func main() {")
 	g.indent++
 	g.line("asterCallDepth = 1")
+	g.line("asterSourceName = " + strconv.Quote(typed.IR.SourceName))
 	g.line("defer func() { if recovered := recover(); recovered != nil { if failure, ok := recovered.(asterRuntimeFailure); ok { fmt.Fprintln(os.Stderr, failure.Error()); os.Exit(1) }; panic(recovered) } }()")
 	for _, stmt := range typed.IR.Body {
 		if err := g.irStatement(stmt); err != nil {

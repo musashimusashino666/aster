@@ -13,6 +13,7 @@ import (
 	"github.com/aster-lang/aster/internal/bytecode"
 	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/codegen"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/formatter"
 	"github.com/aster-lang/aster/internal/parser"
 	"github.com/aster-lang/aster/internal/toolchain"
@@ -344,7 +345,7 @@ func commandExec(args []string) error {
 	bc, err := bytecode.Read(f)
 	closeErr := f.Close()
 	if err != nil {
-		return err
+		return diagnostic.WrapBytecode(err, fs.Arg(0))
 	}
 	if closeErr != nil {
 		return closeErr

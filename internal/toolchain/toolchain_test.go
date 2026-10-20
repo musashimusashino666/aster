@@ -107,7 +107,7 @@ func TestRunNativeContextStopsLongRunningProgram(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("RunNativeContext() error = %v, want context.DeadlineExceeded", err)
 	}
-	if !strings.Contains(err.Error(), "native program timed out") {
-		t.Fatalf("expected native program timeout diagnostic, got %v", err)
+	if !strings.Contains(err.Error(), "native program timed out") || !strings.Contains(err.Error(), "[TOOL002]") {
+		t.Fatalf("expected coded native program timeout diagnostic, got %v", err)
 	}
 }

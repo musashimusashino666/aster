@@ -40,8 +40,9 @@ func TestNativeRuntimeFailureIsReportedAsLanguageDiagnostic(t *testing.T) {
 	}
 
 	output := runGeneratedNativeFailure(t, source)
-	if !strings.Contains(output, "runtime error: division by zero") {
-		t.Fatalf("missing language-level runtime diagnostic: %q", output)
+	if !strings.Contains(output, "runtime-error.ast:1:") ||
+		!strings.Contains(output, "runtime error: division by zero [RUN003]") {
+		t.Fatalf("missing language-level runtime diagnostic code or source location: %q", output)
 	}
 	if strings.Contains(output, "panic:") || strings.Contains(output, "goroutine ") {
 		t.Fatalf("language-level runtime error leaked a Go panic trace: %q", output)
@@ -68,7 +69,7 @@ func TestNativeInternalPanicIsNotRewrittenAsRuntimeError(t *testing.T) {
 	if !strings.Contains(output, "panic: internal panic sentinel") {
 		t.Fatalf("internal panic was not propagated as a Go panic: %q", output)
 	}
-	if strings.Contains(output, "runtime error:") {
+	if strings.Contains(output, "runtime error:") || strings.Contains(output, "[RUN") {
 		t.Fatalf("internal panic was incorrectly relabeled as a language runtime error: %q", output)
 	}
 	if !strings.Contains(output, "goroutine ") {
