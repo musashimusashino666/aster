@@ -12,6 +12,7 @@ import (
 	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/langtypes"
+	"github.com/aster-lang/aster/internal/limits"
 )
 
 type generator struct {
@@ -107,6 +108,8 @@ func (g *generator) writePreamble() {
 	g.line("")
 	g.line("func asterPrint(v any, line, column int) struct{} { if _, err := fmt.Fprintln(os.Stdout, v); err != nil { asterRuntimeError(line, column, fmt.Sprintf(\"write output: %v\", err)) }; return struct{}{} }")
 	g.line("func asterLenString(s string) int64 { return int64(utf8.RuneCountInString(s)) }")
+	g.line(fmt.Sprintf("const asterMaxStringBytes = %d", limits.MaxStringBytes))
+	g.line("func asterAddString(a, b string, line, column int) string { if len(b) > asterMaxStringBytes || len(a) > asterMaxStringBytes-len(b) { asterRuntimeError(line, column, fmt.Sprintf(\"string length limit exceeded (maximum %d UTF-8 bytes)\", asterMaxStringBytes)) }; return a+b }")
 	g.line("func asterRuntimeError(line, column int, message string) { if line > 0 && column > 0 { panic(fmt.Sprintf(\"%d:%d: runtime error: %s\", line, column, message)) }; panic(\"runtime error: \" + message) }")
 	g.line("func asterAssert(ok bool, line, column int) struct{} { if !ok { asterRuntimeError(line, column, \"assertion failed\") }; return struct{}{} }")
 	g.line("func asterIndexI64[T any](s []T, i int64, line, column int) T { if i < 0 || i >= int64(len(s)) { asterRuntimeError(line, column, fmt.Sprintf(\"array index %d out of bounds for length %d\", i, len(s))) }; return s[int(i)] }")
@@ -259,9 +262,17 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 		case "bool":
 			return strconv.FormatBool(n.Bool), nil
 		case "string":
+			if len(n.String) > limits.MaxStringBytes {
+				pos := n.Pos()
+				return "", fmt.Errorf("%d:%d: codegen: string literal exceeds %d-byte limit", pos.Line, pos.Column, limits.MaxStringBytes)
+			}
 			return strconv.Quote(n.String), nil
 		}
 	case *ast.ArrayExpr:
+		if len(n.Elements) > limits.MaxArrayLength {
+			pos := n.Pos()
+			return "", fmt.Errorf("%d:%d: codegen: array literal has %d elements; maximum is %d", pos.Line, pos.Column, len(n.Elements), limits.MaxArrayLength)
+		}
 		items := make([]string, len(n.Elements))
 		for i, item := range n.Elements {
 			x, err := g.expression(item)
@@ -319,7 +330,7 @@ func (g *generator) expression(e ast.Expr) (string, error) {
 			return "", err
 		}
 		if n.Op == "+" && t == "string" {
-			return "(" + l + " + " + r + ")", nil
+			return "asterAddString(" + l + ", " + r + ", " + positionArgs(n) + ")", nil
 		}
 		if t == "i64" {
 			helpers := map[string]string{"+": "asterAddI64", "-": "asterSubI64", "*": "asterMulI64", "/": "asterDivI64", "%": "asterModI64"}
