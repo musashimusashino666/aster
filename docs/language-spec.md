@@ -23,7 +23,8 @@ type_params   = "<" identifier { "," identifier } ">" ;
 parameters    = parameter { "," parameter } ;
 parameter     = identifier ":" type ;
 type          = "i64" | "f64" | "bool" | "string" | "unit"
-              | identifier | "Array" "<" type ">" ;
+              | "Array" "<" type ">" | nominal_type ;
+nominal_type   = identifier [ "<" type { "," type } ">" ] ;
 block         = "{" { statement } "}" ;
 statement     = block
               | "let" [ "mut" ] identifier [ ":" type ] "=" expression ";"
