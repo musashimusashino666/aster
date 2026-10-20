@@ -41,11 +41,21 @@ func BuildNative(goSource, output string) error {
 	if out, err := fmtcmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("format generated code: %w\n%s", err, strings.TrimSpace(string(out)))
 	}
-	cmd := exec.Command(goPath, "build", "-trimpath", "-ldflags=-s -w", "-o", abs, ".")
+	outputDir, err := os.MkdirTemp(filepath.Dir(abs), "."+filepath.Base(abs)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary native output directory: %w", err)
+	}
+	defer os.RemoveAll(outputDir)
+	tempOutput := filepath.Join(outputDir, filepath.Base(abs))
+
+	cmd := exec.Command(goPath, "build", "-trimpath", "-ldflags=-s -w", "-o", tempOutput, ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOPROXY=off", "GOSUMDB=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("native build failed: %w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	if err := os.Rename(tempOutput, abs); err != nil {
+		return fmt.Errorf("replace native output %s: %w", abs, err)
 	}
 	return nil
 }
