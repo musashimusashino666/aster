@@ -302,7 +302,6 @@ func TestParserDiagnosticsRetainOffendingTokenSpan(t *testing.T) {
 	}
 }
 
-
 func TestParserPopulatesASTEndPositions(t *testing.T) {
 	source := "fn identity(value: i64) -> i64 { return value + 1; }\nlet answer = identity(41);"
 	program, err := Parse(source, "spans.ast")
@@ -356,5 +355,20 @@ func TestParserPopulatesASTEndPositions(t *testing.T) {
 	wantCallEnd := strings.LastIndex(source, ")") + 1
 	if call.EndPos().Offset != wantCallEnd {
 		t.Fatalf("call end = %+v, want offset %d", call.EndPos(), wantCallEnd)
+	}
+
+	parenSource := "let grouped = (1 + 2);"
+	parenProgram, err := Parse(parenSource, "grouped.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parenLet := parenProgram.Decls[0].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	parenExpr, ok := parenLet.Value.(*ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("grouped initializer = %T, want *ast.BinaryExpr", parenLet.Value)
+	}
+	wantParenEnd := strings.Index(parenSource, ");") + 1
+	if parenExpr.EndPos().Offset != wantParenEnd {
+		t.Fatalf("grouped expression end = %+v, want offset %d", parenExpr.EndPos(), wantParenEnd)
 	}
 }
