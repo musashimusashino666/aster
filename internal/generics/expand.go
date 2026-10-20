@@ -23,10 +23,10 @@ type expander struct {
 	structTemplates    map[string]*ast.StructDecl
 	structInstances    map[string]*ast.StructDecl
 	structInstanceInfo map[string]structInstanceInfo
-	enumTemplates     map[string]*ast.EnumDecl
-	enumInstances     map[string]*ast.EnumDecl
-	enumInstanceInfo  map[string]structInstanceInfo
-	enumDecls         map[string]*ast.EnumDecl
+	enumTemplates      map[string]*ast.EnumDecl
+	enumInstances      map[string]*ast.EnumDecl
+	enumInstanceInfo   map[string]structInstanceInfo
+	enumDecls          map[string]*ast.EnumDecl
 	knownTypes         map[string]bool
 	structFields       map[string]map[string]ast.TypeRef
 	instances          map[string]*ast.Function
@@ -53,10 +53,10 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 		structTemplates:    map[string]*ast.StructDecl{},
 		structInstances:    map[string]*ast.StructDecl{},
 		structInstanceInfo: map[string]structInstanceInfo{},
-		enumTemplates:     map[string]*ast.EnumDecl{},
-		enumInstances:     map[string]*ast.EnumDecl{},
-		enumInstanceInfo:  map[string]structInstanceInfo{},
-		enumDecls:         map[string]*ast.EnumDecl{},
+		enumTemplates:      map[string]*ast.EnumDecl{},
+		enumInstances:      map[string]*ast.EnumDecl{},
+		enumInstanceInfo:   map[string]structInstanceInfo{},
+		enumDecls:          map[string]*ast.EnumDecl{},
 		structFields:       map[string]map[string]ast.TypeRef{},
 		knownTypes: map[string]bool{
 			"i64": true, "f64": true, "bool": true, "string": true, "unit": true,
