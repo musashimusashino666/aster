@@ -640,6 +640,7 @@ func (p *Parser) matchExpression(start token.Token) (ast.Expr, int, error) {
 	defer leave()
 
 	arms := []ast.MatchArm{}
+	maxArmDepth := subjectDepth
 	if !p.check(token.RBrace) {
 		for {
 			pattern, patternErr := p.matchPattern()
@@ -647,8 +648,9 @@ func (p *Parser) matchExpression(start token.Token) (ast.Expr, int, error) {
 			if _, err = p.consume(token.FatArrow, "expected '=>' after match pattern"); err != nil {
 				return nil, 0, err
 			}
-			value, _, valueErr := p.parseExpression(0)
+			value, valueDepth, valueErr := p.parseExpression(0)
 			if valueErr != nil { return nil, 0, valueErr }
+			if valueDepth > maxArmDepth { maxArmDepth = valueDepth }
 			arms = append(arms, ast.MatchArm{At: pattern.At, Pattern: pattern, Expr: value})
 			if !p.match(token.Comma) { break }
 			if p.check(token.RBrace) { break }
@@ -656,16 +658,9 @@ func (p *Parser) matchExpression(start token.Token) (ast.Expr, int, error) {
 	}
 	if len(arms) == 0 { return nil, 0, p.errorAt(start, "match expression requires at least one arm") }
 	if _, err = p.consume(token.RBrace, "expected '}' after match arms"); err != nil { return nil, 0, err }
-	depth := subjectDepth + 1
+	depth := maxArmDepth + 1
 	if depth > maxSyntaxNestingDepth {
 		return nil, 0, p.errorAtCode(start, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
-	}
-	for _, arm := range arms {
-		// Bound traversal depth conservatively; later stages recursively visit arm expressions.
-		if arm.Expr != nil { depth++ }
-		if depth > maxSyntaxNestingDepth {
-			return nil, 0, p.errorAtCode(start, diagnostic.ParserExpressionNesting, fmt.Sprintf("expression nesting exceeds limit %d", maxSyntaxNestingDepth))
-		}
 	}
 	return &ast.MatchExpr{At: start.Pos, Subject: subject, Arms: arms}, depth, nil
 }
