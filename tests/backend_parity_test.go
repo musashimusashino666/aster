@@ -368,7 +368,7 @@ func TestPrintedArrayOutputLimitMatchesBackends(t *testing.T) {
 
 func TestCallDepthLimitMatchesBackends(t *testing.T) {
 	source := `fn recurse(n: i64) -> i64 { return recurse(n + 1); } print(recurse(0));`
-	line, column := sourceMarkerPosition(t, source, "recurse(n + 1)", 0)
+	line, column := sourceMarkerPosition(t, source, "recurse(n + 1)", len("recurse"))
 	expected := fmt.Sprintf("%d:%d: runtime error: call depth limit exceeded (maximum 4096)", line, column)
 
 	tree, err := parser.Parse(source, "call-depth-limit.ast")
