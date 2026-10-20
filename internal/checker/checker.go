@@ -207,14 +207,20 @@ func (c *Checker) checkProgram(program *ast.Program) error {
 	c.inFunction = false
 	c.currentReturn = Unit
 	c.scopes = newScope(nil)
+	cannotFallThrough := false
 	for _, d := range program.Decls {
 		sd, ok := d.(*ast.StmtDecl)
 		if !ok {
 			continue
 		}
-		if _, err := c.checkStmt(sd.Statement); err != nil {
+		if cannotFallThrough {
+			return typeError(sd.Statement.Pos(), diagnostic.TypeUnreachableStatement, "unreachable statement")
+		}
+		terminates, err := c.checkStmt(sd.Statement)
+		if err != nil {
 			return err
 		}
+		cannotFallThrough = terminates
 	}
 	return nil
 }
