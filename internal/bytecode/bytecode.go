@@ -33,8 +33,8 @@ const (
 	maxTotalConstantArrayItems  = 1 << 18
 	maxTypedVerifierStateCells  = 1 << 20
 	maxTotalParameterTypes      = 1 << 20
-	maxStructTypeCount           = 1 << 16
-	maxStructFieldCount          = 1 << 16
+	maxStructTypeCount          = 1 << 16
+	maxStructFieldCount         = 1 << 16
 )
 
 const maxTypeNameBytes = langtypes.MaxTypeNameBytes
@@ -60,14 +60,14 @@ type arrayStorage struct {
 }
 
 type Value struct {
-	Kind   ValueKind `json:"kind"`
-	I64    int64     `json:"i64,omitempty"`
-	F64    float64   `json:"f64,omitempty"`
-	Bool   bool      `json:"bool,omitempty"`
-	String     string  `json:"string,omitempty"`
-	Array      []Value `json:"array,omitempty"`
-	StructName string  `json:"struct_name,omitempty"`
-	Fields     []Value `json:"fields,omitempty"`
+	Kind       ValueKind `json:"kind"`
+	I64        int64     `json:"i64,omitempty"`
+	F64        float64   `json:"f64,omitempty"`
+	Bool       bool      `json:"bool,omitempty"`
+	String     string    `json:"string,omitempty"`
+	Array      []Value   `json:"array,omitempty"`
+	StructName string    `json:"struct_name,omitempty"`
+	Fields     []Value   `json:"fields,omitempty"`
 
 	arrayStorage  *arrayStorage `json:"-"`
 	arrayBorrowed bool          `json:"-"`
@@ -78,24 +78,24 @@ type Value struct {
 // +0.0 when bytecode is written and read back.
 func (v Value) MarshalJSON() ([]byte, error) {
 	type valueJSON struct {
-		Kind   ValueKind `json:"kind"`
-		I64    int64     `json:"i64,omitempty"`
-		F64    *float64  `json:"f64,omitempty"`
-		Bool   bool      `json:"bool,omitempty"`
-		String     string  `json:"string,omitempty"`
-		Array      []Value `json:"array,omitempty"`
-		StructName string  `json:"struct_name,omitempty"`
-		Fields     []Value `json:"fields,omitempty"`
+		Kind       ValueKind `json:"kind"`
+		I64        int64     `json:"i64,omitempty"`
+		F64        *float64  `json:"f64,omitempty"`
+		Bool       bool      `json:"bool,omitempty"`
+		String     string    `json:"string,omitempty"`
+		Array      []Value   `json:"array,omitempty"`
+		StructName string    `json:"struct_name,omitempty"`
+		Fields     []Value   `json:"fields,omitempty"`
 	}
 	var f64 *float64
 	if v.Kind == ValueF64 {
 		f64 = &v.F64
 	}
 	return json.Marshal(valueJSON{
-		Kind:   v.Kind,
-		I64:    v.I64,
-		F64:    f64,
-		Bool:   v.Bool,
+		Kind:       v.Kind,
+		I64:        v.I64,
+		F64:        f64,
+		Bool:       v.Bool,
 		String:     v.String,
 		Array:      v.Array,
 		StructName: v.StructName,
@@ -302,7 +302,6 @@ type Program struct {
 	Functions   []Function   `json:"functions"`
 	Entry       int          `json:"entry"`
 }
-
 
 // validateStructTypes validates nominal metadata from untrusted bytecode,
 // including duplicate names/fields, field types, and by-value layout cycles.
