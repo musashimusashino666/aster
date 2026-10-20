@@ -117,17 +117,23 @@ func commandCheck(args []string) error {
 
 // flagsBeforePositionals normalizes value-taking options so the CLI accepts
 // common forms such as "aster run file.ast --engine native" as well as placing
-// options before the positional file argument. The standard flag package stops
-// parsing options at the first positional argument.
+// options before the positional file argument. A standalone "--" ends this
+// normalization pass so dash-prefixed filenames and other following arguments
+// remain positional. The standard flag package stops parsing options at the
+// first positional argument.
 func flagsBeforePositionals(args []string, valueFlags ...string) []string {
 	var options, positionals []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if arg == "--" {
+			positionals = append(positionals, args[i:]...)
+			break
+		}
 		matched := false
 		for _, name := range valueFlags {
 			if arg == name {
 				options = append(options, arg)
-				if i+1 < len(args) {
+				if i+1 < len(args) && args[i+1] != "--" {
 					options = append(options, args[i+1])
 					i++
 				}
@@ -221,6 +227,9 @@ func writeBytecodeAtomically(path string, program *bytecode.Program) error {
 // writeOutputAtomically writes to a temporary file on the destination filesystem
 // and renames it into place only after the writer has succeeded. A failed write
 // cannot truncate or leave a partial replacement of an existing output file.
+// writeOutputAtomically replaces path by an atomic rename after a complete write.
+// If path is a symbolic link, the rename replaces the link itself rather than
+// following it; the link target is left unchanged.
 func writeOutputAtomically(path string, write func(io.Writer) error) error {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
