@@ -5,10 +5,28 @@ import (
 	"testing"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/langtypes"
 	"github.com/aster-lang/aster/internal/parser"
 )
 
+func TestGenerateTypedUsesCheckerMetadata(t *testing.T) {
+	tree, err := parser.Parse(`fn increment(x: i64) -> i64 { return x + 1; } print(increment(2));`, "typed-codegen.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(source, "asterAddI64(v_x, int64(1))") {
+		t.Fatalf("generated source does not use expected typed arithmetic helper:\n%s", source)
+	}
+}
 func TestGenerateRejectsUnknownExpressionType(t *testing.T) {
 	tests := []struct {
 		name   string
