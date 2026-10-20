@@ -188,3 +188,10 @@ let label = match message {
 		t.Fatalf("unexpected match arms: %#v", match.Arms)
 	}
 }
+
+func TestRejectsEmptyEnumPayloadList(t *testing.T) {
+	_, err := Parse(`enum State { Ready(), Busy, }`, "enum-match.ast")
+	if err == nil || !strings.Contains(err.Error(), "zero-payload enum variants must omit parentheses") {
+		t.Fatalf("expected empty enum payload list to be rejected, got %v", err)
+	}
+}
