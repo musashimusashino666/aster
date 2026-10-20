@@ -177,8 +177,8 @@ Only `native` is a supported build target in this version. Unsupported targets f
 │   ├── diagnostic/       stable front-end diagnostic codes
 │   ├── codegen/          native Go backend
 │   ├── lexer/            tokenization and source locations
-│   ├── parser/           syntax parser
-│   ├── token/            token definitions
+│   ├── parser/            syntax parser
+│   ├── token/             token definitions
 │   ├── toolchain/        native build invocation
 │   └── vm/               bytecode interpreter
 ├── docs/                 specification, architecture, security, roadmap
@@ -199,7 +199,7 @@ Only `native` is a supported build target in this version. Unsupported targets f
 - Native and VM behavior should be tested against the same examples, especially overflow, division by zero, branches, recursion, and short-circuit logic.
 - Do not mark a backend or domain library as supported until CI exercises it.
 
-See [`docs/diagnostics.md`](docs/diagnostics.md) for stable lexer, parser, and type-checker diagnostic codes.
+See [`docs/diagnostics.md`](docs/diagnostics.md) for stable lexer, parser, and type-checker diagnostic codes. Architectural decisions are indexed in [`docs/adr/README.md`](docs/adr/README.md), which defines the canonical location, numbering convention, and reference-link rules.
 
 ## Local checks and CI
 

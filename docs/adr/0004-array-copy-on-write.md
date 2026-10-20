@@ -2,11 +2,11 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-20
-- **Supersedes:** No existing decision; this refines the implementation strategy allowed by ADR 0003.
+- **Relationship:** Refines [ADR 0003: Array value semantics](0003-array-value-semantics.md); it does not supersede that language-level decision.
 
 ## Context
 
-ADR 0003 defines `Array<T>` as a value type: mutation through one value must not become observable through another copied value. The current VM and Native implementations enforce this by copying each array container on the indexed-assignment path before updating it.
+[ADR 0003: Array value semantics](0003-array-value-semantics.md) defines `Array<T>` as a value type: mutation through one value must not become observable through another copied value. The current VM and Native implementations enforce this by copying each array container on the indexed-assignment path before updating it.
 
 That strategy is correct but expensive for repeated writes. On the 2026-10-20 AMD EPYC 7763 baseline, assigning every element in an array of length 1024 measured a median of 21,120 ns/assignment on the VM and 1,703 ns/assignment on Native. A full pass copies O(n²) elements for a flat array of length n. The benchmark also includes Native process startup and must be interpreted with the constraints recorded in `bench/results/array-assignment-2026-10-20.md`.
 
@@ -14,7 +14,7 @@ The next optimization should avoid copying a container when the value being muta
 
 ## Decision
 
-Use **copy-on-write (COW) array storage** for indexed assignment. Implement the VM prototype first, measure it against the existing baseline, then port the same observable semantics to Native. Do not change the language-level value semantics defined by ADR 0003.
+Use **copy-on-write (COW) array storage** for indexed assignment. Implement the VM prototype first, measure it against the existing baseline, then port the same observable semantics to Native. Do not change the language-level value semantics defined by [ADR 0003: Array value semantics](0003-array-value-semantics.md).
 
 ### Representation and write behavior
 
@@ -57,5 +57,5 @@ The optimization is accepted only if every value-semantics test remains green. B
 - Repeated writes to an unshared flat array can mutate its existing element buffer, avoiding a full container copy per write. The first write to a shared array pays for one detach; subsequent writes to that detached value can be in place until it is shared again.
 - Each alias that is independently mutated may need its own detach. Nested updates may copy only the shared containers along the indexed path.
 - The sticky shared marker avoids reference-count maintenance across Go value copies and garbage collection, at the cost of occasional conservative copies after aliases become unreachable.
-- Correctness depends on marking every semantic sharing boundary. A missed boundary can silently violate ADR 0003, so backend parity tests are a release gate for this change.
+- Correctness depends on marking every semantic sharing boundary. A missed boundary can silently violate [ADR 0003: Array value semantics](0003-array-value-semantics.md), so backend parity tests are a release gate for this change.
 - Runtime storage wrappers add implementation complexity. The VM and Native representations need not be structurally identical, but the observable language behavior and benchmark interpretation must remain aligned.

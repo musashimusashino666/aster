@@ -1,7 +1,7 @@
 # ADR 0002: Checked arithmetic in the prototype
 
-- Status: accepted for Aster 0.1
-- Date: 2026-10-19
+- **Status:** Accepted
+- **Date:** 2026-10-19
 
 ## Context
 

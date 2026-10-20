@@ -1,7 +1,7 @@
 # ADR 0001: Use generated Go as the first native backend
 
-- Status: accepted for the 0.1 prototype
-- Date: 2026-10-19
+- **Status:** Accepted
+- **Date:** 2026-10-19
 
 ## Context
 
