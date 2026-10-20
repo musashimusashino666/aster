@@ -57,7 +57,12 @@ func WrapBytecode(err error, source string) error {
 	}
 	var existing *Diagnostic
 	if errors.As(err, &existing) {
-		return err
+		if source == "" || existing.Source != "" {
+			return err
+		}
+		copy := *existing
+		copy.Source = source
+		return &copy
 	}
 	return &Diagnostic{
 		Code:    BytecodeCode(err.Error()),
