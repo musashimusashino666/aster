@@ -63,7 +63,7 @@ func BenchmarkVMArrayTraversal(b *testing.B) {
 	source.WriteString("let values: Array<i64> = [")
 	for i := 0; i < 256; i++ {
 		if i != 0 {
-			source.WriteString(", " )
+			source.WriteString(", ")
 		}
 		source.WriteString(strconv.Itoa(i))
 	}
@@ -94,7 +94,7 @@ func BenchmarkVMFormattedArrayPrint(b *testing.B) {
 	source.WriteString("let values: Array<i64> = [")
 	for i := 0; i < 128; i++ {
 		if i != 0 {
-			source.WriteString(", " )
+			source.WriteString(", ")
 		}
 		source.WriteString(strconv.Itoa(i))
 	}
