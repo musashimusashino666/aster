@@ -301,3 +301,109 @@ func TestParserDiagnosticsRetainOffendingTokenSpan(t *testing.T) {
 		t.Fatalf("diagnostic code = %q, want %q", got.Code, diagnostic.ParserExpectedExpression)
 	}
 }
+
+func TestParserPopulatesASTEndPositions(t *testing.T) {
+	source := "fn identity(value: i64) -> i64 { return value + 1; }\nlet answer = identity(41);"
+	program, err := Parse(source, "spans.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fn, ok := program.Decls[0].(*ast.Function)
+	if !ok {
+		t.Fatalf("first declaration = %T, want *ast.Function", program.Decls[0])
+	}
+	wantFunctionEnd := strings.Index(source, "}\n") + 1
+	if fn.Pos().Offset != 0 || fn.EndPos().Offset != wantFunctionEnd {
+		t.Fatalf("function span = %+v..%+v, want offsets 0..%d", fn.Pos(), fn.EndPos(), wantFunctionEnd)
+	}
+	if fn.Body.EndPos() != fn.EndPos() {
+		t.Fatalf("function body end = %+v, function end = %+v", fn.Body.EndPos(), fn.EndPos())
+	}
+
+	param := fn.Params[0]
+	wantParamTypeEnd := strings.Index(source, "i64") + len("i64")
+	if param.EndPos().Offset != wantParamTypeEnd || param.Type.EndPos().Offset != wantParamTypeEnd {
+		t.Fatalf("parameter/type ends = %+v / %+v, want offset %d", param.EndPos(), param.Type.EndPos(), wantParamTypeEnd)
+	}
+
+	ret, ok := fn.Body.Statements[0].(*ast.ReturnStmt)
+	if !ok {
+		t.Fatalf("body statement = %T, want *ast.ReturnStmt", fn.Body.Statements[0])
+	}
+	wantReturnEnd := strings.Index(source, ";") + 1
+	if ret.EndPos().Offset != wantReturnEnd {
+		t.Fatalf("return end = %+v, want offset %d", ret.EndPos(), wantReturnEnd)
+	}
+	binary, ok := ret.Value.(*ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("return expression = %T, want *ast.BinaryExpr", ret.Value)
+	}
+	wantBinaryEnd := strings.Index(source, "1;") + 1
+	if binary.EndPos().Offset != wantBinaryEnd {
+		t.Fatalf("binary expression end = %+v, want offset %d", binary.EndPos(), wantBinaryEnd)
+	}
+
+	topLevel := program.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	if topLevel.EndPos().Offset != len(source) {
+		t.Fatalf("top-level let end = %+v, want end-of-source offset %d", topLevel.EndPos(), len(source))
+	}
+	call, ok := topLevel.Value.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("initializer = %T, want *ast.CallExpr", topLevel.Value)
+	}
+	wantCallEnd := strings.LastIndex(source, ")") + 1
+	if call.EndPos().Offset != wantCallEnd {
+		t.Fatalf("call end = %+v, want offset %d", call.EndPos(), wantCallEnd)
+	}
+
+	parenSource := "let grouped = (1 + 2);"
+	parenProgram, err := Parse(parenSource, "grouped.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parenLet := parenProgram.Decls[0].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	parenExpr, ok := parenLet.Value.(*ast.BinaryExpr)
+	if !ok {
+		t.Fatalf("grouped initializer = %T, want *ast.BinaryExpr", parenLet.Value)
+	}
+	wantParenEnd := strings.Index(parenSource, ");") + 1
+	if parenExpr.EndPos().Offset != wantParenEnd {
+		t.Fatalf("grouped expression end = %+v, want offset %d", parenExpr.EndPos(), wantParenEnd)
+	}
+}
+
+func TestParserPopulatesEnumAndMatchEndPositions(t *testing.T) {
+	source := "enum State { Ready, Value(i64) }\nlet value = State::Value(7);\nlet answer = match value { State::Value(n) => n, _ => 0 };"
+	program, err := Parse(source, "match-spans.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	enumDecl := program.Decls[0].(*ast.EnumDecl)
+	wantEnumEnd := strings.Index(source, "}\n") + 1
+	if enumDecl.EndPos().Offset != wantEnumEnd {
+		t.Fatalf("enum end = %+v, want offset %d", enumDecl.EndPos(), wantEnumEnd)
+	}
+	variant := program.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt).Value.(*ast.EnumVariantExpr)
+	wantVariantEnd := strings.Index(source, ");") + 1
+	if variant.EndPos().Offset != wantVariantEnd {
+		t.Fatalf("enum variant end = %+v, want offset %d", variant.EndPos(), wantVariantEnd)
+	}
+
+	matchStmt := program.Decls[2].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	match := matchStmt.Value.(*ast.MatchExpr)
+	wantMatchEnd := strings.LastIndex(source, "};") + 1
+	if match.EndPos().Offset != wantMatchEnd {
+		t.Fatalf("match end = %+v, want offset %d", match.EndPos(), wantMatchEnd)
+	}
+	firstArm := match.Arms[0]
+	wantPatternEnd := strings.Index(source, "n) =>") + 2
+	if firstArm.Pattern.EndPos().Offset != wantPatternEnd {
+		t.Fatalf("pattern end = %+v, want offset %d", firstArm.Pattern.EndPos(), wantPatternEnd)
+	}
+	wantArmEnd := strings.Index(source, "n, _") + 1
+	if firstArm.EndPos().Offset != wantArmEnd {
+		t.Fatalf("match arm end = %+v, want offset %d", firstArm.EndPos(), wantArmEnd)
+	}
+}
