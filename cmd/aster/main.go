@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aster-lang/aster/internal/ast"
 	"github.com/aster-lang/aster/internal/bytecode"
 	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/codegen"
@@ -80,7 +79,7 @@ The native backend currently uses the host Go toolchain. Structs/enums, modules,
 package registries, WebAssembly, async/await, and a production-grade standard library
 are not implemented in this release.`)
 }
-func readSource(path string) (string, *ast.Program, error) {
+func readSource(path string) (string, *checker.TypedProgram, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", nil, fmt.Errorf("read %s: %w", path, err)
@@ -89,10 +88,11 @@ func readSource(path string) (string, *ast.Program, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if err = checker.Check(tree); err != nil {
+	typed, err := checker.Analyze(tree)
+	if err != nil {
 		return "", nil, fmt.Errorf("%s: %w", path, err)
 	}
-	return string(b), tree, nil
+	return string(b), typed, nil
 }
 func commandCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
@@ -153,19 +153,19 @@ func commandRun(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: aster run [--engine vm|native] <file.ast>")
 	}
-	_, tree, err := readSource(fs.Arg(0))
+	_, typed, err := readSource(fs.Arg(0))
 	if err != nil {
 		return err
 	}
 	switch *engine {
 	case "vm":
-		bc, err := bytecode.Compile(tree)
+		bc, err := bytecode.Compile(typed.Tree)
 		if err != nil {
 			return err
 		}
 		return vm.Run(bc, os.Stdout)
 	case "native":
-		src, err := codegen.Generate(tree)
+		src, err := codegen.GenerateTyped(typed)
 		if err != nil {
 			return err
 		}
@@ -185,11 +185,11 @@ func commandCompile(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: aster compile [-o file.abc.json] <file.ast>")
 	}
-	_, tree, err := readSource(fs.Arg(0))
+	_, typed, err := readSource(fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	bc, err := bytecode.Compile(tree)
+	bc, err := bytecode.Compile(typed.Tree)
 	if err != nil {
 		return err
 	}
@@ -251,11 +251,11 @@ func commandBuild(args []string) error {
 	if *target != "native" {
 		return fmt.Errorf("target %q is not implemented; only --target native is supported in Aster %s", *target, version)
 	}
-	_, tree, err := readSource(fs.Arg(0))
+	_, typed, err := readSource(fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	goSource, err := codegen.Generate(tree)
+	goSource, err := codegen.GenerateTyped(typed)
 	if err != nil {
 		return err
 	}
