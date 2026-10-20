@@ -256,7 +256,6 @@ func TestExplicitFloatToIntegerCastRejectsOutOfRange(t *testing.T) {
 	}
 }
 
-
 func TestVMStructConstructionFieldReadsAndArrayValueSemantics(t *testing.T) {
 	source := `struct Point { x: i64, y: i64 }
 struct Box { point: Point, values: Array<i64> }
