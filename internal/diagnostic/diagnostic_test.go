@@ -232,3 +232,32 @@ func TestWrapToolchainPreservesCancellation(t *testing.T) {
 		t.Fatalf("wrapped cancellation is missing stable code: %v", cancelled)
 	}
 }
+
+func TestNewSpanRetainsExclusiveEndWithoutChangingErrorFormat(t *testing.T) {
+	start := token.Position{Offset: 2, Line: 1, Column: 3}
+	end := token.Position{Offset: 5, Line: 1, Column: 6}
+	got := NewSpan(ParserGeneric, "parser", start, end, "unexpected token")
+	if !got.HasEndPosition || got.EndPosition != end {
+		t.Fatalf("diagnostic span = (%+v, has=%v), want end %+v", got.EndPosition, got.HasEndPosition, end)
+	}
+	if got.Position != start {
+		t.Fatalf("diagnostic start = %+v, want %+v", got.Position, start)
+	}
+	const want = "1:3: parser error: unexpected token [PAR000]"
+	if got.Error() != want {
+		t.Fatalf("Error() = %q, want %q", got.Error(), want)
+	}
+}
+
+func TestNewAtSourceSpanRetainsSourcePathAndEnd(t *testing.T) {
+	start := token.Position{Offset: 10, Line: 2, Column: 4}
+	end := token.Position{Offset: 13, Line: 2, Column: 7}
+	got := NewAtSourceSpan(RuntimeGeneric, "runtime", "example.ast", start, end, "runtime failed")
+	if !got.HasEndPosition || got.EndPosition != end {
+		t.Fatalf("diagnostic span = (%+v, has=%v), want end %+v", got.EndPosition, got.HasEndPosition, end)
+	}
+	const want = "example.ast:2:4: runtime error: runtime failed [RUN000]"
+	if got.Error() != want {
+		t.Fatalf("Error() = %q, want %q", got.Error(), want)
+	}
+}

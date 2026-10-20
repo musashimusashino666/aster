@@ -1,9 +1,11 @@
 package lexer
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/token"
 )
 
@@ -123,4 +125,27 @@ func TestTokenEndPositionsAreExclusive(t *testing.T) {
 		}
 	}
 	t.Fatal("print identifier token not found")
+}
+
+func TestLexerDiagnosticsRetainExclusiveSourceSpan(t *testing.T) {
+	source := "let x = ；;"
+	_, err := New(source).Lex()
+	if err == nil {
+		t.Fatal("expected invalid character diagnostic")
+	}
+	var got *diagnostic.Diagnostic
+	if !errors.As(err, &got) {
+		t.Fatalf("error type = %T, want *diagnostic.Diagnostic", err)
+	}
+	if !got.HasEndPosition {
+		t.Fatal("lexer diagnostic is missing an end position")
+	}
+	wantStart := token.Position{Offset: 8, Line: 1, Column: 9}
+	wantEnd := token.Position{Offset: 11, Line: 1, Column: 12}
+	if got.Position != wantStart || got.EndPosition != wantEnd {
+		t.Fatalf("diagnostic span = %+v..%+v, want %+v..%+v", got.Position, got.EndPosition, wantStart, wantEnd)
+	}
+	if got.Code != diagnostic.LexerUnexpectedCharacter {
+		t.Fatalf("diagnostic code = %q, want %q", got.Code, diagnostic.LexerUnexpectedCharacter)
+	}
 }

@@ -1,10 +1,13 @@
 package parser
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/diagnostic"
+	"github.com/aster-lang/aster/internal/token"
 )
 
 func TestParsesPrecedence(t *testing.T) {
@@ -274,5 +277,27 @@ func TestRejectsEmptyGenericEnumTypeArguments(t *testing.T) {
 	_, err := Parse(`enum Option<T> { None, Some(T) } let value = Option::<>::None;`, "generic-enum.ast")
 	if err == nil {
 		t.Fatal("expected empty enum type argument list to be rejected")
+	}
+}
+
+func TestParserDiagnosticsRetainOffendingTokenSpan(t *testing.T) {
+	_, err := Parse("let x = ;", "test.ast")
+	if err == nil {
+		t.Fatal("expected parser diagnostic")
+	}
+	var got *diagnostic.Diagnostic
+	if !errors.As(err, &got) {
+		t.Fatalf("error type = %T, want *diagnostic.Diagnostic", err)
+	}
+	if !got.HasEndPosition {
+		t.Fatal("parser diagnostic is missing an end position")
+	}
+	wantStart := token.Position{Offset: 8, Line: 1, Column: 9}
+	wantEnd := token.Position{Offset: 9, Line: 1, Column: 10}
+	if got.Position != wantStart || got.EndPosition != wantEnd {
+		t.Fatalf("diagnostic span = %+v..%+v, want %+v..%+v", got.Position, got.EndPosition, wantStart, wantEnd)
+	}
+	if got.Code != diagnostic.ParserExpectedExpression {
+		t.Fatalf("diagnostic code = %q, want %q", got.Code, diagnostic.ParserExpectedExpression)
 	}
 }

@@ -20,7 +20,7 @@ This roadmap is a planning document, not a commitment that work is already in pr
 - [x] Source-preserving formatter (aster fmt and aster fmt --check; original comments and string-literal spellings are retained)
 - [x] Stable diagnostic codes for lexer, parser, and type-checker errors
 - [x] Stable runtime, bytecode-reader/verifier, and native-toolchain diagnostic codes; source path and start line/column propagated for VM and Native runtime failures
-- [ ] Full end-to-end source spans including end offsets/columns for front-end, bytecode, and runtime diagnostics (lexer tokens now retain exclusive end positions; propagation through AST/typed IR, bytecode, and runtime diagnostics remains)
+- [ ] Full end-to-end source spans including end offsets/columns for front-end, bytecode, and runtime diagnostics (lexer tokens and lexer/parser diagnostics now retain exclusive end positions; propagation through AST/typed IR, bytecode, and runtime diagnostics remains)
 - [x] Document current VM/Native resource guarantees, CLI deadlines, and non-guarantees in [ADR 0005](adr/0005-native-resource-guarantees.md)
 - [ ] Define and implement any required Native instruction/fuel budget and process-wide resource isolation, with guarantees distinct from wrapper deadlines and per-value limits
 - [x] Return-flow analysis for literal-boolean `if` conditions and literal-true `while` loops (nonconstant loops remain conservative)
