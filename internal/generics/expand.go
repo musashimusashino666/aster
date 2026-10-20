@@ -12,15 +12,25 @@ import (
 	"github.com/aster-lang/aster/internal/token"
 )
 
+type structInstanceInfo struct {
+	template string
+	args     []ast.TypeRef
+}
+
 type expander struct {
-	templates    map[string]*ast.Function
-	functions    map[string]*ast.Function
-	knownTypes   map[string]bool
-	structFields map[string]map[string]ast.TypeRef
-	instances    map[string]*ast.Function
-	ordered      []*ast.Function
-	variables    map[string]ast.TypeRef
-	nextID       int
+	templates          map[string]*ast.Function
+	functions          map[string]*ast.Function
+	structTemplates    map[string]*ast.StructDecl
+	structInstances    map[string]*ast.StructDecl
+	structInstanceInfo map[string]structInstanceInfo
+	knownTypes         map[string]bool
+	structFields       map[string]map[string]ast.TypeRef
+	instances          map[string]*ast.Function
+	ordered            []*ast.Function
+	orderedStructs     []*ast.StructDecl
+	variables          map[string]ast.TypeRef
+	nextID             int
+	nextStructID       int
 }
 
 // Expand specializes explicitly instantiated generic functions before type
@@ -31,9 +41,12 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 		return nil, fmt.Errorf("generics: nil program")
 	}
 	e := &expander{
-		templates:    map[string]*ast.Function{},
-		functions:    map[string]*ast.Function{},
-		structFields: map[string]map[string]ast.TypeRef{},
+		templates:          map[string]*ast.Function{},
+		functions:          map[string]*ast.Function{},
+		structTemplates:    map[string]*ast.StructDecl{},
+		structInstances:    map[string]*ast.StructDecl{},
+		structInstanceInfo: map[string]structInstanceInfo{},
+		structFields:       map[string]map[string]ast.TypeRef{},
 		knownTypes: map[string]bool{
 			"i64": true, "f64": true, "bool": true, "string": true, "unit": true,
 		},
@@ -41,6 +54,30 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 		variables: map[string]ast.TypeRef{},
 	}
 	functionNames := map[string]*ast.Function{}
+	declaredFunctionNames := map[string]bool{}
+	structNames := map[string]*ast.StructDecl{}
+	enumNames := map[string]*ast.EnumDecl{}
+	for _, decl := range program.Decls {
+		if fn, ok := decl.(*ast.Function); ok {
+			declaredFunctionNames[fn.Name] = true
+		}
+	}
+	for _, decl := range program.Decls {
+		switch n := decl.(type) {
+		case *ast.StructDecl:
+			if prior, exists := structNames[n.Name]; exists {
+				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateStruct, "struct '%s' is already declared", prior.Name)
+			}
+			structNames[n.Name] = n
+			e.knownTypes[n.Name] = true
+		case *ast.EnumDecl:
+			if prior, exists := enumNames[n.Name]; exists {
+				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateEnum, "enum '%s' is already declared", prior.Name)
+			}
+			enumNames[n.Name] = n
+			e.knownTypes[n.Name] = true
+		}
+	}
 	for _, decl := range program.Decls {
 		switch n := decl.(type) {
 		case *ast.Function:
@@ -63,7 +100,32 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 				e.templates[n.Name] = n
 			}
 		case *ast.StructDecl:
-			e.knownTypes[n.Name] = true
+			if _, conflictsWithEnum := enumNames[n.Name]; conflictsWithEnum {
+				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' conflicts with an enum", n.Name)
+			}
+			if declaredFunctionNames[n.Name] {
+				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' conflicts with a function", n.Name)
+			}
+			if !langtypes.ValidName(n.Name) {
+				return nil, typeError(n.Pos(), diagnostic.TypeInvalidStructName, "invalid struct name '%s'", n.Name)
+			}
+			if reservedTypeName(n.Name) {
+				return nil, typeError(n.Pos(), diagnostic.TypeDuplicateStruct, "struct name '%s' is reserved", n.Name)
+			}
+			if len(n.TypeParams) > 0 {
+				if len(n.TypeParams) > limits.MaxGenericTypeParameters {
+					return nil, typeError(n.Pos(), diagnostic.TypeGenericInstantiationLimit, "generic struct '%s' declares %d type parameters; maximum is %d", n.Name, len(n.TypeParams), limits.MaxGenericTypeParameters)
+				}
+				seen := map[string]bool{}
+				for _, name := range n.TypeParams {
+					if !langtypes.ValidName(name) || reservedTypeName(name) || strings.HasPrefix(name, "__") || seen[name] {
+						return nil, typeError(n.Pos(), diagnostic.TypeInvalidGenericParameter, "invalid, reserved, or duplicate type parameter '%s' in struct '%s'", name, n.Name)
+					}
+					seen[name] = true
+				}
+				e.structTemplates[n.Name] = n
+				continue
+			}
 			fields := make(map[string]ast.TypeRef, len(n.Fields))
 			for _, field := range n.Fields {
 				fields[field.Name] = field.Type
@@ -77,7 +139,7 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 	// Preserve AST node identity for programs that do not use generic templates.
 	// Existing TypedProgram.TypeOf callers may retain expression pointers from the
 	// parsed program, so avoid cloning the AST when expansion is unnecessary.
-	if len(e.templates) == 0 {
+	if len(e.templates) == 0 && len(e.structTemplates) == 0 {
 		return program, nil
 	}
 
@@ -93,6 +155,15 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 				return nil, err
 			}
 			out.Decls = append(out.Decls, copy)
+		case *ast.StructDecl:
+			if len(n.TypeParams) > 0 {
+				continue // generic templates are emitted only as concrete instances
+			}
+			copy, err := e.rewriteStruct(n, nil, 0)
+			if err != nil {
+				return nil, err
+			}
+			out.Decls = append(out.Decls, copy)
 		case *ast.StmtDecl:
 			stmt, err := e.rewriteStmt(n.Statement, nil, 0)
 			if err != nil {
@@ -104,8 +175,17 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 			out.Decls = append(out.Decls, decl)
 		}
 	}
+	out.Decls = append(out.Decls, structDecls(e.orderedStructs)...)
 	out.Decls = append(out.Decls, funcDecls(e.ordered)...)
 	return out, nil
+}
+
+func structDecls(in []*ast.StructDecl) []ast.Decl {
+	out := make([]ast.Decl, len(in))
+	for i, decl := range in {
+		out[i] = decl
+	}
+	return out
 }
 
 func funcDecls(in []*ast.Function) []ast.Decl {
@@ -131,7 +211,11 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 	}
 	concrete := make([]ast.TypeRef, len(args))
 	for i, arg := range args {
-		concrete[i] = substituteType(arg, callerSub)
+		resolved, err := e.resolveType(substituteType(arg, callerSub), at, callerDepth+1)
+		if err != nil {
+			return "", err
+		}
+		concrete[i] = resolved
 		if err := e.validateTypeArgument(concrete[i], at); err != nil {
 			return "", err
 		}
@@ -164,10 +248,17 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 	e.ordered = append(e.ordered, instance)
 	instance.Params = make([]ast.Param, len(template.Params))
 	for i, param := range template.Params {
-		instance.Params[i] = ast.Param{At: param.At, Name: param.Name, Type: substituteType(param.Type, sub)}
+		typ, err := e.resolveType(substituteType(param.Type, sub), param.At, depth)
+		if err != nil {
+			return "", err
+		}
+		instance.Params[i] = ast.Param{At: param.At, Name: param.Name, Type: typ}
 	}
 	if template.ReturnType != nil {
-		ret := substituteType(*template.ReturnType, sub)
+		ret, err := e.resolveType(substituteType(*template.ReturnType, sub), template.ReturnType.At, depth)
+		if err != nil {
+			return "", err
+		}
 		instance.ReturnType = &ret
 	}
 	previousVariables := e.variables
@@ -184,6 +275,165 @@ func (e *expander) instantiate(template *ast.Function, args []ast.TypeRef, at to
 	return instance.Name, nil
 }
 
+func (e *expander) instantiateStruct(template *ast.StructDecl, args []ast.TypeRef, at token.Position, callerSub map[string]ast.TypeRef, callerDepth int) (string, error) {
+	if len(args) != len(template.TypeParams) {
+		return "", typeError(at, diagnostic.TypeGenericStructArgumentCount, "generic struct '%s' expects %d type arguments, got %d", template.Name, len(template.TypeParams), len(args))
+	}
+	concrete := make([]ast.TypeRef, len(args))
+	for i, arg := range args {
+		resolved, err := e.resolveType(substituteType(arg, callerSub), at, callerDepth+1)
+		if err != nil {
+			return "", err
+		}
+		concrete[i] = resolved
+	}
+	parts := make([]string, len(concrete))
+	for i, arg := range concrete {
+		parts[i] = typeKey(arg)
+	}
+	key := template.Name + "<" + strings.Join(parts, ",") + ">"
+	if existing, ok := e.structInstances[key]; ok {
+		return existing.Name, nil
+	}
+	depth := callerDepth + 1
+	if depth > limits.MaxGenericExpansionDepth {
+		return "", typeError(at, diagnostic.TypeGenericStructInstantiationLimit, "generic struct expansion exceeds depth limit %d", limits.MaxGenericExpansionDepth)
+	}
+	if len(e.structInstances) >= limits.MaxGenericStructInstantiations {
+		return "", typeError(at, diagnostic.TypeGenericStructInstantiationLimit, "generic struct instances exceed limit %d", limits.MaxGenericStructInstantiations)
+	}
+	sub := make(map[string]ast.TypeRef, len(template.TypeParams))
+	for i, name := range template.TypeParams {
+		sub[name] = concrete[i]
+	}
+	e.nextStructID++
+	name := fmt.Sprintf("__aster_generic_struct_%06d", e.nextStructID)
+	instance := &ast.StructDecl{At: template.At, Name: name}
+	// Cache the placeholder before resolving its fields so recursion through
+	// Array<T> and exact self references reuse this nominal identity.
+	e.structInstances[key] = instance
+	e.structInstanceInfo[name] = structInstanceInfo{template: template.Name, args: cloneTypeArgs(concrete)}
+	e.knownTypes[name] = true
+	e.orderedStructs = append(e.orderedStructs, instance)
+	fields := make(map[string]ast.TypeRef, len(template.Fields))
+	instance.Fields = make([]ast.StructField, len(template.Fields))
+	for i, field := range template.Fields {
+		typ, err := e.resolveType(substituteType(field.Type, sub), field.At, depth)
+		if err != nil {
+			return "", err
+		}
+		instance.Fields[i] = ast.StructField{At: field.At, Name: field.Name, Type: typ}
+		fields[field.Name] = cloneTypeRef(typ)
+	}
+	e.structFields[name] = fields
+	return name, nil
+}
+
+func cloneTypeArgs(args []ast.TypeRef) []ast.TypeRef {
+	out := make([]ast.TypeRef, len(args))
+	for i, arg := range args {
+		out[i] = cloneTypeRef(arg)
+	}
+	return out
+}
+
+func (e *expander) inferStructTypeArguments(template *ast.StructDecl, args []ast.Expr, at token.Position) ([]ast.TypeRef, error) {
+	if len(args) != len(template.Fields) {
+		return nil, typeError(at, diagnostic.TypeStructConstructorArity, "struct '%s' expects %d fields, got %d", template.Name, len(template.Fields), len(args))
+	}
+	parameters := make(map[string]bool, len(template.TypeParams))
+	for _, name := range template.TypeParams {
+		parameters[name] = true
+	}
+	inferred := make(map[string]ast.TypeRef, len(template.TypeParams))
+	for i, field := range template.Fields {
+		if !containsParameter(field.Type, parameters) {
+			continue
+		}
+		actual, ok := e.inferExprType(args[i])
+		if !ok {
+			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericStructInference, "cannot infer type arguments for field '%s' of '%s'; use %s::<...>(...)", field.Name, template.Name, template.Name)
+		}
+		if err := e.unifyType(field.Type, actual, parameters, inferred); err != nil {
+			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericStructInference, "cannot infer type arguments for '%s' consistently: %v", template.Name, err)
+		}
+	}
+	out := make([]ast.TypeRef, len(template.TypeParams))
+	for i, name := range template.TypeParams {
+		typ, ok := inferred[name]
+		if !ok {
+			return nil, typeError(at, diagnostic.TypeGenericStructInference, "cannot infer type parameter '%s' for struct '%s'; use %s::<...>(...)", name, template.Name, template.Name)
+		}
+		out[i] = typ
+	}
+	return out, nil
+}
+
+// resolveType lowers type applications into concrete nominal names. Array keeps
+// its existing Element representation; named generic structs use Args.
+func (e *expander) resolveType(typ ast.TypeRef, at token.Position, depth int) (ast.TypeRef, error) {
+	if typ.Name == "Array" {
+		if typ.Element == nil || len(typ.Args) != 0 {
+			return ast.TypeRef{}, typeError(at, diagnostic.TypeInvalidTypeAnnotation, "Array requires exactly one element type")
+		}
+		element, err := e.resolveType(*typ.Element, at, depth+1)
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		if element.Name == "unit" && element.Element == nil && len(element.Args) == 0 {
+			return ast.TypeRef{}, typeError(at, diagnostic.TypeInvalidTypeAnnotation, "Array cannot contain unit values")
+		}
+		typ.Element = &element
+		return typ, nil
+	}
+	if typ.Element != nil {
+		return ast.TypeRef{}, typeError(at, diagnostic.TypeGenericArgumentsOnNonGeneric, "type '%s' does not accept an Array-style type argument", typ.Name)
+	}
+	if template, isGeneric := e.structTemplates[typ.Name]; isGeneric {
+		if len(typ.Args) == 0 {
+			return ast.TypeRef{}, typeError(at, diagnostic.TypeGenericStructArgumentCount, "generic struct '%s' requires %d type arguments", typ.Name, len(template.TypeParams))
+		}
+		args := make([]ast.TypeRef, len(typ.Args))
+		for i, arg := range typ.Args {
+			resolved, err := e.resolveType(arg, at, depth+1)
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			args[i] = resolved
+		}
+		name, err := e.instantiateStruct(template, args, at, nil, depth)
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		return ast.TypeRef{Name: name, At: typ.At}, nil
+	}
+	if len(typ.Args) != 0 {
+		return ast.TypeRef{}, typeError(at, diagnostic.TypeGenericArgumentsOnNonGeneric, "type '%s' does not accept generic type arguments", typ.Name)
+	}
+	if !e.knownTypes[typ.Name] {
+		return ast.TypeRef{}, typeError(at, diagnostic.TypeInvalidTypeAnnotation, "unknown type '%s'", typ.Name)
+	}
+	return typ, nil
+}
+
+func (e *expander) rewriteStruct(template *ast.StructDecl, sub map[string]ast.TypeRef, depth int) (*ast.StructDecl, error) {
+	out := &ast.StructDecl{At: template.At, Name: template.Name}
+	out.Fields = make([]ast.StructField, len(template.Fields))
+	for i, field := range template.Fields {
+		typ, err := e.resolveType(substituteType(field.Type, sub), field.At, depth)
+		if err != nil {
+			return nil, err
+		}
+		out.Fields[i] = ast.StructField{At: field.At, Name: field.Name, Type: typ}
+	}
+	fields := make(map[string]ast.TypeRef, len(out.Fields))
+	for _, field := range out.Fields {
+		fields[field.Name] = cloneTypeRef(field.Type)
+	}
+	e.structFields[out.Name] = fields
+	return out, nil
+}
+
 func (e *expander) validateTypeArgument(t ast.TypeRef, at token.Position) error {
 	if t.Name == "Array" {
 		if t.Element == nil {
@@ -194,8 +444,8 @@ func (e *expander) validateTypeArgument(t ast.TypeRef, at token.Position) error 
 		}
 		return e.validateTypeArgument(*t.Element, at)
 	}
-	if t.Element != nil {
-		return typeError(at, diagnostic.TypeGenericArgumentsOnNonGeneric, "generic type arguments for '%s' are not supported in this implementation stage", t.Name)
+	if t.Element != nil || len(t.Args) > 0 {
+		return typeError(at, diagnostic.TypeGenericArgumentsOnNonGeneric, "generic type arguments for '%s' were not resolved", t.Name)
 	}
 	if !e.knownTypes[t.Name] {
 		return typeError(at, diagnostic.TypeInvalidTypeAnnotation, "unknown generic type argument '%s'", t.Name)
@@ -206,6 +456,13 @@ func (e *expander) validateTypeArgument(t ast.TypeRef, at token.Position) error 
 func typeKey(t ast.TypeRef) string {
 	if t.Element != nil {
 		return t.Name + "<" + typeKey(*t.Element) + ">"
+	}
+	if len(t.Args) > 0 {
+		parts := make([]string, len(t.Args))
+		for i, arg := range t.Args {
+			parts[i] = typeKey(arg)
+		}
+		return t.Name + "<" + strings.Join(parts, ",") + ">"
 	}
 	return t.Name
 }
@@ -219,10 +476,18 @@ func cloneTypeScope(source map[string]ast.TypeRef) map[string]ast.TypeRef {
 }
 
 func containsParameter(typ ast.TypeRef, parameters map[string]bool) bool {
-	if typ.Element == nil {
-		return parameters[typ.Name]
+	if typ.Element != nil {
+		return containsParameter(*typ.Element, parameters)
 	}
-	return containsParameter(*typ.Element, parameters)
+	if parameters[typ.Name] {
+		return true
+	}
+	for _, arg := range typ.Args {
+		if containsParameter(arg, parameters) {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *expander) inferCallTypeArguments(template *ast.Function, args []ast.Expr, at token.Position) ([]ast.TypeRef, error) {
@@ -242,7 +507,7 @@ func (e *expander) inferCallTypeArguments(template *ast.Function, args []ast.Exp
 		if !ok {
 			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericInference, "cannot infer type arguments for '%s' from argument %d; add explicit type arguments with %s::<...>(...)", template.Name, i+1, template.Name)
 		}
-		if err := unifyType(pattern.Type, actual, parameters, inferred); err != nil {
+		if err := e.unifyType(pattern.Type, actual, parameters, inferred); err != nil {
 			return nil, typeError(args[i].Pos(), diagnostic.TypeGenericInference, "cannot infer type arguments for '%s' consistently: %v", template.Name, err)
 		}
 	}
@@ -257,8 +522,8 @@ func (e *expander) inferCallTypeArguments(template *ast.Function, args []ast.Exp
 	return out, nil
 }
 
-func unifyType(pattern, actual ast.TypeRef, parameters map[string]bool, inferred map[string]ast.TypeRef) error {
-	if pattern.Element == nil && parameters[pattern.Name] {
+func (e *expander) unifyType(pattern, actual ast.TypeRef, parameters map[string]bool, inferred map[string]ast.TypeRef) error {
+	if pattern.Element == nil && len(pattern.Args) == 0 && parameters[pattern.Name] {
 		if previous, exists := inferred[pattern.Name]; exists {
 			if typeKey(previous) != typeKey(actual) {
 				return fmt.Errorf("type parameter '%s' would be both %s and %s", pattern.Name, typeKey(previous), typeKey(actual))
@@ -272,7 +537,23 @@ func unifyType(pattern, actual ast.TypeRef, parameters map[string]bool, inferred
 		if actual.Name != "Array" || actual.Element == nil {
 			return fmt.Errorf("expected %s but argument has type %s", typeKey(pattern), typeKey(actual))
 		}
-		return unifyType(*pattern.Element, *actual.Element, parameters, inferred)
+		return e.unifyType(*pattern.Element, *actual.Element, parameters, inferred)
+	}
+	if pattern.Name == actual.Name && len(pattern.Args) == len(actual.Args) && len(pattern.Args) > 0 {
+		for i := range pattern.Args {
+			if err := e.unifyType(pattern.Args[i], actual.Args[i], parameters, inferred); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if info, ok := e.structInstanceInfo[actual.Name]; ok && pattern.Name == info.template && len(pattern.Args) == len(info.args) {
+		for i := range pattern.Args {
+			if err := e.unifyType(pattern.Args[i], info.args[i], parameters, inferred); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	// Concrete parameter types are still checked by the regular checker after
 	// specialization; they do not participate in type-variable inference.
@@ -341,6 +622,9 @@ func (e *expander) inferExprType(expr ast.Expr) (ast.TypeRef, bool) {
 		if !ok {
 			return ast.TypeRef{}, false
 		}
+		if _, ok := e.structFields[id.Name]; ok {
+			return concrete(id.Name)
+		}
 		switch id.Name {
 		case "print", "assert":
 			return concrete("unit")
@@ -388,15 +672,23 @@ func (e *expander) inferExprType(expr ast.Expr) (ast.TypeRef, bool) {
 }
 
 func substituteType(t ast.TypeRef, sub map[string]ast.TypeRef) ast.TypeRef {
-	if t.Element == nil {
+	if t.Element == nil && len(t.Args) == 0 {
 		if replacement, ok := sub[t.Name]; ok {
 			return cloneTypeRef(replacement)
 		}
 		return t
 	}
 	out := t
-	element := substituteType(*t.Element, sub)
-	out.Element = &element
+	if t.Element != nil {
+		element := substituteType(*t.Element, sub)
+		out.Element = &element
+	}
+	if len(t.Args) > 0 {
+		out.Args = make([]ast.TypeRef, len(t.Args))
+		for i, arg := range t.Args {
+			out.Args[i] = substituteType(arg, sub)
+		}
+	}
 	return out
 }
 
@@ -405,6 +697,12 @@ func cloneTypeRef(t ast.TypeRef) ast.TypeRef {
 	if t.Element != nil {
 		el := cloneTypeRef(*t.Element)
 		out.Element = &el
+	}
+	if len(t.Args) > 0 {
+		out.Args = make([]ast.TypeRef, len(t.Args))
+		for i, arg := range t.Args {
+			out.Args[i] = cloneTypeRef(arg)
+		}
 	}
 	return out
 }
@@ -419,11 +717,20 @@ func (e *expander) rewriteFunction(fn *ast.Function, sub map[string]ast.TypeRef,
 	previousVariables := e.variables
 	e.variables = make(map[string]ast.TypeRef, len(fn.Params))
 	for i, p := range fn.Params {
-		out.Params[i] = ast.Param{At: p.At, Name: p.Name, Type: substituteType(p.Type, sub)}
-		e.variables[p.Name] = cloneTypeRef(out.Params[i].Type)
+		typ, err := e.resolveType(substituteType(p.Type, sub), p.At, depth)
+		if err != nil {
+			e.variables = previousVariables
+			return nil, err
+		}
+		out.Params[i] = ast.Param{At: p.At, Name: p.Name, Type: typ}
+		e.variables[p.Name] = cloneTypeRef(typ)
 	}
 	if fn.ReturnType != nil {
-		ret := substituteType(*fn.ReturnType, sub)
+		ret, err := e.resolveType(substituteType(*fn.ReturnType, sub), fn.ReturnType.At, depth)
+		if err != nil {
+			e.variables = previousVariables
+			return nil, err
+		}
 		out.ReturnType = &ret
 	}
 	body, err := e.rewriteBlock(fn.Body, sub, depth)
@@ -457,7 +764,10 @@ func (e *expander) rewriteStmt(stmt ast.Stmt, sub map[string]ast.TypeRef, depth 
 	case *ast.LetStmt:
 		out := &ast.LetStmt{At: n.At, Name: n.Name, Mutable: n.Mutable}
 		if n.Annotation != nil {
-			v := substituteType(*n.Annotation, sub)
+			v, err := e.resolveType(substituteType(*n.Annotation, sub), n.Annotation.At, depth)
+			if err != nil {
+				return nil, err
+			}
 			out.Annotation = &v
 		}
 		value, err := e.rewriteExpr(n.Value, sub, depth)
@@ -575,17 +885,23 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 		id, named := n.Callee.(*ast.IdentifierExpr)
 		if len(n.TypeArgs) > 0 {
 			if !named {
-				return nil, typeError(n.At, diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit generic arguments require a named function target")
+				return nil, typeError(n.At, diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit generic arguments require a named function or struct target")
 			}
-			template, ok := e.templates[id.Name]
-			if !ok {
-				return nil, typeError(n.At, diagnostic.TypeGenericArgumentsOnNonGeneric, "function '%s' does not accept explicit type arguments", id.Name)
+			if template, ok := e.templates[id.Name]; ok {
+				instanceName, err := e.instantiate(template, n.TypeArgs, n.At, sub, depth)
+				if err != nil {
+					return nil, err
+				}
+				return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
 			}
-			instanceName, err := e.instantiate(template, n.TypeArgs, n.At, sub, depth)
-			if err != nil {
-				return nil, err
+			if template, ok := e.structTemplates[id.Name]; ok {
+				instanceName, err := e.instantiateStruct(template, n.TypeArgs, n.At, sub, depth)
+				if err != nil {
+					return nil, err
+				}
+				return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
 			}
-			return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
+			return nil, typeError(n.At, diagnostic.TypeGenericArgumentsOnNonGeneric, "function or struct '%s' does not accept explicit type arguments", id.Name)
 		}
 		if named {
 			if template, generic := e.templates[id.Name]; generic {
@@ -594,6 +910,17 @@ func (e *expander) rewriteExpr(expr ast.Expr, sub map[string]ast.TypeRef, depth 
 					return nil, inferErr
 				}
 				instanceName, instantiateErr := e.instantiate(template, inferred, n.At, sub, depth)
+				if instantiateErr != nil {
+					return nil, instantiateErr
+				}
+				return &ast.CallExpr{At: n.At, Callee: &ast.IdentifierExpr{At: id.At, Name: instanceName}, Args: args}, nil
+			}
+			if template, generic := e.structTemplates[id.Name]; generic {
+				inferred, inferErr := e.inferStructTypeArguments(template, args, n.At)
+				if inferErr != nil {
+					return nil, inferErr
+				}
+				instanceName, instantiateErr := e.instantiateStruct(template, inferred, n.At, sub, depth)
 				if instantiateErr != nil {
 					return nil, instantiateErr
 				}

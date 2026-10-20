@@ -440,8 +440,8 @@ func (c *Checker) typeFromRefDepth(r ast.TypeRef, depth int) (Type, error) {
 		}
 		return Type("Array<" + elem.String() + ">"), nil
 	}
-	if r.Element != nil {
-		return "", fmt.Errorf("type '%s' does not accept a generic type argument", r.Name)
+	if r.Element != nil || len(r.Args) > 0 {
+		return "", fmt.Errorf("type '%s' does not accept generic type arguments", r.Name)
 	}
 	switch r.Name {
 	case "i64":

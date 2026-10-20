@@ -576,3 +576,45 @@ let result = match Pair::Values(1, 2) { Pair::Values(x, x) => 1, };`)
 		t.Fatalf("expected TYP076 duplicate payload-binding diagnostic, got %v", err)
 	}
 }
+
+func TestChecksGenericStructInferenceAndConstruction(t *testing.T) {
+	source := `struct Box<T> { value: T }
+struct Pair<K, V> { key: K, value: V }
+fn unwrap<T>(box: Box<T>) -> T { return box.value; }
+let inferred = Box(42);
+let explicit: Box<string> = Box::<string>("aster");
+let pair: Pair<string, Array<i64>> = Pair("values", [2, 4, 6]);
+print(unwrap(inferred));
+print(explicit.value);
+print(pair.key);
+print(pair.value[1]);`
+	if err := checkSource(t, source); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRejectsGenericStructArityAndInferenceFailures(t *testing.T) {
+	tests := []struct {
+		name, source, want string
+	}{
+		{"wrong argument count", `struct Pair<T, U> { first: T, second: U } let pair = Pair::<i64>(1, 2);`, "TYP084"},
+		{"missing type argument in annotation", `struct Box<T> { value: T } fn take(value: Box) { }`, "TYP084"},
+		{"uninferred type parameter", `struct Pair<T, U> { first: T, second: i64 } let pair = Pair(1, 2);`, "TYP085"},
+		{"conflicting inference", `struct Pair<T> { first: T, second: T } let pair = Pair(1, "wrong");`, "TYP085"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkSource(t, tt.source)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want diagnostic %s", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRejectsRecursiveByValueGenericStructLayout(t *testing.T) {
+	err := checkSource(t, `struct Node<T> { next: Node<T> } fn take(node: Node<i64>) { }`)
+	if err == nil || !strings.Contains(err.Error(), "TYP059") {
+		t.Fatalf("expected TYP059 recursive-layout diagnostic, got %v", err)
+	}
+}

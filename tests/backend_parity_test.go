@@ -133,6 +133,59 @@ print(select(7, 9, false));
 	}
 }
 
+func TestGenericStructVMAndNativeBackendParity(t *testing.T) {
+	source := `struct Box<T> { value: T }
+struct Pair<K, V> { key: K, value: V }
+fn unwrap<T>(box: Box<T>) -> T { return box.value; }
+let box = Box([1, 2, 3]);
+let pair: Pair<string, Array<i64>> = Pair::<string, Array<i64>>("items", box.value);
+print(unwrap(Box(42)));
+print(pair.key);
+print(pair.value[1]);
+let mut original: Array<i64> = [4, 5];
+let wrapped = Box(original);
+original[0] = 99;
+print(wrapped.value[0]);
+`
+	tree, err := parser.Parse(source, "generic-struct-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := program.Validate(); err != nil {
+		t.Fatalf("generic struct bytecode failed validation: %v", err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-generic-struct-parity")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	nativeOutput, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("Native generic struct program failed: %v\n%s", err, nativeOutput)
+	}
+	if got, want := vmOutput.String(), "42\nitems\n2\n4\n"; got != want {
+		t.Fatalf("unexpected generic struct VM output: got %q want %q", got, want)
+	}
+	if got := string(nativeOutput); got != vmOutput.String() {
+		t.Fatalf("generic struct backend output differs: VM=%q Native=%q", vmOutput.String(), got)
+	}
+}
+
 func TestExtendedVMAndNativeBackendParity(t *testing.T) {
 	source := `print(1.5 + 2.25); print(false && (1 / 0 == 0)); print(true || (1 / 0 == 0)); print("alpha" == "alpha"); print("alpha" < "beta");`
 	tree, err := parser.Parse(source, "extended-parity.ast")

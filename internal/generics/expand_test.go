@@ -123,3 +123,93 @@ func TestExpandRejectsGrowingRecursiveInstantiation(t *testing.T) {
 		t.Fatalf("expected TYP083, got %v", err)
 	}
 }
+
+func TestExpandSpecializesInferredAndExplicitGenericStructs(t *testing.T) {
+	program := parse(t, `struct Pair<T, U> { first: T, values: Array<U> }
+let inferred = Pair(7, ["seven"]);
+let explicit: Pair<i64, string> = Pair::<i64, string>(8, ["eight"]);`)
+	expanded, err := Expand(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var instances []*ast.StructDecl
+	for _, decl := range expanded.Decls {
+		if st, ok := decl.(*ast.StructDecl); ok && strings.HasPrefix(st.Name, "__aster_generic_struct_") {
+			instances = append(instances, st)
+			if len(st.TypeParams) != 0 {
+				t.Fatalf("generated struct %s still has type parameters", st.Name)
+			}
+			if len(st.Fields) != 2 || st.Fields[0].Type.Name != "i64" || st.Fields[1].Type.Name != "Array" ||
+				st.Fields[1].Type.Element == nil || st.Fields[1].Type.Element.Name != "string" {
+				t.Fatalf("unexpected specialized struct: %#v", st)
+			}
+		}
+	}
+	if len(instances) != 1 {
+		t.Fatalf("specialized struct count = %d, want one cached Pair<i64,string>", len(instances))
+	}
+}
+
+func TestExpandSpecializesGenericStructTypeApplicationsInFunctionSignatures(t *testing.T) {
+	program := parse(t, `struct Box<T> { value: T }
+fn unwrap<T>(box: Box<T>) -> T { return box.value; }
+let value = unwrap(Box(42));`)
+	expanded, err := Expand(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawBox, sawUnwrap bool
+	for _, decl := range expanded.Decls {
+		switch n := decl.(type) {
+		case *ast.StructDecl:
+			if strings.HasPrefix(n.Name, "__aster_generic_struct_") {
+				sawBox = true
+				if n.Fields[0].Type.Name != "i64" {
+					t.Fatalf("Box field type = %#v, want i64", n.Fields[0].Type)
+				}
+			}
+		case *ast.Function:
+			if strings.HasPrefix(n.Name, "__aster_generic_fn_") {
+				sawUnwrap = true
+				if len(n.Params) != 1 || !strings.HasPrefix(n.Params[0].Type.Name, "__aster_generic_struct_") ||
+					n.ReturnType == nil || n.ReturnType.Name != "i64" {
+					t.Fatalf("specialized generic function signature = %#v", n)
+				}
+			}
+		}
+	}
+	if !sawBox || !sawUnwrap {
+		t.Fatalf("missing specialization: Box=%t unwrap=%t", sawBox, sawUnwrap)
+	}
+}
+
+func TestExpandReusesRecursiveGenericStructInstance(t *testing.T) {
+	program := parse(t, `struct Node<T> { children: Array<Node<T>> }
+fn take(node: Node<i64>) { }`)
+	expanded, err := Expand(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, decl := range expanded.Decls {
+		if st, ok := decl.(*ast.StructDecl); ok && strings.HasPrefix(st.Name, "__aster_generic_struct_") {
+			count++
+			if st.Fields[0].Type.Name != "Array" || st.Fields[0].Type.Element == nil ||
+				st.Fields[0].Type.Element.Name != st.Name {
+				t.Fatalf("recursive Array field = %#v, want Array<%s>", st.Fields[0].Type, st.Name)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("recursive generic struct instance count = %d, want 1", count)
+	}
+}
+
+func TestExpandRejectsExpandingGenericStructRecursion(t *testing.T) {
+	program := parse(t, `struct Nest<T> { next: Nest<Array<T>> }
+fn take(value: Nest<i64>) { }`)
+	_, err := Expand(program)
+	if err == nil || !strings.Contains(err.Error(), "TYP086") {
+		t.Fatalf("expected TYP086 expanding-instantiation diagnostic, got %v", err)
+	}
+}
