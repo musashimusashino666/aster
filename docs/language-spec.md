@@ -61,4 +61,4 @@ The JSON bytecode format is versioned independently of source syntax. Version 2 
 
 ## Unsupported syntax in 0.1
 
-Structs, enums, user-defined generics, lambdas, closures, pattern matching, `for`, `break`, `continue`, imports, modules, exceptions, `Option`, `Result`, `async/await`, macros, user-defined operators, and explicit casts are not implemented. Arrays are supported with the limitations described above. The parser or type checker reports an error rather than accepting these as supported language features.
+Structs, enums, user-defined generics, lambdas, closures, pattern matching, `for`, `break`, `continue`, imports, modules, exceptions, `Option`, `Result`, `async/await`, macros, and user-defined operators are not implemented. Arrays are supported with the limitations described above. The parser or type checker reports an error rather than accepting these as supported language features.
