@@ -514,7 +514,6 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 	return false, nil
 }
 
-
 func printableProgramType(p *Program, typ string) bool {
 	switch typ {
 	case "i64", "f64", "bool", "string":
