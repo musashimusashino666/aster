@@ -618,3 +618,46 @@ func TestRejectsRecursiveByValueGenericStructLayout(t *testing.T) {
 		t.Fatalf("expected TYP059 recursive-layout diagnostic, got %v", err)
 	}
 }
+
+func TestGenericEnumPayloadInferenceAndExhaustiveMatch(t *testing.T) {
+	source := `enum Option<T> { None, Some(T), }
+fn unwrap<T>(value: Option<T>) -> T {
+	return match value {
+		Option::Some(item) => item,
+		Option::None => 0,
+	};
+}
+let value: Option<i64> = Option::Some(42);
+print(unwrap(value));
+let empty: Option<i64> = Option::<i64>::None;
+print(match empty { Option::Some(item) => item, Option::None => 0, });`
+	if err := checkSource(t, source); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGenericEnumReportsStableInferenceAndArityDiagnostics(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		source string
+		code string
+	}{
+		{name: "unresolved payload-free variant", source: `enum Option<T> { None, Some(T) } let value = Option::None;`, code: "TYP088"},
+		{name: "wrong explicit type argument count", source: `enum Result<T, E> { Ok(T), Err(E) } let value = Result::<i64>::Ok(1);`, code: "TYP087"},
+		{name: "missing type arguments in annotation", source: `enum Option<T> { None, Some(T) } let value: Option = Option::<i64>::None;`, code: "TYP087"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkSource(t, tc.source)
+			if err == nil || !strings.Contains(err.Error(), tc.code) {
+				t.Fatalf("expected %s, got %v", tc.code, err)
+			}
+		})
+	}
+}
+
+func TestGenericEnumDirectRecursiveLayoutIsRejected(t *testing.T) {
+	err := checkSource(t, `enum Loop<T> { End, Next(Loop<T>) } fn use(value: Loop<i64>) { }`)
+	if err == nil || !strings.Contains(err.Error(), "TYP077") {
+		t.Fatalf("expected recursive enum layout diagnostic TYP077, got %v", err)
+	}
+}
