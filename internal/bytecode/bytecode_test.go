@@ -199,7 +199,7 @@ func FuzzValidateInstructionOperandsNeverPanics(f *testing.F) {
 					{Op: OpHalt},
 				},
 			}},
-			Entry:     0,
+			Entry: 0,
 		}
 		_ = program.Validate()
 	})
@@ -989,7 +989,7 @@ func TestInstructionSourceSpanValidation(t *testing.T) {
 		return &Program{
 			Format: "aster-bytecode", Version: FormatVersion, Constants: []Value{},
 			Functions: []Function{{Name: "main", Return: "unit", Code: []Instruction{instruction}}},
-			Entry: 0,
+			Entry:     0,
 		}
 	}
 	if err := makeProgram(valid).Validate(); err != nil {
