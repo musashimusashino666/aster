@@ -3,8 +3,8 @@ package diagnostic
 import (
 	"context"
 	"errors"
-	"testing"
 	"strings"
+	"testing"
 
 	"github.com/aster-lang/aster/internal/token"
 )
