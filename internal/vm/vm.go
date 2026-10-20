@@ -9,7 +9,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/aster-lang/aster/internal/bytecode"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/limits"
+	"github.com/aster-lang/aster/internal/token"
 )
 
 const maxStackDepth = 1 << 20
@@ -39,7 +41,7 @@ type VM struct {
 
 func Run(program *bytecode.Program, out io.Writer) error {
 	if err := program.Validate(); err != nil {
-		return err
+		return diagnostic.WrapBytecode(err, program.Source)
 	}
 	if out == nil {
 		out = io.Discard
@@ -666,8 +668,11 @@ func valueEqual(a, b bytecode.Value) bool {
 }
 func (v *VM) fault(i bytecode.Instruction, format string, args ...any) error {
 	msg := fmt.Sprintf(format, args...)
-	if i.Line > 0 {
-		return fmt.Errorf("%d:%d: runtime error: %s", i.Line, i.Column, msg)
-	}
-	return fmt.Errorf("runtime error: %s", msg)
+	return diagnostic.NewAtSource(
+		diagnostic.RuntimeCode(msg),
+		"runtime",
+		v.program.Source,
+		token.Position{Line: i.Line, Column: i.Column},
+		msg,
+	)
 }
