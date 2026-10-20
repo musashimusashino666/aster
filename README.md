@@ -177,8 +177,8 @@ Only `native` is a supported build target in this version. Unsupported targets f
 │   ├── diagnostic/       stable front-end diagnostic codes
 │   ├── codegen/          native Go backend
 │   ├── lexer/            tokenization and source locations
-│   ├── parser/            syntax parser
-│   ├── token/             token definitions
+│   ├── parser/           syntax parser
+│   ├── token/            token definitions
 │   ├── toolchain/        native build invocation
 │   └── vm/               bytecode interpreter
 ├── docs/                 specification, architecture, security, roadmap
