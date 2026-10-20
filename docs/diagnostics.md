@@ -86,3 +86,5 @@ These codes are intended for tests, editor integrations, and bug reports. A code
 | `TYP045` | Function argument type mismatch |
 | `TYP046` | Unsupported expression node |
 | `TYP047` | Indexed assignment value type mismatch |
+| `TYP048` | Slicing a value that is not an array |
+| `TYP049` | Slice bounds must be `i64` |

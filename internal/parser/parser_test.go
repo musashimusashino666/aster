@@ -110,3 +110,31 @@ func TestParsesNestedArrayElementAssignment(t *testing.T) {
 		t.Fatalf("indexed assignment root = %#v, want matrix", inner.Collection)
 	}
 }
+
+func TestParsesHalfOpenArraySlice(t *testing.T) {
+	program, err := Parse("let values = [1, 2, 3, 4]; let part = values[1:3];", "slice.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt := program.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	slice, ok := stmt.Value.(*ast.SliceExpr)
+	if !ok {
+		t.Fatalf("expression type = %T, want *ast.SliceExpr", stmt.Value)
+	}
+	start, ok := slice.Start.(*ast.LiteralExpr)
+	if !ok || start.Int != 1 {
+		t.Fatalf("slice start = %#v, want 1", slice.Start)
+	}
+	end, ok := slice.End.(*ast.LiteralExpr)
+	if !ok || end.Int != 3 {
+		t.Fatalf("slice end = %#v, want 3", slice.End)
+	}
+}
+
+func TestRejectsMissingSliceBounds(t *testing.T) {
+	for _, source := range []string{"let values = [1]; let part = values[:1];", "let values = [1]; let part = values[0:];"} {
+		if _, err := Parse(source, "slice.ast"); err == nil {
+			t.Errorf("expected missing slice bounds to be rejected for %q", source)
+		}
+	}
+}

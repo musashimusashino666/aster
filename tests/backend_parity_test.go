@@ -797,3 +797,55 @@ print(replaceFirst([4, 5]));`
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
+
+func TestArraySliceBackendParityAndIndependentValues(t *testing.T) {
+	source := `fn middle(values: Array<i64>) -> Array<i64> {
+    return values[1:3];
+}
+let original = [1, 2, 3, 4];
+let mut part = middle(original);
+part[0] = 99;
+print(part);
+print(original);
+let matrix = [[5, 6, 7], [8, 9, 10]];
+print(matrix[1][0:2]);
+print(original[2:2]);`
+	tree, err := parser.Parse(source, "slice-parity.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := checker.Analyze(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.CompileTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmOutput bytes.Buffer
+	if err := vm.Run(program, &vmOutput); err != nil {
+		t.Fatal(err)
+	}
+	goSource, err := codegen.GenerateTyped(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "aster-slice-parity")
+	if err := toolchain.BuildNative(goSource, bin); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin)
+	var nativeOutput bytes.Buffer
+	cmd.Stdout = &nativeOutput
+	cmd.Stderr = &bytes.Buffer{}
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if vmOutput.String() != nativeOutput.String() {
+		t.Fatalf("backend output differs: VM=%q native=%q", vmOutput.String(), nativeOutput.String())
+	}
+	want := "[99 3]\n[1 2 3 4]\n[8 9]\n[]\n"
+	if got := vmOutput.String(); got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}

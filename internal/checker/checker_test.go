@@ -285,3 +285,31 @@ func TestChecksIndexedArrayAssignment(t *testing.T) {
 		})
 	}
 }
+
+func TestChecksArraySliceExpressions(t *testing.T) {
+	for _, source := range []string{
+		"let values = [1, 2, 3]; let part = values[1:3]; print(part);",
+		"let values = [[1, 2], [3, 4]]; let row = values[0][0:2]; print(row);",
+		"let values = [1, 2]; let empty = values[1:1]; print(len(empty));",
+	} {
+		if err := checkSource(t, source); err != nil {
+			t.Errorf("expected slice expression to type-check for %q: %v", source, err)
+		}
+	}
+
+	invalid := []struct {
+		name, source, want string
+	}{
+		{"non-array source", "let value = 1; let part = value[0:1];", "slicing requires an Array<T>"},
+		{"start bound type", "let values = [1, 2]; let part = values[true:1];", "slice bounds must be i64"},
+		{"end bound type", "let values = [1, 2]; let part = values[0:false];", "slice bounds must be i64"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkSource(t, tt.source)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}

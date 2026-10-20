@@ -300,6 +300,29 @@ func applyAbstractInstruction(p *Program, fi, pc int, ins Instruction, s *abstra
 			return false, fmt.Errorf("function %q instruction %d: INDEX requires Array<T>, got %s", fn.Name, pc, collectionType)
 		}
 		push(elementType)
+	case OpSlice:
+		endType, err := pop()
+		if err != nil {
+			return false, err
+		}
+		if err := requireAbstractType(fn.Name, pc, ins.Op, endType, "i64"); err != nil {
+			return false, err
+		}
+		startType, err := pop()
+		if err != nil {
+			return false, err
+		}
+		if err := requireAbstractType(fn.Name, pc, ins.Op, startType, "i64"); err != nil {
+			return false, err
+		}
+		collectionType, err := pop()
+		if err != nil {
+			return false, err
+		}
+		if _, ok := abstractArrayElementType(collectionType); !ok {
+			return false, fmt.Errorf("function %q instruction %d: SLICE requires Array<T>, got %s", fn.Name, pc, collectionType)
+		}
+		push(collectionType)
 	case OpSetIndexPath:
 		valueType, err := pop()
 		if err != nil {

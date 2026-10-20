@@ -493,6 +493,29 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			return "", typeError(n.Index.Pos(), diagnostic.TypeIndexType, "array index must be i64, got %s", indexType)
 		}
 		return elemType, nil
+	case *ast.SliceExpr:
+		collectionType, err := c.checkExpr(n.Collection)
+		if err != nil {
+			return "", err
+		}
+		if _, ok := arrayElement(collectionType); !ok {
+			return "", typeError(n.Collection.Pos(), diagnostic.TypeSliceNonArray, "slicing requires an Array<T>, got %s", collectionType)
+		}
+		startType, err := c.checkExpr(n.Start)
+		if err != nil {
+			return "", err
+		}
+		if startType != I64 {
+			return "", typeError(n.Start.Pos(), diagnostic.TypeSliceBoundType, "slice bounds must be i64, got %s", startType)
+		}
+		endType, err := c.checkExpr(n.End)
+		if err != nil {
+			return "", err
+		}
+		if endType != I64 {
+			return "", typeError(n.End.Pos(), diagnostic.TypeSliceBoundType, "slice bounds must be i64, got %s", endType)
+		}
+		return collectionType, nil
 	case *ast.IdentifierExpr:
 		v, ok := c.scopes.lookup(n.Name)
 		if !ok {

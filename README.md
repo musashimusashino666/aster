@@ -26,7 +26,7 @@
 | Type inference for local variables | Implemented |
 | Functions, recursion, conditionals, loops, return | Implemented |
 | Immutable bindings by default; `let mut` for assignment | Implemented |
-| Arrays (`Array<T>`), homogeneous literals, `len`, checked indexing | Implemented; `let mut` supports nested indexed assignment with value semantics |
+| Arrays (`Array<T>`), homogeneous literals, `len`, checked indexing and slicing | Implemented; `let mut` supports nested indexed assignment with value semantics and slices return independent array values |
 | `Option`, `Result`, enums, structs, user generics | Planned; not implemented |
 | Bytecode compiler and JSON bytecode file | Implemented |
 | Bytecode structural, stack-height, abstract type, and local-initialization verification | Implemented |
@@ -128,7 +128,7 @@ print(total);
 - `bool`: `true` or `false`.
 - `string`: UTF-8 text. `len(string)` counts Unicode code points, not bytes or grapheme clusters.
 - `unit`: the return type of functions that do not return a value. It cannot be stored in a variable.
-- `Array<T>`: dynamically sized homogeneous arrays; literals infer their element type, indexing is bounds-checked, and `len` returns element count. `let mut` bindings support checked element assignment, including nested paths; updates copy the indexed array path so copied values remain independent. Empty literals and slices are not supported yet.
+- `Array<T>`: dynamically sized homogeneous arrays; literals infer their element type, indexing is bounds-checked, and `len` returns element count. `let mut` bindings support checked element assignment, including nested paths; updates copy the indexed array path so copied values remain independent. Slices use the half-open form `values[start:end]`, with required `i64` bounds and an independent result; empty slices are valid. Empty array literals are not supported yet.
 
 A variable may be annotated (`let score: i64 = 42;`) or inferred (`let score = 42;`). Bindings are immutable unless declared with `let mut`.
 
@@ -148,7 +148,7 @@ Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
 
 Logical: `&&`, `||` (short-circuiting)
 
-Numeric operands must have matching types; there is no implicit `i64`/`f64` conversion in 0.1. Array element assignment requires a mutable root binding, for example `let mut values = [1, 2]; values[0] = 9;`. Nested indexed assignments preserve array value semantics. Slices remain unsupported.
+Numeric operands must have matching types; there is no implicit `i64`/`f64` conversion in 0.1. Array element assignment requires a mutable root binding, for example `let mut values = [1, 2]; values[0] = 9;`. Nested indexed assignments preserve array value semantics. Slicing uses `values[start:end]` with an inclusive start and exclusive end; both bounds are required and the result is an independent array value.
 
 ## CLI reference
 
@@ -213,7 +213,7 @@ The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci
 
 ## Roadmap
 
-See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, and stable lexer/parser/type-checker diagnostic codes are implemented. Near-term work is focused on end-to-end source spans, continued fuzzing and differential testing, array slices, explicit numeric conversions, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
+See [`docs/roadmap.md`](docs/roadmap.md) for milestones. The bytecode verifier, shared typed-IR backend boundary, source formatter, and stable lexer/parser/type-checker diagnostic codes are implemented. Near-term work is focused on end-to-end source spans, continued fuzzing and differential testing, explicit numeric conversions, records and enums, `Option`/`Result`, and modules. A richer standard library and an official conformance suite follow as the core semantics stabilize. WebAssembly, AI runtime integration, and embedded profiles remain longer-term work.
 
 ## License
 

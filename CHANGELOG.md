@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added mutable nested array-element assignment with copy-on-write path updates and VM/Native parity coverage; bumped JSON bytecode format to v3 for `SET_INDEX_PATH`.
+- Added checked half-open array slicing with independent result values and VM/Native parity coverage; bumped JSON bytecode format to v4 for `SLICE`.
 
 - Improved return-flow analysis for literal-boolean branches and literal-true loops; both backends lower constant conditions consistently.
 

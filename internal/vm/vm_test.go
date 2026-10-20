@@ -197,3 +197,33 @@ func TestIndexedArrayAssignmentChecksBounds(t *testing.T) {
 		t.Fatalf("expected out-of-bounds runtime error, got %v", err)
 	}
 }
+
+func TestArraySlicesAreIndependentValues(t *testing.T) {
+	source := `let original = [1, 2, 3, 4];
+let mut part = original[1:3];
+part[0] = 99;
+print(part);
+print(original);
+print(original[2:2]);`
+	out, err := runSource(t, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[99 3]\n[1 2 3 4]\n[]\n"
+	if out != want {
+		t.Fatalf("output = %q, want %q", out, want)
+	}
+}
+
+func TestArraySliceChecksBounds(t *testing.T) {
+	for _, source := range []string{
+		"let values = [1, 2, 3]; print(values[-1:2]);",
+		"let values = [1, 2, 3]; print(values[2:1]);",
+		"let values = [1, 2, 3]; print(values[0:4]);",
+	} {
+		_, err := runSource(t, source)
+		if err == nil || !strings.Contains(err.Error(), "slice bounds") {
+			t.Errorf("expected slice-bounds runtime error for %q, got %v", source, err)
+		}
+	}
+}

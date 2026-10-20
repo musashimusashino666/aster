@@ -99,6 +99,15 @@ func asterIndexI64[T any](s []T, i int64, line, column int) T {
 	return s[int(i)]
 }
 
+func asterSlice[T any](s []T, start, end int64, line, column int) []T {
+	if start < 0 || end < start || end > int64(len(s)) {
+		asterRuntimeError(line, column, fmt.Sprintf("slice bounds [%d:%d] out of bounds for length %d", start, end, len(s)))
+	}
+	items := make([]T, int(end-start))
+	copy(items, s[int(start):int(end)])
+	return items
+}
+
 func asterSetIndexPath(collection any, indices []int64, replacement any, line, column int) any {
 	if len(indices) == 0 {
 		asterRuntimeError(line, column, "indexed assignment requires at least one index")
