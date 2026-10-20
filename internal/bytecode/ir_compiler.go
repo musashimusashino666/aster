@@ -120,6 +120,11 @@ func (c *irFunctionCompiler) emit(op Op, a, b, line, column int) int {
 	return len(c.code) - 1
 }
 
+func (c *irFunctionCompiler) emitABC(op Op, a, b, operandC, line, column int) int {
+	c.code = append(c.code, Instruction{Op: op, A: a, B: b, C: operandC, Line: line, Column: column})
+	return len(c.code) - 1
+}
+
 func (c *irFunctionCompiler) patch(at, target int) {
 	c.code[at].A = target
 }
@@ -315,7 +320,7 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 		for _, arg := range n.Args {
 			if err := c.compileExpr(arg); err != nil { return err }
 		}
-		c.emit(OpBuildEnum, n.EnumID, n.VariantIndex, len(n.Args), pos.Line, pos.Column)
+		c.emitABC(OpBuildEnum, n.EnumID, n.VariantIndex, len(n.Args), pos.Line, pos.Column)
 		return nil
 	case *ir.MatchExpr:
 		if n.EnumID < 0 || n.EnumID >= len(c.program.EnumTypes) {
@@ -348,7 +353,7 @@ func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
 				if variantIndex < 0 {
 					return fmt.Errorf("%d:%d: compiler: wildcard arm cannot bind enum payloads", arm.At.Line, arm.At.Column)
 				}
-				c.emit(OpGetEnumPayload, subjectSlot, variantIndex, payloadIndex, binding.At.Line, binding.At.Column)
+				c.emitABC(OpGetEnumPayload, subjectSlot, variantIndex, payloadIndex, binding.At.Line, binding.At.Column)
 				bindingSlot, bindErr := c.allocate(binding.ID, binding.Name)
 				if bindErr != nil { return fmt.Errorf("%d:%d: %w", binding.At.Line, binding.At.Column, bindErr) }
 				c.emit(OpStoreLocal, bindingSlot, 0, binding.At.Line, binding.At.Column)
