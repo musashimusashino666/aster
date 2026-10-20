@@ -10,6 +10,30 @@ import (
 	"github.com/aster-lang/aster/internal/vm"
 )
 
+func TestCompileAndRunExplicitGenericFunctionInstances(t *testing.T) {
+	source := `fn identity<T>(value: T) -> T { return value; }
+print(identity::<i64>(7));
+print(identity::<string>("ok")); `
+	tree, err := parser.Parse(source, "generic-instance.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.Compile(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := program.Validate(); err != nil {
+		t.Fatalf("generic-instance bytecode failed validation: %v", err)
+	}
+	var output bytes.Buffer
+	if err := vm.Run(program, &output); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "7\nok\n"; got != want {
+		t.Fatalf("VM output = %q, want %q", got, want)
+	}
+}
+
 func TestCompileTypedConsumesNormalizedIR(t *testing.T) {
 	source := "fn increment(value: i64) -> i64 { return value + 1; }\n" +
 		"let mut values: Array<i64> = [2, 3, 4];\n" +

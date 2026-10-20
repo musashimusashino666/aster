@@ -33,3 +33,12 @@ const MaxTotalMatchTables = 1 << 20
 
 // MaxMatchTableTargets bounds the total number of dispatch targets across a bytecode program.
 const MaxMatchTableTargets = 1 << 20
+
+// MaxGenericTypeParameters bounds type parameters on one generic function declaration.
+const MaxGenericTypeParameters = 32
+
+// MaxGenericFunctionInstantiations bounds distinct monomorphized generic functions per program.
+const MaxGenericFunctionInstantiations = 1 << 12
+
+// MaxGenericExpansionDepth bounds chains of expanding generic instantiations.
+const MaxGenericExpansionDepth = 256

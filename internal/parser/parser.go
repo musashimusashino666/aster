@@ -75,6 +75,10 @@ func (p *Parser) function(start token.Token) (ast.Decl, error) {
 	if name.Lexeme == "main" {
 		return nil, p.errorAtCode(name, diagnostic.ParserReservedMainName, "'main' is reserved for the top-level program")
 	}
+	typeParams, err := p.typeParameterNames()
+	if err != nil {
+		return nil, err
+	}
 	if _, err = p.consume(token.LParen, "expected '(' after function name"); err != nil {
 		return nil, err
 	}
@@ -113,8 +117,70 @@ func (p *Parser) function(start token.Token) (ast.Decl, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ast.Function{At: start.Pos, Name: name.Lexeme, Params: params, ReturnType: ret, Body: body}, nil
+	return &ast.Function{At: start.Pos, Name: name.Lexeme, TypeParams: typeParams, Params: params, ReturnType: ret, Body: body}, nil
 }
+func (p *Parser) typeParameterNames() ([]string, error) {
+	if !p.match(token.Less) {
+		return nil, nil
+	}
+	start := p.previous()
+	leave, err := p.enterNesting(start, "type parameter list")
+	if err != nil {
+		return nil, err
+	}
+	defer leave()
+	if p.check(token.Greater) {
+		return nil, p.errorAt(p.peek(), "type parameter list must not be empty")
+	}
+	var names []string
+	for {
+		name, err := p.consume(token.Ident, "expected type parameter name")
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, name.Lexeme)
+		if !p.match(token.Comma) {
+			break
+		}
+		if p.check(token.Greater) {
+			return nil, p.errorAt(p.peek(), "expected type parameter after ','")
+		}
+	}
+	if _, err := p.consume(token.Greater, "expected '>' after type parameters"); err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
+func (p *Parser) typeArgumentsAfterLess(start token.Token) ([]ast.TypeRef, error) {
+	leave, err := p.enterNesting(start, "generic type argument list")
+	if err != nil {
+		return nil, err
+	}
+	defer leave()
+	if p.check(token.Greater) {
+		return nil, p.errorAt(p.peek(), "generic type argument list must not be empty")
+	}
+	var args []ast.TypeRef
+	for {
+		arg, err := p.typeRef()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+		if !p.match(token.Comma) {
+			break
+		}
+		if p.check(token.Greater) {
+			return nil, p.errorAt(p.peek(), "expected type argument after ','")
+		}
+	}
+	if _, err := p.consume(token.Greater, "expected '>' after generic type arguments"); err != nil {
+		return nil, err
+	}
+	return args, nil
+}
+
 func (p *Parser) enumDeclaration(start token.Token) (*ast.EnumDecl, error) {
 	name, err := p.consume(token.Ident, "expected enum name after 'enum'")
 	if err != nil {
@@ -510,38 +576,56 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		leftDepth = 1
 	case token.Ident:
 		if p.match(token.DoubleColon) {
-			variant, err := p.consume(token.Ident, "expected variant name after '::'")
-			if err != nil {
-				return nil, 0, err
-			}
-			args := []ast.Expr{}
-			hasPayload := p.match(token.LParen)
-			maxArgDepth := 1
-			if hasPayload {
-				if !p.check(token.RParen) {
-					for {
-						arg, argDepth, argErr := p.parseExpression(0)
-						if argErr != nil {
-							return nil, 0, argErr
-						}
-						args = append(args, arg)
-						if argDepth > maxArgDepth {
-							maxArgDepth = argDepth
-						}
-						if !p.match(token.Comma) {
-							break
-						}
-						if p.check(token.RParen) {
-							break
-						}
-					}
+			if p.match(token.Less) {
+				typeArgs, argErr := p.typeArgumentsAfterLess(p.previous())
+				if argErr != nil {
+					return nil, 0, argErr
 				}
-				if _, err := p.consume(token.RParen, "expected ')' after enum variant arguments"); err != nil {
+				callee := &ast.IdentifierExpr{At: t.Pos, Name: t.Lexeme}
+				if !p.check(token.LParen) {
+					return nil, 0, p.errorAt(p.peek(), "expected '(' after explicit generic type arguments")
+				}
+				call, depth, callErr := p.finishCall(callee, 1)
+				if callErr != nil {
+					return nil, 0, callErr
+				}
+				callExpr := call.(*ast.CallExpr)
+				callExpr.TypeArgs = typeArgs
+				left, leftDepth = callExpr, depth
+			} else {
+				variant, err := p.consume(token.Ident, "expected variant name after '::'")
+				if err != nil {
 					return nil, 0, err
 				}
+				args := []ast.Expr{}
+				hasPayload := p.match(token.LParen)
+				maxArgDepth := 1
+				if hasPayload {
+					if !p.check(token.RParen) {
+						for {
+							arg, argDepth, argErr := p.parseExpression(0)
+							if argErr != nil {
+								return nil, 0, argErr
+							}
+							args = append(args, arg)
+							if argDepth > maxArgDepth {
+								maxArgDepth = argDepth
+							}
+							if !p.match(token.Comma) {
+								break
+							}
+							if p.check(token.RParen) {
+								break
+							}
+						}
+					}
+					if _, err := p.consume(token.RParen, "expected ')' after enum variant arguments"); err != nil {
+						return nil, 0, err
+					}
+				}
+				left = &ast.EnumVariantExpr{At: t.Pos, EnumName: t.Lexeme, VariantName: variant.Lexeme, Args: args, HasPayload: hasPayload}
+				leftDepth = maxArgDepth + 1
 			}
-			left = &ast.EnumVariantExpr{At: t.Pos, EnumName: t.Lexeme, VariantName: variant.Lexeme, Args: args, HasPayload: hasPayload}
-			leftDepth = maxArgDepth + 1
 		} else {
 			left = &ast.IdentifierExpr{At: t.Pos, Name: t.Lexeme}
 			leftDepth = 1

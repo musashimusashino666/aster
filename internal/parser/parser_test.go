@@ -139,6 +139,33 @@ func TestRejectsMissingSliceBounds(t *testing.T) {
 	}
 }
 
+func TestParsesGenericFunctionAndExplicitTypeArguments(t *testing.T) {
+	tree, err := Parse(`fn identity<T, U>(value: T) -> T { return value; } let result = identity::<i64, string>(1);`, "generics.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := tree.Decls[0].(*ast.Function)
+	if len(fn.TypeParams) != 2 || fn.TypeParams[0] != "T" || fn.TypeParams[1] != "U" {
+		t.Fatalf("type parameters = %#v, want [T U]", fn.TypeParams)
+	}
+	let := tree.Decls[1].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	call, ok := let.Value.(*ast.CallExpr)
+	if !ok || len(call.TypeArgs) != 2 || call.TypeArgs[0].Name != "i64" || call.TypeArgs[1].Name != "string" {
+		t.Fatalf("generic call AST = %#v", let.Value)
+	}
+}
+
+func TestRejectsEmptyGenericParameterAndArgumentLists(t *testing.T) {
+	for _, source := range []string{
+		"fn identity<>(value: i64) -> i64 { return value; }",
+		"fn identity<T>(value: T) -> T { return value; } let result = identity::<>(1);",
+	} {
+		if _, err := Parse(source, "generics.ast"); err == nil {
+			t.Errorf("expected malformed generic syntax to be rejected: %q", source)
+		}
+	}
+}
+
 func TestParsesStructDeclarationAndFieldSelection(t *testing.T) {
 	program, err := Parse(`struct Point { x: i64, y: i64, }
 let point = Point(3, 4);
