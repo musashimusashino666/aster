@@ -76,7 +76,6 @@ func TestLexSkipsUnicodeWhitespace(t *testing.T) {
 	}
 }
 
-
 func TestTokenEndPositionsAreExclusive(t *testing.T) {
 	source := "let value = 12;\nprint(\"a\\nλ\");"
 	got, err := New(source).Lex()
