@@ -850,7 +850,6 @@ print(original[2:2]);`
 	}
 }
 
-
 func runTypedOnBothBackends(t *testing.T, source string) (string, error, string, error) {
 	t.Helper()
 	tree, err := parser.Parse(source, "numeric-cast-parity.ast")
