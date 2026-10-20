@@ -665,3 +665,36 @@ func TestGenericEnumDirectRecursiveLayoutIsRejected(t *testing.T) {
 		t.Fatalf("expected recursive enum layout diagnostic TYP077, got %v", err)
 	}
 }
+
+func TestGenericEnumInfersPayloadsOutOfOrderAndThroughGenericCalls(t *testing.T) {
+	source := `enum Option<T> { None, Some(T), }
+enum Pair<T> { Item(Option<T>, T), }
+fn identity<T>(value: T) -> T { return value; }
+let nested = Pair::Item(Option::None, 7);
+let throughCall = Option::Some(identity(42));
+print(match nested { Pair::Item(empty, value) => value, });
+print(match throughCall { Option::Some(value) => value, Option::None => 0, });`
+	if err := checkSource(t, source); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGenericEnumReportsConstructorBoundaryDiagnostics(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source string
+		code   string
+	}{
+		{name: "unknown generic variant", source: `enum Option<T> { None, Some(T) } let value = Option::Missing(1);`, code: "TYP066"},
+		{name: "wrong generic payload arity", source: `enum Option<T> { None, Some(T) } let value = Option::Some();`, code: "TYP067"},
+		{name: "conflicting payload inference", source: `enum Pair<T> { Both(T, T) } let value = Pair::Both(1, "wrong");`, code: "TYP088"},
+		{name: "explicit payload mismatch", source: `enum Option<T> { None, Some(T) } let value: Option<i64> = Option::<i64>::Some("wrong");`, code: "TYP068"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkSource(t, tc.source)
+			if err == nil || !strings.Contains(err.Error(), tc.code) {
+				t.Fatalf("expected %s, got %v", tc.code, err)
+			}
+		})
+	}
+}
