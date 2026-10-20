@@ -29,7 +29,10 @@ fi
   fi
   printf 'go_version=%s\n' "$(go version)"
   printf 'go_environment:\n'
-  go env GOOS GOARCH GOAMD64 CGO_ENABLED GOTOOLCHAIN
+  for variable in GOOS GOARCH GOAMD64 CGO_ENABLED GOTOOLCHAIN GOFLAGS; do
+    printf '%s=%s\n' "$variable" "$(go env "$variable")"
+  done
+  printf 'GOMAXPROCS=%s\n' "${GOMAXPROCS:-default}"
   printf 'uname=%s\n' "$(uname -a)"
 
   if command -v lscpu >/dev/null 2>&1; then
