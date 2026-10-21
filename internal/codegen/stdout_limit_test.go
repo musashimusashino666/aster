@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/limits"
+	"github.com/musashimusashino666/aster/internal/limits"
 )
 
 func TestNativeRuntimeEnforcesCumulativeStdoutLimit(t *testing.T) {
