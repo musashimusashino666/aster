@@ -815,7 +815,8 @@ func (v *VM) faultCode(i bytecode.Instruction, code, format string, args ...any)
 // faultFromError preserves a structured runtime failure's stable code and uses
 // RUN000 only for helper failures without an explicit runtime classification.
 func (v *VM) faultFromError(i bytecode.Instruction, err error) error {
-	if failure, ok := err.(*diagnostic.RuntimeFailure); ok {
+	var failure *diagnostic.RuntimeFailure
+	if errors.As(err, &failure) && failure != nil {
 		return v.faultCode(i, failure.Code, "%s", failure.Message)
 	}
 	return v.faultCode(i, diagnostic.RuntimeGeneric, "%v", err)
