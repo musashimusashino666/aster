@@ -47,6 +47,9 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Report cgroup integration capability and skips
+        run: go test -count=1 -v ./internal/resource
+
       - name: Build all packages
         run: go build ./...
 
