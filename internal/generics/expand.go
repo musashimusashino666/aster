@@ -1120,7 +1120,7 @@ func collectSourceSpans(program *ast.Program) map[sourcePositionKey]sourceSpan {
 			if !value.IsNil() {
 				walk(value.Elem())
 			}
-		case reflect.Pointer:
+		case reflect.Ptr:
 			if value.IsNil() {
 				return
 			}
