@@ -32,6 +32,7 @@ type sourceSpan struct {
 }
 
 type expander struct {
+	program            *ast.Program
 	sourceSpans        map[sourcePositionKey]sourceSpan
 	templates          map[string]*ast.Function
 	functions          map[string]*ast.Function
@@ -75,7 +76,7 @@ func Expand(program *ast.Program) (*ast.Program, error) {
 		return nil, fmt.Errorf("generics: nil program")
 	}
 	e := &expander{
-		sourceSpans:        collectSourceSpans(program),
+		program:            program,
 		templates:          map[string]*ast.Function{},
 		functions:          map[string]*ast.Function{},
 		structTemplates:    map[string]*ast.StructDecl{},
@@ -1192,8 +1193,11 @@ func recordSourceSpan(spans map[sourcePositionKey]sourceSpan, node ast.Node) {
 
 func (e *expander) typeError(pos token.Position, code, format string, args ...any) error {
 	d := diagnostic.New(code, "type", pos, fmt.Sprintf(format, args...))
-	if e == nil || e.sourceSpans == nil {
+	if e == nil || e.program == nil {
 		return d
+	}
+	if e.sourceSpans == nil {
+		e.sourceSpans = collectSourceSpans(e.program)
 	}
 	span, ok := e.sourceSpans[sourcePositionKey{offset: pos.Offset, line: pos.Line, column: pos.Column}]
 	if !ok || !validSourceSpan(pos, span.rangeStart, span.end) {
