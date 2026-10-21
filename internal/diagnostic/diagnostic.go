@@ -27,6 +27,27 @@ type Diagnostic struct {
 	Cause        error
 }
 
+ // RuntimeFailure carries a stable runtime diagnostic code alongside its
+ // human-readable message. Backends can propagate this value without
+ // inferring the code from message text.
+type RuntimeFailure struct {
+	Code    string
+	Message string
+}
+
+// NewRuntimeFailure constructs a typed runtime failure with a stable code.
+func NewRuntimeFailure(code, message string) *RuntimeFailure {
+	return &RuntimeFailure{Code: code, Message: message}
+}
+
+// Error returns the human-readable message without adding source location or code.
+func (failure *RuntimeFailure) Error() string {
+	if failure == nil {
+		return ""
+	}
+	return failure.Message
+}
+
 // New constructs a diagnostic with a stable code, phase, position, and message.
 func New(code, phase string, position token.Position, message string) *Diagnostic {
 	return &Diagnostic{Code: code, Phase: phase, Position: position, Message: message}
@@ -187,54 +208,6 @@ func WrapToolchain(err error) error {
 		Phase:   "toolchain",
 		Message: err.Error(),
 		Cause:   err,
-	}
-}
-
-// RuntimeCode maps runtime failure classes to stable public identifiers.
-// The messages are shared by the VM and generated native runtime; changes to
-// message wording must update this classifier and the generated counterpart.
-func RuntimeCode(message string) string {
-	switch {
-	case strings.Contains(message, "assertion failed"):
-		return RuntimeAssertionFailed
-	case strings.Contains(message, "division by zero"):
-		return RuntimeDivisionByZero
-	case strings.Contains(message, "remainder by zero"):
-		return RuntimeRemainderByZero
-	case strings.Contains(message, "overflow"):
-		return RuntimeArithmeticOverflow
-	case strings.Contains(message, "non-finite floating-point result"):
-		return RuntimeNonFiniteFloat
-	case strings.Contains(message, "array index") && strings.Contains(message, "out of bounds"):
-		return RuntimeArrayIndexBounds
-	case strings.Contains(message, "slice bounds"):
-		return RuntimeSliceBounds
-	case strings.Contains(message, "out of range for i64 conversion"):
-		return RuntimeNumericConversionRange
-	case strings.Contains(message, "string length limit exceeded"):
-		return RuntimeStringLimit
-	case strings.Contains(message, "printed value exceeds"), strings.Contains(message, "printed array nesting"):
-		return RuntimeRenderedOutputLimit
-	case strings.Contains(message, "stdout byte limit exceeded"):
-		return RuntimeStdoutLimit
-	case strings.Contains(message, "call depth limit exceeded"):
-		return RuntimeCallDepthLimit
-	case strings.Contains(message, "instruction budget exceeded"):
-		return RuntimeInstructionBudget
-	case strings.Contains(message, "process memory limit exceeded"):
-		return RuntimeProcessMemoryLimit
-	case strings.Contains(message, "cumulative CPU-time budget exceeded"):
-		return RuntimeCPUTimeLimit
-	case strings.Contains(message, "operand stack limit exceeded"):
-		return RuntimeOperandStackLimit
-	case strings.Contains(message, "active local slot limit exceeded"):
-		return RuntimeLocalSlotLimit
-	case strings.HasPrefix(message, "write output:"):
-		return RuntimeOutputWrite
-	case strings.Contains(message, "invalid array element count"), strings.Contains(message, "array length limit exceeded"):
-		return RuntimeArrayLimit
-	default:
-		return RuntimeGeneric
 	}
 }
 
