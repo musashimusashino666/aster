@@ -82,12 +82,14 @@ func (d *Diagnostic) hasValidSourceSpan() bool {
 	if d == nil || !d.HasEndPosition {
 		return false
 	}
-	start, end := d.sourceRangeStart(), d.EndPosition
-	if start.Offset < 0 || end.Offset < start.Offset ||
-		start.Line <= 0 || start.Column <= 0 || end.Line <= 0 || end.Column <= 0 {
+	start, anchor, end := d.sourceRangeStart(), d.Position, d.EndPosition
+	if start.Offset < 0 || anchor.Offset < start.Offset || end.Offset < anchor.Offset ||
+		start.Line <= 0 || start.Column <= 0 || anchor.Line <= 0 || anchor.Column <= 0 ||
+		end.Line <= 0 || end.Column <= 0 {
 		return false
 	}
-	if end.Line < start.Line || (end.Line == start.Line && end.Column < start.Column) {
+	if anchor.Line < start.Line || (anchor.Line == start.Line && anchor.Column < start.Column) ||
+		end.Line < anchor.Line || (end.Line == anchor.Line && end.Column < anchor.Column) {
 		return false
 	}
 	return true
