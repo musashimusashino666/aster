@@ -308,10 +308,10 @@ const (
 )
 
 type Instruction struct {
-	Op        Op  `json:"op"`
-	A         int `json:"a,omitempty"`
-	B         int `json:"b,omitempty"`
-	C         int `json:"c,omitempty"`
+	Op               Op  `json:"op"`
+	A                int `json:"a,omitempty"`
+	B                int `json:"b,omitempty"`
+	C                int `json:"c,omitempty"`
 	Line             int `json:"line,omitempty"`
 	Column           int `json:"column,omitempty"`
 	Offset           int `json:"offset,omitempty"`
