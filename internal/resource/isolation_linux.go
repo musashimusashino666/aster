@@ -316,7 +316,6 @@ func (group *workloadCgroup) wait(ctx context.Context, waitCh <-chan error, cpuB
 	}
 }
 
-
 // handleWorkloadExit resolves the race where process completion and context
 // cancellation become ready together. Cancellation takes precedence over a
 // successful exit, and the whole cgroup is asked to stop before returning.
