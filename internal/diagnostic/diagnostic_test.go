@@ -3,6 +3,7 @@ package diagnostic
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
 	goparser "go/parser"
 	gotoken "go/token"
@@ -265,6 +266,37 @@ func TestNewAtSourceSpanRetainsSourcePathAndEnd(t *testing.T) {
 	const want = "example.ast:2:4: runtime error: runtime failed [RUN000]"
 	if got.Error() != want {
 		t.Fatalf("Error() = %q, want %q", got.Error(), want)
+	}
+}
+
+func TestRenderIncludesExclusiveRangeWithoutChangingError(t *testing.T) {
+	start := token.Position{Offset: 10, Line: 2, Column: 4}
+	end := token.Position{Offset: 13, Line: 2, Column: 7}
+	err := NewAtSourceSpan(RuntimeGeneric, "runtime", "example.ast", start, end, "runtime failed")
+
+	const legacy = "example.ast:2:4: runtime error: runtime failed [RUN000]"
+	if got := err.Error(); got != legacy {
+		t.Fatalf("Error() = %q, want legacy form %q", got, legacy)
+	}
+	const want = "example.ast:2:4-2:7: runtime error: runtime failed [RUN000]"
+	if got := Render(err); got != want {
+		t.Fatalf("Render() = %q, want %q", got, want)
+	}
+}
+
+func TestRenderPreservesWrappedPrefixesAndRejectsInvalidRanges(t *testing.T) {
+	start := token.Position{Offset: 10, Line: 2, Column: 4}
+	end := token.Position{Offset: 13, Line: 2, Column: 7}
+	wrapped := fmt.Errorf("example.ast: %w", NewSpan(ParserGeneric, "parser", start, end, "unexpected token"))
+	const want = "example.ast: 2:4-2:7: parser error: unexpected token [PAR000]"
+	if got := Render(wrapped); got != want {
+		t.Fatalf("Render(wrapped) = %q, want %q", got, want)
+	}
+
+	invalid := NewSpan(ParserGeneric, "parser", start,
+		token.Position{Offset: 9, Line: 2, Column: 7}, "unexpected token")
+	if got, legacy := Render(invalid), invalid.Error(); got != legacy {
+		t.Fatalf("Render(invalid range) = %q, want start-only fallback %q", got, legacy)
 	}
 }
 

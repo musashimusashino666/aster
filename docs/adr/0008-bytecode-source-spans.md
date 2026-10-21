@@ -32,18 +32,19 @@ The bytecode reader rejects unknown JSON fields and unsupported format versions.
 - The VM copies the active instruction's span into structured runtime `Diagnostic` fields when complete metadata is present.
 - The Native runtime registers typed-IR source ranges by their existing start line/column anchors. When launched by `aster run --engine native`, it can emit a private structured stderr record that the toolchain wrapper consumes and converts into the same `Diagnostic` shape.
 - If a programmatic or synthetic instruction has no span, the VM preserves the legacy start-only diagnostic path. Native instructions/helpers with no registered span likewise retain start-only diagnostics.
-- Human-readable diagnostic text remains start-only for compatibility. Standalone Native executables do not use the CLI's private protocol by default; displaying end ranges remains deferred.
+- The programmatic `Diagnostic.Error()` text remains start-only for compatibility. The CLI's explicit user-facing renderer displays a valid exclusive range when structured span metadata is available. Standalone Native executables do not use the CLI's private protocol by default and remain start-only.
 
 ## Consequences
 
 - Bytecode v8 makes source spans available after serialization and VM loading, while existing start-location text and diagnostic codes remain stable.
 - The strict bytecode version check prevents older or partially populated artifacts from being misinterpreted as v8.
 - Source locations still identify the operation's existing diagnostic anchor, not necessarily its complete syntactic left edge. Improving start-anchor semantics is separate from adding end positions.
-- CLI-run Native runtime diagnostics now receive structured source spans through the toolchain's private stderr protocol. Standalone Native executables still use start-only diagnostic text, and the user-facing range renderer and consistent syntactic start-anchor semantics remain outstanding in the roadmap.
+- CLI-run Native runtime diagnostics receive structured source spans through the toolchain's private stderr protocol, and the CLI renders their exclusive ranges without changing `Diagnostic.Error()`. Standalone Native executables still use start-only diagnostic text; consistent syntactic start-anchor semantics remain outstanding in the roadmap.
 
 ## Validation
 
 - Test valid and malformed instruction spans, including partial metadata and reversed ranges.
 - Round-trip span metadata through JSON bytecode serialization and the strict reader.
 - Execute a failing operation through the VM and assert the structured diagnostic retains its expected start and exclusive end positions, diagnostic code, and legacy text.
+- Test user-facing range rendering for valid spans, wrapped diagnostics, and start-only fallback; compare CLI-rendered VM and Native diagnostics.
 - Run the full CI matrix on Go stable and Go 1.23.x, including race detection, static analysis, examples, and the 32-bit check.
