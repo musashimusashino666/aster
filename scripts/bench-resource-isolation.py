@@ -27,10 +27,11 @@ POLL_SECONDS = 0.002
 CPU_POLL_INTERVAL = "10ms"
 CPU_TIME_LIMIT = "50ms"
 DEFAULT_MEMORY_LIMIT = "256MiB"
+DEFAULT_OOM_MEMORY_LIMIT = "64MiB"
 DEFAULT_CPU_RATE = "1.0"
 RUN_FIELDS = [
     "kind", "workload", "profile", "repetition", "timestamp_utc",
-    "exit_code", "outcome", "wall_ms", "sampled_tree_rss_bytes",
+    "exit_code", "outcome", "termination_classification", "cgroup_cleanup_status", "wall_ms", "sampled_tree_rss_bytes",
     "cgroup_memory_peak_bytes", "binary_bytes", "cpu_budget_usec",
     "cpu_observed_usec", "cpu_overshoot_usec", "cpu_poll_interval",
     "stdout_json", "stderr_json",
@@ -66,6 +67,26 @@ WORKLOADS = {
             "print(len(value0) + len(value1));\n"
         ),
         "expected": "33554432",
+    },
+    "memory-oom": {
+        "source": (
+            "fn grow(value: string) -> string {\n"
+            "    let mut text = value;\n"
+            "    let mut count: i64 = 0;\n"
+            "    while count < 24 {\n"
+            "        text = text + text;\n"
+            "        count = count + 1;\n"
+            "    }\n"
+            "    return text;\n"
+            "}\n"
+            "let value0 = grow(\"x\");\n"
+            "let value1 = grow(\"x\");\n"
+            "let value2 = grow(\"x\");\n"
+            "let value3 = grow(\"x\");\n"
+            "let value4 = grow(\"x\");\n"
+            "print(len(value0) + len(value1) + len(value2) + len(value3) + len(value4));\n"
+        ),
+        "expected": "83886080",
     },
     "cpu-time-termination": {
         "source": (
@@ -158,7 +179,7 @@ def command_output(command: list[str]) -> str:
     return (completed.stdout or completed.stderr).strip().replace("\n", "; ")
 
 
-def metadata(root: Path, host_kind: str, repeats: int, build_repeats: int) -> dict[str, str]:
+def metadata(root: Path, host_kind: str, repeats: int, build_repeats: int, oom_repeats: int) -> dict[str, str]:
     cpu = "unavailable"
     cpuinfo = Path("/proc/cpuinfo")
     if cpuinfo.exists():
@@ -182,6 +203,8 @@ def metadata(root: Path, host_kind: str, repeats: int, build_repeats: int) -> di
         "cgroup_controllers": read_text(root / "cgroup.controllers"),
         "cgroup_subtree_control": read_text(root / "cgroup.subtree_control"),
         "memory_limit": os.environ.get("ASTER_BENCH_MEMORY_LIMIT", DEFAULT_MEMORY_LIMIT),
+        "oom_memory_limit": os.environ.get("ASTER_BENCH_OOM_MEMORY_LIMIT", DEFAULT_OOM_MEMORY_LIMIT),
+        "oom_repeats": str(oom_repeats),
         "cpu_rate": os.environ.get("ASTER_BENCH_CPU_RATE", DEFAULT_CPU_RATE),
         "cpu_time_limit": os.environ.get("ASTER_BENCH_CPU_TIME_LIMIT", CPU_TIME_LIMIT),
         "comparison_repeats": str(repeats),
@@ -268,6 +291,7 @@ def run_command(
     repetition: int,
     expected_output: str | None = None,
     expect_cpu_timeout: bool = False,
+    expect_memory_oom: bool = False,
 ) -> dict[str, Any]:
     before = {item.name for item in root.glob("aster-run-*")}
     started = time.monotonic_ns()
@@ -299,6 +323,8 @@ def run_command(
     finally:
         stop.set()
         monitor.join(timeout=2)
+    lingering = sorted({item.name for item in root.glob("aster-run-*")} - before)
+    cleanup_status = "clean" if not lingering else "residual:" + ",".join(lingering)
     wall_ms = (time.monotonic_ns() - started) / 1_000_000
     exit_code = proc.returncode
     outcome = "timeout" if timed_out else ("success" if exit_code == 0 else "nonzero")
@@ -310,6 +336,8 @@ def run_command(
         "timestamp_utc": utc_now(),
         "exit_code": exit_code,
         "outcome": outcome,
+        "termination_classification": "normal",
+        "cgroup_cleanup_status": cleanup_status,
         "wall_ms": f"{wall_ms:.3f}",
         "sampled_tree_rss_bytes": monitor.peak_tree_rss or "",
         "cgroup_memory_peak_bytes": monitor.peak_cgroup_memory if monitor.saw_cgroup_peak else "",
@@ -323,6 +351,8 @@ def run_command(
     }
     records.append(row)
 
+    if cleanup_status != "clean":
+        raise MeasurementError(f"cgroup cleanup failed after {kind}/{workload}/{profile}: {cleanup_status}")
     if timed_out:
         raise MeasurementError(f"{kind}/{workload}/{profile} exceeded 330 seconds")
     if expected_output is not None:
@@ -356,6 +386,17 @@ def run_command(
             raise MeasurementError("post-termination CPU usage is below the configured budget")
         if int(row["cpu_overshoot_usec"]) != int(row["cpu_observed_usec"]) - int(row["cpu_budget_usec"]):
             raise MeasurementError("reported CPU-time overshoot does not match observed minus budget")
+        row["outcome"] = "cpu-time-limit"
+        row["termination_classification"] = "RUN019"
+    if expect_memory_oom:
+        classified = "RUN018" in stderr or "process memory limit exceeded" in stderr
+        if exit_code == 0 or not classified:
+            raise MeasurementError(
+                "memory-limit OOM was not classified as RUN018; "
+                f"exit={exit_code}, stderr={stderr.strip()!r}"
+            )
+        row["outcome"] = "memory-limit-oom"
+        row["termination_classification"] = "RUN018"
     return row
 
 
@@ -491,7 +532,7 @@ def write_reports(
             "## Raw data",
             "",
             f"- Machine-readable raw samples: {tsv_path.name}",
-            "- The TSV includes exit classification, raw stdout/stderr JSON strings, wall-time samples, sampled process-tree RSS, available cgroup memory peaks, and CPU budget/observed/overshoot fields.",
+            "- The TSV includes exit classification, raw stdout/stderr JSON strings, wall-time samples, sampled process-tree RSS, available cgroup memory peaks, CPU budget/observed/overshoot fields, and cgroup cleanup status.",
             "",
         ]
     )
@@ -531,11 +572,15 @@ def main() -> int:
         root, host_kind = preflight()
         repeats = positive_int_env("ASTER_BENCH_REPEATS", 30)
         build_repeats = positive_int_env("ASTER_BENCH_BUILD_REPEATS", 5)
+        oom_repeats = positive_int_env("ASTER_BENCH_OOM_REPEATS", 3)
         memory_limit = os.environ.get("ASTER_BENCH_MEMORY_LIMIT", DEFAULT_MEMORY_LIMIT)
+        oom_memory_limit = os.environ.get("ASTER_BENCH_OOM_MEMORY_LIMIT", DEFAULT_OOM_MEMORY_LIMIT)
         cpu_rate = os.environ.get("ASTER_BENCH_CPU_RATE", DEFAULT_CPU_RATE)
         cpu_time_limit = os.environ.get("ASTER_BENCH_CPU_TIME_LIMIT", CPU_TIME_LIMIT)
-        info = metadata(root, host_kind, repeats, build_repeats)
+        info = metadata(root, host_kind, repeats, build_repeats, oom_repeats)
         info["memory_limit"] = memory_limit
+        info["oom_memory_limit"] = oom_memory_limit
+        info["oom_repeats"] = str(oom_repeats)
         info["cpu_rate"] = cpu_rate
         info["cpu_time_limit"] = cpu_time_limit
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -633,6 +678,24 @@ def main() -> int:
                     repetition=repetition,
                     expect_cpu_timeout=True,
                 )
+
+            oom_source = sources / "memory-oom.ast"
+            for repetition in range(1, oom_repeats + 1):
+                run_command(
+                    [
+                        str(cli), "run", "--engine", "native",
+                        "--resource-profile", "constrained",
+                        "--memory-limit", oom_memory_limit,
+                        str(oom_source),
+                    ],
+                    root,
+                    records,
+                    kind="run",
+                    workload="memory-oom",
+                    profile="constrained",
+                    repetition=repetition,
+                    expect_memory_oom=True,
+                )
     except (MeasurementError, OSError, subprocess.SubprocessError) as exc:
         errors.append(str(exc))
     except Exception as exc:
@@ -651,7 +714,7 @@ def main() -> int:
             print(f"benchmark incomplete: {error}", file=sys.stderr)
         return 1
 
-    expected_run_count = repeats * 7
+    expected_run_count = repeats * 7 + oom_repeats
     actual_run_count = sum(1 for row in records if row["kind"] == "run")
     if actual_run_count != expected_run_count:
         print(
