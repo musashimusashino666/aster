@@ -63,6 +63,7 @@ func TestNativeRuntimeDiagnosticClassifierMatchesVM(t *testing.T) {
 		"stdout byte limit exceeded (maximum 64 bytes)",
 		"call depth limit exceeded (maximum 4)",
 		"instruction budget exceeded (100 steps)",
+		"instruction budget exceeded (maximum 100000000 Native fuel units)",
 		"operand stack limit exceeded",
 		"active local slot limit exceeded",
 		"write output: broken pipe",
