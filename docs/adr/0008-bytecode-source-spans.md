@@ -47,4 +47,4 @@ The bytecode reader rejects unknown JSON fields and unsupported format versions.
 - Round-trip span metadata through JSON bytecode serialization and the strict reader.
 - Execute a failing operation through the VM and assert the structured diagnostic retains its expected start and exclusive end positions, diagnostic code, and legacy text.
 - Test user-facing range rendering for valid spans, wrapped diagnostics, and start-only fallback; verify diagnostic anchors and displayed range starts independently, and compare VM/Native diagnostics.
-- Run the full CI matrix on Go stable and Go 1.23.x, including race detection, static analysis, examples, and the 32-bit check.
+- Run the full CI matrix on Go 1.26.x (the minimum supported line) and stable, including race detection, static analysis, examples, and the 32-bit check.
