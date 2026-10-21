@@ -167,6 +167,46 @@ func TestRunChecksCPUTimeBudgetWhenWorkloadExitsBetweenPolls(t *testing.T) {
 	}
 }
 
+func TestCPUTimeLimitErrorReportsPostTerminationOvershoot(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"cgroup.kill":   "0",
+		"cgroup.events": "populated 0\nfrozen 0\n",
+		"cpu.stat":      "usage_usec 63000\nuser_usec 62000\nsystem_usec 1000\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	group := &workloadCgroup{path: dir}
+	err := group.stopForCPUTimeLimit(50*time.Millisecond, 52_000)
+	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
+		t.Fatalf("stopForCPUTimeLimit() error = %v, want ErrCPUTimeLimitExceeded", err)
+	}
+	var limitErr *cpuTimeLimitError
+	if !errors.As(err, &limitErr) {
+		t.Fatalf("stopForCPUTimeLimit() error = %T, want *cpuTimeLimitError", err)
+	}
+	if limitErr.budget != 50*time.Millisecond ||
+		limitErr.observed != 63*time.Millisecond ||
+		limitErr.overshoot != 13*time.Millisecond ||
+		limitErr.sample != "post-termination" {
+		t.Fatalf("measurement = %+v, want budget=50ms observed=63ms overshoot=13ms sample=post-termination", limitErr)
+	}
+	for _, expected := range []string{
+		"budget_usec=50000",
+		"observed_usec=63000",
+		"overshoot_usec=13000",
+		"sample=post-termination",
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Errorf("error %q does not contain %q", err, expected)
+		}
+	}
+}
+
 func TestWorkloadExitDoesNotMaskExpiredContext(t *testing.T) {
 	dir := t.TempDir()
 	killPath := filepath.Join(dir, "cgroup.kill")
