@@ -83,6 +83,19 @@ func TestRunEnforcesCumulativeCPUTimeWhenDelegatedCgroupIsAvailable(t *testing.T
 	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
 		t.Fatalf("Run() error = %v, want ErrCPUTimeLimitExceeded", err)
 	}
+	var limitErr *cpuTimeLimitError
+	if !errors.As(err, &limitErr) {
+		t.Fatalf("Run() error = %T, want a measured cpuTimeLimitError", err)
+	}
+	if limitErr.observed < limitErr.budget || limitErr.overshoot != limitErr.observed-limitErr.budget {
+		t.Fatalf("invalid CPU-time measurement: budget=%s observed=%s overshoot=%s", limitErr.budget, limitErr.observed, limitErr.overshoot)
+	}
+	if limitErr.sample != "post-termination" {
+		t.Fatalf("CPU-time measurement sample = %q, want post-termination sample", limitErr.sample)
+	}
+	t.Logf("cpu_time_measurement budget_usec=%d observed_usec=%d overshoot_usec=%d sample=%s cpu_poll_interval=%s",
+		limitErr.budget.Microseconds(), limitErr.observed.Microseconds(), limitErr.overshoot.Microseconds(),
+		limitErr.sample, cpuPollInterval)
 	assertNoNewAsterCgroups(t, root, before)
 }
 
@@ -143,6 +156,14 @@ func TestRunChecksCPUTimeBudgetWhenWorkloadExitsBetweenPolls(t *testing.T) {
 	err := group.wait(context.Background(), waitCh, time.Millisecond)
 	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
 		t.Fatalf("wait() error = %v, want ErrCPUTimeLimitExceeded when completed workload used 2ms against a 1ms budget", err)
+	}
+	var limitErr *cpuTimeLimitError
+	if !errors.As(err, &limitErr) {
+		t.Fatalf("wait() error = %T, want a measured cpuTimeLimitError", err)
+	}
+	if limitErr.budget != time.Millisecond || limitErr.observed != 2*time.Millisecond ||
+		limitErr.overshoot != time.Millisecond || limitErr.sample != "workload-exit" {
+		t.Fatalf("CPU-time measurement = %+v, want budget=1ms observed=2ms overshoot=1ms sample=workload-exit", limitErr)
 	}
 }
 
