@@ -145,11 +145,11 @@ func TestExpansionDiagnosticRangesCoverFunctionStructAndEnumPaths(t *testing.T) 
 			marker: "Box::<i64, string>(1)",
 		},
 		{
-			name:   "unknown generic enum variant",
-			source: "enum Option<T> { Some(T) }\nlet result = Option::<i64>::Missing(1);",
-			code:   diagnostic.TypeUnknownEnumVariant,
-			marker: "Option::<i64>::Missing(1)",
-		},
+			name:   "inconsistent generic enum payload inference",
+			source: "enum Pair<T> { Item(T, T) }\nlet result = Pair::Item(1, \"x\");",
+			code:   diagnostic.TypeGenericEnumInference,
+			marker: "\"x\"",
+
 		{
 			name:   "invalid type in generic expansion",
 			source: "fn identity<T>(value: T) -> T { return value; }\nfn broken(value: Missing) { }",
