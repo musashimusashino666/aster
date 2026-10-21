@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/bytecode"
-	"github.com/aster-lang/aster/internal/checker"
-	"github.com/aster-lang/aster/internal/diagnostic"
-	"github.com/aster-lang/aster/internal/parser"
-	"github.com/aster-lang/aster/internal/token"
+	"github.com/musashimusashino666/aster/internal/bytecode"
+	"github.com/musashimusashino666/aster/internal/checker"
+	"github.com/musashimusashino666/aster/internal/diagnostic"
+	"github.com/musashimusashino666/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/token"
 )
 
 func runSource(t *testing.T, src string) (string, error) {
