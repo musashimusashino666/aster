@@ -317,7 +317,6 @@ func TestRenderPreservesWrappedPrefixesAndRejectsInvalidRanges(t *testing.T) {
 	}
 }
 
-
 func TestToolchainCodeUsesSupportedGoMinimum(t *testing.T) {
 	messages := []string{
 		`native backend requires Go 1.26 or newer; executable "go" was not found in PATH`,
