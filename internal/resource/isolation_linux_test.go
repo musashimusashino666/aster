@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestRunFailsClosedWhenCgroupRootIsNotCgroupV2(t *testing.T) {
