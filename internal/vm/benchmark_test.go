@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/bytecode"
-	"github.com/aster-lang/aster/internal/checker"
-	"github.com/aster-lang/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/bytecode"
+	"github.com/musashimusashino666/aster/internal/checker"
+	"github.com/musashimusashino666/aster/internal/parser"
 )
 
 func benchmarkBytecode(b testing.TB, source string) *bytecode.Program {
