@@ -66,6 +66,7 @@ func asterLenString(s string) int64 {
 }
 
 func asterEnterCall(line, column int) {
+	asterConsumeFuel(line, column)
 	if asterCallDepth >= asterMaxCallDepth {
 		asterRuntimeError(line, column, fmt.Sprintf("call depth limit exceeded (maximum %d)", asterMaxCallDepth))
 	}
