@@ -147,11 +147,13 @@ Codes are intended for tests, editor integrations, and bug reports. A code ident
 | `RUN010` | Rendered print value or array nesting limit exceeded |
 | `RUN011` | Cumulative stdout limit exceeded |
 | `RUN012` | Call-depth limit exceeded |
-| `RUN013` | VM instruction budget exceeded |
+| `RUN013` | VM instruction-step budget or Native fuel budget exceeded (accounting units differ) |
 | `RUN014` | VM operand-stack limit exceeded |
 | `RUN015` | Cumulative VM local-slot limit exceeded |
 | `RUN016` | Output writer failed |
 | `RUN017` | Array-size limit exceeded |
+| `RUN018` | OS-confirmed process memory limit exceeded |
+| `RUN019` | Cumulative OS-accounted CPU-time budget exceeded |
 
 ## Bytecode input and verification
 
@@ -177,5 +179,6 @@ Codes are intended for tests, editor integrations, and bug reports. A code ident
 | `TOOL005` | Native Go build failed |
 | `TOOL006` | Built native program failed to execute |
 | `TOOL007` | Toolchain filesystem or output handling failed |
+| `TOOL008` | Requested OS resource isolation unavailable; constrained execution fails closed |
 
 Toolchain errors do not claim an Aster expression location: formatting, compilation, and process-launch failures often originate in generated Go code or the host environment. Their messages retain the Go tool output when available. Bytecode file errors include the supplied bytecode path, while malformed instructions may identify a function/instruction index rather than a source span.
