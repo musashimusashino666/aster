@@ -185,7 +185,7 @@ func TestCPUTimeLimitErrorReportsPostTerminationOvershoot(t *testing.T) {
 	}
 
 	group := &workloadCgroup{path: dir}
-	err := group.stopForCPUTimeLimit(50*time.Millisecond, 52_000)
+	err := group.stopForCPUTimeLimit(context.Background(), 50*time.Millisecond, 52_000)
 	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
 		t.Fatalf("stopForCPUTimeLimit() error = %v, want ErrCPUTimeLimitExceeded", err)
 	}
