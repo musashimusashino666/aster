@@ -185,7 +185,15 @@ func RunNativeConstrainedContext(ctx context.Context, goSource string, limits re
 	}
 
 	gatePath := filepath.Join(dir, "resource-release")
-	cmd := exec.Command(bin)
+	launcherPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate Aster resource launcher: %w", err)
+	}
+	launcherPath, err = filepath.Abs(launcherPath)
+	if err != nil {
+		return fmt.Errorf("resolve Aster resource launcher: %w", err)
+	}
+	cmd := exec.Command(launcherPath, "__resource-launcher", bin)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	var stderr bytes.Buffer
