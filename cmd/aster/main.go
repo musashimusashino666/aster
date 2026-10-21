@@ -31,7 +31,7 @@ var version = strings.TrimSpace(versionFile)
 
 func main() {
 	if err := dispatch(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "aster:", err)
+		fmt.Fprintln(os.Stderr, "aster:", diagnostic.Render(err))
 		os.Exit(1)
 	}
 }
