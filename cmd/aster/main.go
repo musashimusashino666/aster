@@ -184,7 +184,10 @@ func flagsBeforePositionalsAndBooleans(args []string, booleanFlags []string, val
 func commandRun(args []string) error {
 	args = flagsBeforePositionals(args,
 		"--engine", "-engine",
-		"--resource-profile", "--memory-limit", "--cpu-rate", "--cpu-time-limit")
+		"--resource-profile", "-resource-profile",
+		"--memory-limit", "-memory-limit",
+		"--cpu-rate", "-cpu-rate",
+		"--cpu-time-limit", "-cpu-time-limit")
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	engine := fs.String("engine", "vm", "execution engine: vm or native")
