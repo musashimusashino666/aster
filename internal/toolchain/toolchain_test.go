@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -129,6 +130,46 @@ func TestRunNativeContextStopsLongRunningProgram(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "native program timed out") || !strings.Contains(err.Error(), "[TOOL002]") {
 		t.Fatalf("expected coded native program timeout diagnostic, got %v", err)
+	}
+}
+
+func TestRunNativeContextBoundsInheritedStderrPipe(t *testing.T) {
+	requireNativeToolchain(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("the inherited-pipe regression uses Unix process cleanup semantics")
+	}
+
+	const source = `package main
+import (
+	"os"
+	"os/exec"
+	"time"
+)
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "hold-stderr-pipe" {
+		time.Sleep(3 * time.Second)
+		return
+	}
+	child := exec.Command(os.Args[0], "hold-stderr-pipe")
+	child.Stdout = os.Stderr
+	child.Stderr = os.Stderr
+	if err := child.Start(); err != nil {
+		panic(err)
+	}
+}
+`
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	err := RunNativeContext(ctx, source)
+	if err == nil {
+		t.Fatal("RunNativeContext() succeeded while a descendant kept stderr open")
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("test context expired before WaitDelay bounded inherited stderr: %v", ctx.Err())
+	}
+	if !strings.Contains(err.Error(), "WaitDelay expired before I/O complete") {
+		t.Fatalf("expected WaitDelay pipe-timeout error, got %v", err)
 	}
 }
 
