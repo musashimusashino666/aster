@@ -4,9 +4,9 @@ package formatter
 import (
 	"strings"
 
-	"github.com/aster-lang/aster/internal/lexer"
-	"github.com/aster-lang/aster/internal/parser"
-	"github.com/aster-lang/aster/internal/token"
+	"github.com/musashimusashino666/aster/internal/lexer"
+	"github.com/musashimusashino666/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/token"
 )
 
 // Format validates source syntax and returns a canonical whitespace layout.
