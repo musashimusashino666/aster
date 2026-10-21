@@ -37,9 +37,21 @@ func NewSpan(code, phase string, start, end token.Position, message string) *Dia
 	}
 }
 
-func (d *Diagnostic) Error() string {
+func (d *Diagnostic) Error() string { return d.formatError(false) }
+
+// formatError preserves the stable Error() representation unless the caller
+// explicitly requests a valid source range for user-facing output.
+func (d *Diagnostic) formatError(includeEnd bool) string {
 	prefix := fmt.Sprintf("%s error: %s", d.Phase, d.Message)
-	if d.Source != "" && d.Position.Line > 0 && d.Position.Column > 0 {
+	if includeEnd && d.hasValidSourceSpan() {
+		if d.Source != "" {
+			prefix = fmt.Sprintf("%s:%d:%d-%d:%d: %s", d.Source,
+				d.Position.Line, d.Position.Column, d.EndPosition.Line, d.EndPosition.Column, prefix)
+		} else {
+			prefix = fmt.Sprintf("%d:%d-%d:%d: %s",
+				d.Position.Line, d.Position.Column, d.EndPosition.Line, d.EndPosition.Column, prefix)
+		}
+	} else if d.Source != "" && d.Position.Line > 0 && d.Position.Column > 0 {
 		prefix = fmt.Sprintf("%s:%d:%d: %s", d.Source, d.Position.Line, d.Position.Column, prefix)
 	} else if d.Position.Line > 0 && d.Position.Column > 0 {
 		prefix = fmt.Sprintf("%d:%d: %s", d.Position.Line, d.Position.Column, prefix)
@@ -50,6 +62,43 @@ func (d *Diagnostic) Error() string {
 		return prefix
 	}
 	return fmt.Sprintf("%s [%s]", prefix, d.Code)
+}
+
+func (d *Diagnostic) hasValidSourceSpan() bool {
+	if d == nil || !d.HasEndPosition {
+		return false
+	}
+	start, end := d.Position, d.EndPosition
+	if start.Offset < 0 || end.Offset < start.Offset ||
+		start.Line <= 0 || start.Column <= 0 || end.Line <= 0 || end.Column <= 0 {
+		return false
+	}
+	if end.Line < start.Line || (end.Line == start.Line && end.Column < start.Column) {
+		return false
+	}
+	return true
+}
+
+// Render formats an error for command-line display. When an error wraps a
+// Diagnostic with a valid exclusive end position, Render replaces that
+// diagnostic's legacy start-only text with a source-range location. Error()
+// itself remains start-only for API and compatibility-sensitive callers.
+func Render(err error) string {
+	if err == nil {
+		return ""
+	}
+	var d *Diagnostic
+	if !errors.As(err, &d) || !d.hasValidSourceSpan() {
+		return err.Error()
+	}
+	legacy := d.Error()
+	rendered := d.formatError(true)
+	text := err.Error()
+	index := strings.LastIndex(text, legacy)
+	if index < 0 {
+		return text
+	}
+	return text[:index] + rendered + text[index+len(legacy):]
 }
 
 // Unwrap preserves the original error for errors.Is/errors.As when a subsystem
