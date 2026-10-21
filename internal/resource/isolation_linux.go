@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	cgroup2SuperMagic = 0x63677270
+	cgroup2SuperMagic      = 0x63677270
 	defaultCPUCgroupPeriod = 100000
-	cpuPollInterval = 10 * time.Millisecond
-	cgroupDrainTimeout = 2 * time.Second
-	gateEnvironment = "ASTER_RESOURCE_GATE"
+	cpuPollInterval        = 10 * time.Millisecond
+	cgroupDrainTimeout     = 2 * time.Second
+	gateEnvironment        = "ASTER_RESOURCE_GATE"
 )
 
 // Run starts a gated internal launcher, attaches it to a dedicated cgroup v2,
@@ -91,8 +91,8 @@ func Run(ctx context.Context, cmd *exec.Cmd, releasePath string, limits Limits) 
 }
 
 type workloadCgroup struct {
-	path string
-	limits Limits
+	path            string
+	limits          Limits
 	initialOOMKills uint64
 }
 
