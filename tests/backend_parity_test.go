@@ -18,8 +18,8 @@ import (
 	"github.com/aster-lang/aster/internal/codegen"
 	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/parser"
-	"github.com/aster-lang/aster/internal/toolchain"
 	"github.com/aster-lang/aster/internal/token"
+	"github.com/aster-lang/aster/internal/toolchain"
 	"github.com/aster-lang/aster/internal/vm"
 )
 
