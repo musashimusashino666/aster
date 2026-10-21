@@ -81,9 +81,9 @@ print(extractedMatrix);`
 // static copy-on-write sharing boundary and allow mutation to leak to the
 // original binding.
 func TestMatchArmReturningArrayLocalPreservesValueSemantics(t *testing.T) {
-\tsource := `enum Pick {
-\tLeft,
-\tRight,
+	source := `enum Pick {
+    Left,
+    Right,
 }
 
 let mut a: Array<i64> = [1, 2];
@@ -96,22 +96,22 @@ b[0] = 9;
 print(a);
 print(b);`
 
-\tvmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
-\tif vmErr != nil {
-\t\tt.Fatalf("VM execution failed: %v\\noutput: %q", vmErr, vmOutput)
-\t}
-\tif nativeErr != nil {
-\t\tt.Fatalf("Native execution failed: %v\\noutput: %q", nativeErr, nativeOutput)
-\t}
+	vmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
+	if vmErr != nil {
+		t.Fatalf("VM execution failed: %v\noutput: %q", vmErr, vmOutput)
+	}
+	if nativeErr != nil {
+		t.Fatalf("Native execution failed: %v\noutput: %q", nativeErr, nativeOutput)
+	}
 
-\tconst want = "[1 2]\\n[9 2]\\n"
-\tif vmOutput != want {
-\t\tt.Errorf("unexpected VM output:\\n got: %q\\nwant: %q", vmOutput, want)
-\t}
-\tif nativeOutput != want {
-\t\tt.Errorf("unexpected Native output:\\n got: %q\\nwant: %q", nativeOutput, want)
-\t}
-\tif nativeOutput != vmOutput {
-\t\tt.Errorf("backend output differs:\\nVM: %q\\nNative: %q", vmOutput, nativeOutput)
-\t}
+	const want = "[1 2]\n[9 2]\n"
+	if vmOutput != want {
+		t.Errorf("unexpected VM output:\n got: %q\nwant: %q", vmOutput, want)
+	}
+	if nativeOutput != want {
+		t.Errorf("unexpected Native output:\n got: %q\nwant: %q", nativeOutput, want)
+	}
+	if nativeOutput != vmOutput {
+		t.Errorf("backend output differs:\nVM: %q\nNative: %q", vmOutput, nativeOutput)
+	}
 }
