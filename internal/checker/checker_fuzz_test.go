@@ -3,7 +3,7 @@ package checker
 import (
 	"testing"
 
-	"github.com/aster-lang/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/parser"
 )
 
 // FuzzAnalyzeNoPanic exercises parsing, static checking, and typed-IR lowering
