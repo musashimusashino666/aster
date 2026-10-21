@@ -346,6 +346,21 @@ func requireDelegatedCgroup(t *testing.T, limits Limits) string {
 	if err := probe.cleanup(); err != nil {
 		t.Fatalf("clean up cgroup capability probe: %v", err)
 	}
+	kernel, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		t.Fatalf("read Linux kernel release: %v", err)
+	}
+	controllers, err := os.ReadFile(filepath.Join(root, "cgroup.controllers"))
+	if err != nil {
+		t.Fatalf("read delegated cgroup controllers: %v", err)
+	}
+	subtreeControl, err := os.ReadFile(filepath.Join(root, "cgroup.subtree_control"))
+	if err != nil {
+		t.Fatalf("read enabled child cgroup controllers: %v", err)
+	}
+	t.Logf("cgroup preflight: kernel=%q root=%q controllers=%q subtree_control=%q cpu_poll_interval=%s limits=%+v",
+		strings.TrimSpace(string(kernel)), root, strings.TrimSpace(string(controllers)),
+		strings.TrimSpace(string(subtreeControl)), cpuPollInterval, limits)
 	return root
 }
 
