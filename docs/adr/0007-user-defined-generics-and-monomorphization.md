@@ -96,7 +96,7 @@ The implementation landed in these small vertical slices, in this order:
 4. Concrete Bytecode serialization/verifier and Native codegen parity.
 5. Generic `Option<T>` and `Result<T, E>` enums.
 
-Each slice needs parser acceptance/rejection tests, negative type-checking tests with stable diagnostic codes, recursive-expansion boundary tests, malformed-bytecode tests, and VM/Native differential fixtures. Fixtures must cover one and multiple type parameters, nested `Array<T>`, recursive generic functions, enum payload bindings, and COW boundaries. Run the full CI matrix on Go stable and Go 1.23.x, including race detection, static analysis, examples, and 32-bit safety checks.
+Each slice needs parser acceptance/rejection tests, negative type-checking tests with stable diagnostic codes, recursive-expansion boundary tests, malformed-bytecode tests, and VM/Native differential fixtures. Fixtures must cover one and multiple type parameters, nested `Array<T>`, recursive generic functions, enum payload bindings, and COW boundaries. Run the full CI matrix on Go 1.26.x (the minimum supported line) and stable, including race detection, static analysis, examples, and 32-bit safety checks.
 
 The language specification and roadmap must describe only the exact implemented subset. These generic capabilities are marked implemented in the roadmap; future extensions must not be marked complete until both backends and all applicable negative tests are complete.
 
