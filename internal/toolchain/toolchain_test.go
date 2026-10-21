@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/resource"
 )
 
@@ -98,6 +99,23 @@ func TestBuildNativeContextHonorsCancellation(t *testing.T) {
 	}
 	if _, statErr := os.Stat(output); !os.IsNotExist(statErr) {
 		t.Fatalf("canceled build created output: stat error = %v", statErr)
+	}
+}
+
+func TestNativeRunFailurePrefersExpiredContextOverCPUTimeLimit(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	err := nativeRunFailure(ctx, resource.ErrCPUTimeLimitExceeded, nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("nativeRunFailure() error = %v, want context.DeadlineExceeded over CPU limit", err)
+	}
+	wrapped := diagnostic.WrapToolchain(err)
+	if !strings.Contains(wrapped.Error(), "[TOOL002]") {
+		t.Fatalf("expected TOOL002 for expired context, got %v", wrapped)
+	}
+	if strings.Contains(wrapped.Error(), "[RUN019]") {
+		t.Fatalf("expired context was misclassified as RUN019: %v", wrapped)
 	}
 }
 
