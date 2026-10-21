@@ -36,7 +36,12 @@ jobs:
         run: make fmt-check
 
       - name: Check benchmark script syntax
-        run: bash -n scripts/bench-array-assignment.sh
+        run: |
+          bash -n scripts/bench-array-assignment.sh
+          bash -n scripts/bench-native-memory.sh
+
+      - name: Smoke-test Native child-process memory benchmark
+        run: ASTER_BENCH_REPEATS=1 bash scripts/bench-native-memory.sh bench/native-memory-smoke.out
 
       - name: Run tests
         run: go test ./...
