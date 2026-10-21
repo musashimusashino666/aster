@@ -93,6 +93,7 @@ func Run(ctx context.Context, cmd *exec.Cmd, releasePath string, limits Limits) 
 type workloadCgroup struct {
 	path            string
 	limits          Limits
+	initialOOM      uint64
 	initialOOMKills uint64
 }
 
@@ -150,9 +151,16 @@ func createCgroup(limits Limits) (*workloadCgroup, error) {
 		if err := writeControl(filepath.Join(path, "memory.swap.max"), "0"); err != nil {
 			return nil, fmt.Errorf("%w: configure memory.swap.max to disable swap for the workload: %v", ErrUnavailable, err)
 		}
+		if err := writeControl(filepath.Join(path, "memory.oom.group"), "1"); err != nil {
+			return nil, fmt.Errorf("%w: configure memory.oom.group: %v", ErrUnavailable, err)
+		}
+		group.initialOOM, err = readOOMCount(path)
+		if err != nil {
+			return nil, fmt.Errorf("%w: read memory.events oom counter: %v", ErrUnavailable, err)
+		}
 		group.initialOOMKills, err = readOOMKillCount(path)
 		if err != nil {
-			return nil, fmt.Errorf("%w: read memory.events: %v", ErrUnavailable, err)
+			return nil, fmt.Errorf("%w: read memory.events oom_kill counter: %v", ErrUnavailable, err)
 		}
 	}
 	if limits.CPUQuota > 0 {
@@ -285,7 +293,10 @@ func (group *workloadCgroup) wait(ctx context.Context, waitCh <-chan error, cpuB
 		select {
 		case err := <-waitCh:
 			if group.limits.MemoryMaxBytes > 0 {
-				if count, readErr := readOOMKillCount(group.path); readErr == nil && count > group.initialOOMKills {
+				oomCount, oomErr := readOOMCount(group.path)
+				killCount, killErr := readOOMKillCount(group.path)
+				if oomErr == nil && killErr == nil &&
+					oomCount > group.initialOOM && killCount > group.initialOOMKills {
 					return ErrMemoryLimitExceeded
 				}
 			}
@@ -389,6 +400,25 @@ func readCPUUsage(path string) (uint64, error) {
 		return 0, err
 	}
 	return 0, fmt.Errorf("cpu.stat has no usage_usec field")
+}
+
+func readOOMCount(path string) (uint64, error) {
+	file, err := os.Open(filepath.Join(path, "memory.events"))
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 2 && fields[0] == "oom" {
+			return strconv.ParseUint(fields[1], 10, 64)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+	return 0, fmt.Errorf("memory.events has no oom field")
 }
 
 func readOOMKillCount(path string) (uint64, error) {
