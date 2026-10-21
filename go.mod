@@ -1,3 +1,3 @@
-module github.com/aster-lang/aster
+module github.com/musashimusashino666/aster
 
 go 1.23
