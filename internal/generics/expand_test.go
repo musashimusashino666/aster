@@ -107,6 +107,94 @@ func TestExpansionDiagnosticRetainsSyntacticSourceRange(t *testing.T) {
 	}
 }
 
+func TestExpansionDiagnosticRangesCoverFunctionStructAndEnumPaths(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		code   string
+		marker string
+	}{
+		{
+			name:   "function inference",
+			source: "fn make<T>() -> T { return 1; }\nlet result = make();",
+			code:   diagnostic.TypeGenericInference,
+			marker: "make()",
+		},
+		{
+			name:   "growing generic struct",
+			source: "struct Nest<T> { next: Nest<Array<T>> }\nfn take(value: Nest<i64>) { }",
+			code:   "TYP086",
+			marker: "Nest<Array<T>>",
+		},
+		{
+			name:   "growing generic enum",
+			source: "enum Nest<T> { End, Next(Nest<Array<T>>), }\nfn consume(value: Nest<i64>) { }",
+			code:   "TYP089",
+			marker: "Nest<Array<T>>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			program, err := parser.Parse(tt.source, "generic-ranges.ast")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = Expand(program)
+			if err == nil {
+				t.Fatal("expected a generic expansion diagnostic")
+			}
+			var got *diagnostic.Diagnostic
+			if !errors.As(err, &got) {
+				t.Fatalf("diagnostic type = %T, want *diagnostic.Diagnostic", err)
+			}
+			if got.Code != tt.code {
+				t.Fatalf("diagnostic code = %q, want %q (error %v)", got.Code, tt.code, err)
+			}
+			if !got.HasRangeStartPosition || !got.HasEndPosition {
+				t.Fatalf("diagnostic did not retain a complete range: start=%+v present=%t end=%+v present=%t",
+					got.RangeStartPosition, got.HasRangeStartPosition, got.EndPosition, got.HasEndPosition)
+			}
+			start, anchor, end := got.RangeStartPosition, got.Position, got.EndPosition
+			if start.Offset < 0 || start.Offset > anchor.Offset || anchor.Offset > end.Offset || end.Offset > len(tt.source) {
+				t.Fatalf("invalid source offsets: range start=%+v anchor=%+v end=%+v source bytes=%d",
+					start, anchor, end, len(tt.source))
+			}
+			fragment := tt.source[start.Offset:end.Offset]
+			if !strings.Contains(fragment, tt.marker) {
+				t.Fatalf("displayed source range %q does not cover marker %q", fragment, tt.marker)
+			}
+			if rendered := diagnostic.Render(err); !strings.Contains(rendered, "-") {
+				t.Fatalf("rendered diagnostic lacks a source range: %q", rendered)
+			}
+			// Range presentation must not change the legacy anchor-based Error text.
+			if got.Error() != err.Error() {
+				t.Fatalf("unwrapped diagnostic Error changed unexpectedly: diagnostic=%q err=%q", got.Error(), err.Error())
+			}
+		})
+	}
+}
+
+func TestExpansionDiagnosticFallsBackForUnmappedSyntheticPosition(t *testing.T) {
+	program := parse(t, "let value = 1;")
+	e := &expander{program: program}
+	pos := token.Position{Offset: 900, Line: 20, Column: 7}
+	err := e.typeError(pos, diagnostic.TypeGenericInference, "synthetic expansion failure")
+	var got *diagnostic.Diagnostic
+	if !errors.As(err, &got) {
+		t.Fatalf("diagnostic type = %T, want *diagnostic.Diagnostic", err)
+	}
+	if got.HasRangeStartPosition || got.HasEndPosition {
+		t.Fatalf("unmapped synthetic position unexpectedly gained a range: %+v", got)
+	}
+	if got.Position != pos {
+		t.Fatalf("legacy position = %+v, want %+v", got.Position, pos)
+	}
+	if rendered := diagnostic.Render(err); rendered != err.Error() {
+		t.Fatalf("rendered fallback = %q, want unchanged legacy text %q", rendered, err.Error())
+	}
+}
+
 func TestExpandRejectsUnresolvedGenericFunctionTypeArguments(t *testing.T) {
 	program := parse(t, `fn make<T>() -> T { return 1; } let x = make();`)
 	_, err := Expand(program)
