@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/bytecode"
-	"github.com/aster-lang/aster/internal/vm"
+	"github.com/musashimusashino666/aster/internal/bytecode"
+	"github.com/musashimusashino666/aster/internal/vm"
 )
 
 func TestNegativeZeroSurvivesBytecodeRoundTripAndExecution(t *testing.T) {

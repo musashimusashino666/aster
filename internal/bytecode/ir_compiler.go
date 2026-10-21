@@ -3,8 +3,8 @@ package bytecode
 import (
 	"fmt"
 
-	"github.com/aster-lang/aster/internal/ir"
-	"github.com/aster-lang/aster/internal/token"
+	"github.com/musashimusashino666/aster/internal/ir"
+	"github.com/musashimusashino666/aster/internal/token"
 )
 
 func compileIR(tree *ir.Program) (*Program, error) {

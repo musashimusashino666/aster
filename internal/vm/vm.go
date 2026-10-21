@@ -8,10 +8,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/aster-lang/aster/internal/bytecode"
-	"github.com/aster-lang/aster/internal/diagnostic"
-	"github.com/aster-lang/aster/internal/limits"
-	"github.com/aster-lang/aster/internal/token"
+	"github.com/musashimusashino666/aster/internal/bytecode"
+	"github.com/musashimusashino666/aster/internal/diagnostic"
+	"github.com/musashimusashino666/aster/internal/limits"
+	"github.com/musashimusashino666/aster/internal/token"
 )
 
 const maxStackDepth = 1 << 20

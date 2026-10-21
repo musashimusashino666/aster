@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/ast"
-	"github.com/aster-lang/aster/internal/checker"
-	"github.com/aster-lang/aster/internal/ir"
-	"github.com/aster-lang/aster/internal/langtypes"
-	"github.com/aster-lang/aster/internal/limits"
-	"github.com/aster-lang/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/ast"
+	"github.com/musashimusashino666/aster/internal/checker"
+	"github.com/musashimusashino666/aster/internal/ir"
+	"github.com/musashimusashino666/aster/internal/langtypes"
+	"github.com/musashimusashino666/aster/internal/limits"
+	"github.com/musashimusashino666/aster/internal/parser"
 )
 
 func TestGenerateTypedUsesCheckerMetadata(t *testing.T) {

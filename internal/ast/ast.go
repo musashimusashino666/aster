@@ -1,7 +1,7 @@
 // Package ast defines Aster's source-level abstract syntax tree.
 package ast
 
-import "github.com/aster-lang/aster/internal/token"
+import "github.com/musashimusashino666/aster/internal/token"
 
 type Program struct {
 	Decls      []Decl

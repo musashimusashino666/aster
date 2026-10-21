@@ -9,9 +9,9 @@ import (
 	"math"
 	"strings"
 
-	"github.com/aster-lang/aster/internal/diagnostic"
-	"github.com/aster-lang/aster/internal/langtypes"
-	"github.com/aster-lang/aster/internal/limits"
+	"github.com/musashimusashino666/aster/internal/diagnostic"
+	"github.com/musashimusashino666/aster/internal/langtypes"
+	"github.com/musashimusashino666/aster/internal/limits"
 )
 
 const FormatVersion = 9

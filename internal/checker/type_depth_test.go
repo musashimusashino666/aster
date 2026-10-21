@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/ast"
-	"github.com/aster-lang/aster/internal/langtypes"
+	"github.com/musashimusashino666/aster/internal/ast"
+	"github.com/musashimusashino666/aster/internal/langtypes"
 )
 
 func nestedArrayTypeRef(depth int) ast.TypeRef {

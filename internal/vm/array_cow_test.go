@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/bytecode"
+	"github.com/musashimusashino666/aster/internal/bytecode"
 )
 
 func TestVMConstantPoolArraysDetachOnWrite(t *testing.T) {

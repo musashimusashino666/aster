@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/checker"
-	"github.com/aster-lang/aster/internal/diagnostic"
-	"github.com/aster-lang/aster/internal/lexer"
-	"github.com/aster-lang/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/checker"
+	"github.com/musashimusashino666/aster/internal/diagnostic"
+	"github.com/musashimusashino666/aster/internal/lexer"
+	"github.com/musashimusashino666/aster/internal/parser"
 )
 
 func TestFrontendDiagnosticsExposeStableCodes(t *testing.T) {

@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/bytecode"
-	"github.com/aster-lang/aster/internal/codegen"
-	"github.com/aster-lang/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/bytecode"
+	"github.com/musashimusashino666/aster/internal/codegen"
+	"github.com/musashimusashino666/aster/internal/parser"
 )
 
 func nativeDiagnosticPayload(text string) string {

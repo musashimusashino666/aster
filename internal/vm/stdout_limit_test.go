@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/bytecode"
+	"github.com/musashimusashino666/aster/internal/bytecode"
 )
 
 // stdoutCountWriter counts bytes without retaining the output.
