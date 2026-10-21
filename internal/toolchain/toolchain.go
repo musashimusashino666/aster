@@ -2,7 +2,9 @@
 package toolchain
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aster-lang/aster/internal/diagnostic"
+	"github.com/aster-lang/aster/internal/token"
 )
 
 const (
@@ -132,11 +135,80 @@ func RunNativeContext(ctx context.Context, goSource string) (resultErr error) {
 	cmd := exec.CommandContext(ctx, bin)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Env = environmentWith("ASTER_RUNTIME_DIAGNOSTIC_PROTOCOL", "1")
 	if err = cmd.Run(); err != nil {
+		if ctx.Err() == nil {
+			if runtimeDiagnostic := parseNativeRuntimeDiagnostic(stderr.Bytes()); runtimeDiagnostic != nil {
+				return runtimeDiagnostic
+			}
+		}
+		if stderr.Len() > 0 {
+			_, _ = os.Stderr.Write(stderr.Bytes())
+		}
 		return commandFailure(ctx, "native program", err, nil)
 	}
+	if stderr.Len() > 0 {
+		_, _ = os.Stderr.Write(stderr.Bytes())
+	}
 	return nil
+}
+
+const nativeRuntimeDiagnosticPrefix = "\x1eASTER-RUNTIME-DIAGNOSTIC:"
+
+type nativeRuntimeDiagnosticRecord struct {
+	Kind      string `json:"kind"`
+	Code      string `json:"code"`
+	Source    string `json:"source"`
+	Message   string `json:"message"`
+	Offset    int    `json:"offset"`
+	Line      int    `json:"line"`
+	Column    int    `json:"column"`
+	EndOffset int    `json:"end_offset"`
+	EndLine   int    `json:"end_line"`
+	EndColumn int    `json:"end_column"`
+	HasSpan   bool   `json:"has_span"`
+}
+
+func parseNativeRuntimeDiagnostic(stderr []byte) error {
+	for _, line := range strings.Split(string(stderr), "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		payload, ok := strings.CutPrefix(line, nativeRuntimeDiagnosticPrefix)
+		if !ok {
+			continue
+		}
+		var record nativeRuntimeDiagnosticRecord
+		if err := json.Unmarshal([]byte(payload), &record); err != nil ||
+			record.Kind != "aster-runtime-diagnostic" || record.Code == "" {
+			return nil
+		}
+		start := token.Position{Offset: record.Offset, Line: record.Line, Column: record.Column}
+		if record.HasSpan {
+			if record.Line <= 0 || record.Column <= 0 || record.EndLine <= 0 ||
+				record.EndColumn <= 0 || record.Offset < 0 || record.EndOffset < record.Offset ||
+				record.EndLine < record.Line ||
+				(record.EndLine == record.Line && record.EndColumn < record.Column) {
+				return nil
+			}
+			end := token.Position{Offset: record.EndOffset, Line: record.EndLine, Column: record.EndColumn}
+			return diagnostic.NewAtSourceSpan(record.Code, "runtime", record.Source, start, end, record.Message)
+		}
+		return diagnostic.NewAtSource(record.Code, "runtime", record.Source, start, record.Message)
+	}
+	return nil
+}
+
+func environmentWith(key, value string) []string {
+	prefix := key + "="
+	base := os.Environ()
+	env := make([]string, 0, len(base)+1)
+	for _, entry := range base {
+		if !strings.HasPrefix(entry, prefix) {
+			env = append(env, entry)
+		}
+	}
+	return append(env, prefix+value)
 }
 
 func commandFailure(ctx context.Context, operation string, err error, output []byte) error {

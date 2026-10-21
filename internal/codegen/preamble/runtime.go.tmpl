@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -20,6 +21,27 @@ const asterMinI64 int64 = -1 << 63
 var asterCallDepth int
 var asterStdoutBytes int64
 var asterSourceName string
+var asterSourceSpans = map[asterSourcePosition]asterSourceSpan{}
+
+type asterSourcePosition struct {
+	line   int
+	column int
+}
+
+type asterSourceSpan struct {
+	offset    int
+	endOffset int
+	endLine   int
+	endColumn int
+}
+
+func asterSourceSpanAt(line, column int) (asterSourceSpan, bool) {
+	if line <= 0 || column <= 0 {
+		return asterSourceSpan{}, false
+	}
+	span, ok := asterSourceSpans[asterSourcePosition{line: line, column: column}]
+	return span, ok
+}
 
 func asterPrint(v any, line, column int) struct{} {
 	var out strings.Builder
@@ -101,10 +123,49 @@ func asterAddString(a, b string, line, column int) string {
 type asterRuntimeFailure struct {
 	code    string
 	message string
+	detail  string
+	source  string
+	line    int
+	column  int
+	span    asterSourceSpan
+	hasSpan bool
 }
 
 func (failure asterRuntimeFailure) Error() string {
 	return failure.message
+}
+
+type asterRuntimeProtocolDiagnostic struct {
+	Kind      string `json:"kind"`
+	Code      string `json:"code"`
+	Source    string `json:"source"`
+	Message   string `json:"message"`
+	Offset    int    `json:"offset"`
+	Line      int    `json:"line"`
+	Column    int    `json:"column"`
+	EndOffset int    `json:"end_offset"`
+	EndLine   int    `json:"end_line"`
+	EndColumn int    `json:"end_column"`
+	HasSpan   bool   `json:"has_span"`
+}
+
+func asterWriteRuntimeDiagnostic(failure asterRuntimeFailure) {
+	if os.Getenv("ASTER_RUNTIME_DIAGNOSTIC_PROTOCOL") != "1" {
+		return
+	}
+	record := asterRuntimeProtocolDiagnostic{
+		Kind: "aster-runtime-diagnostic", Code: failure.code,
+		Source: failure.source, Message: failure.detail,
+		Line: failure.line, Column: failure.column,
+		Offset: failure.span.offset, EndOffset: failure.span.endOffset,
+		EndLine: failure.span.endLine, EndColumn: failure.span.endColumn,
+		HasSpan: failure.hasSpan,
+	}
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "\x1eASTER-RUNTIME-DIAGNOSTIC:"+string(encoded))
 }
 
 // Keep this classification in sync with internal/diagnostic.RuntimeCode.
@@ -151,17 +212,28 @@ func asterRuntimeDiagnosticCode(message string) string {
 
 func asterRuntimeError(line, column int, message string) {
 	code := asterRuntimeDiagnosticCode(message)
+	detail := message
 	message = fmt.Sprintf("%s [%s]", message, code)
+	failure := asterRuntimeFailure{
+		code: code, detail: detail, source: asterSourceName,
+		line: line, column: column,
+	}
+	if span, ok := asterSourceSpanAt(line, column); ok {
+		failure.span = span
+		failure.hasSpan = true
+	}
 	if line > 0 && column > 0 {
 		if asterSourceName != "" {
-			panic(asterRuntimeFailure{code: code, message: fmt.Sprintf("%s:%d:%d: runtime error: %s", asterSourceName, line, column, message)})
+			failure.message = fmt.Sprintf("%s:%d:%d: runtime error: %s", asterSourceName, line, column, message)
+		} else {
+			failure.message = fmt.Sprintf("%d:%d: runtime error: %s", line, column, message)
 		}
-		panic(asterRuntimeFailure{code: code, message: fmt.Sprintf("%d:%d: runtime error: %s", line, column, message)})
+	} else if asterSourceName != "" {
+		failure.message = fmt.Sprintf("%s: runtime error: %s", asterSourceName, message)
+	} else {
+		failure.message = "runtime error: " + message
 	}
-	if asterSourceName != "" {
-		panic(asterRuntimeFailure{code: code, message: fmt.Sprintf("%s: runtime error: %s", asterSourceName, message)})
-	}
-	panic(asterRuntimeFailure{code: code, message: "runtime error: " + message})
+	panic(failure)
 }
 
 func asterAssert(ok bool, line, column int) struct{} {
