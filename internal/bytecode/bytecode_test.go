@@ -983,7 +983,8 @@ func TestRejectsOutOfRangeEnumPayloadInstruction(t *testing.T) {
 func TestInstructionSourceSpanValidation(t *testing.T) {
 	valid := Instruction{
 		Op: OpHalt, Line: 1, Column: 1,
-		Offset: 0, EndOffset: 1, EndLine: 1, EndColumn: 2,
+		Offset: 0, RangeStartOffset: 0, RangeStartLine: 1, RangeStartColumn: 1,
+		EndOffset: 1, EndLine: 1, EndColumn: 2,
 	}
 	makeProgram := func(instruction Instruction) *Program {
 		return &Program{
@@ -1005,7 +1006,8 @@ func TestInstructionSourceSpanValidation(t *testing.T) {
 			name: "end offset before start",
 			instruction: Instruction{
 				Op: OpHalt, Line: 1, Column: 3,
-				Offset: 5, EndOffset: 4, EndLine: 1, EndColumn: 8,
+				Offset: 5, RangeStartOffset: 0, RangeStartLine: 1, RangeStartColumn: 1,
+				EndOffset: 4, EndLine: 1, EndColumn: 8,
 			},
 			want: "end offset precedes start offset",
 		},
