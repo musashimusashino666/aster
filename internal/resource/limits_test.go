@@ -54,6 +54,7 @@ func TestLimitsValidate(t *testing.T) {
 		{"too small quota", Limits{CPUQuota: 0.001}, true},
 		{"too large quota", Limits{CPUQuota: 257}, true},
 		{"negative cpu time", Limits{CPUTimeLimit: -time.Second}, true},
+		{"sub-microsecond cpu time", Limits{CPUTimeLimit: time.Nanosecond}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
