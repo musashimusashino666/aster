@@ -200,24 +200,7 @@ func RunNativeConstrainedContext(ctx context.Context, goSource string, limits re
 	cmd.Env = environmentSliceWith(environmentWith("ASTER_RUNTIME_DIAGNOSTIC_PROTOCOL", "1"), "ASTER_RESOURCE_GATE", gatePath)
 	err = resource.Run(ctx, cmd, gatePath, limits)
 	if err != nil {
-		if errors.Is(err, resource.ErrMemoryLimitExceeded) {
-			return diagnostic.New(diagnostic.RuntimeProcessMemoryLimit, "runtime", token.Position{}, err.Error())
-		}
-		if errors.Is(err, resource.ErrCPUTimeLimitExceeded) {
-			return diagnostic.New(diagnostic.RuntimeCPUTimeLimit, "runtime", token.Position{}, err.Error())
-		}
-		if ctx.Err() == nil {
-			if runtimeDiagnostic := parseNativeRuntimeDiagnostic(stderr.Bytes()); runtimeDiagnostic != nil {
-				return runtimeDiagnostic
-			}
-		}
-		if stderr.Len() > 0 {
-			_, _ = os.Stderr.Write(stderr.Bytes())
-		}
-		if ctx.Err() != nil {
-			return commandFailure(ctx, "native program", err, nil)
-		}
-		return commandFailure(ctx, "native program", err, nil)
+		return nativeRunFailure(ctx, err, stderr.Bytes())
 	}
 	if stderr.Len() > 0 {
 		_, _ = os.Stderr.Write(stderr.Bytes())
@@ -282,6 +265,46 @@ func environmentSliceWith(base []string, key, value string) []string {
 		}
 	}
 	return append(env, prefix+value)
+}
+
+// nativeRunFailure prioritizes an expired external context over resource-limit
+// classifications so RUN019 does not mask a concurrent TOOL002 timeout.
+func nativeRunFailure(ctx context.Context, err error, stderr []byte) error {
+	writeStderr := func() {
+		if len(stderr) > 0 {
+			_, _ = os.Stderr.Write(stderr)
+		}
+	}
+	contextFailure := func() error {
+		writeStderr()
+		return commandFailure(ctx, "native program", err, nil)
+	}
+
+	if ctx.Err() != nil {
+		return contextFailure()
+	}
+	if errors.Is(err, resource.ErrMemoryLimitExceeded) {
+		if ctx.Err() != nil {
+			return contextFailure()
+		}
+		return diagnostic.New(diagnostic.RuntimeProcessMemoryLimit, "runtime", token.Position{}, err.Error())
+	}
+	if errors.Is(err, resource.ErrCPUTimeLimitExceeded) {
+		if ctx.Err() != nil {
+			return contextFailure()
+		}
+		return diagnostic.New(diagnostic.RuntimeCPUTimeLimit, "runtime", token.Position{}, err.Error())
+	}
+	if ctx.Err() == nil {
+		if runtimeDiagnostic := parseNativeRuntimeDiagnostic(stderr); runtimeDiagnostic != nil {
+			return runtimeDiagnostic
+		}
+	}
+	writeStderr()
+	if ctx.Err() != nil {
+		return commandFailure(ctx, "native program", err, nil)
+	}
+	return commandFailure(ctx, "native program", err, nil)
 }
 
 func commandFailure(ctx context.Context, operation string, err error, output []byte) error {
