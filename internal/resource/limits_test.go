@@ -8,8 +8,8 @@ import (
 
 func TestParseMemoryBytes(t *testing.T) {
 	tests := []struct {
-		input string
-		want  int64
+		input   string
+		want    int64
 		wantErr bool
 	}{
 		{"256MiB", 256 << 20, false},
@@ -39,8 +39,8 @@ func TestParseMemoryBytes(t *testing.T) {
 
 func TestLimitsValidate(t *testing.T) {
 	tests := []struct {
-		name string
-		limits Limits
+		name    string
+		limits  Limits
 		wantErr bool
 	}{
 		{"empty", Limits{}, true},
