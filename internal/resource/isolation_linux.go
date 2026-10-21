@@ -85,10 +85,7 @@ func Run(ctx context.Context, cmd *exec.Cmd, releasePath string, limits Limits) 
 	result := cgroup.wait(ctx, waitCh, limits.CPUTimeLimit)
 	cleanupErr := cgroup.cleanup()
 	if cleanupErr != nil {
-		if result != nil {
-			return fmt.Errorf("%v; cgroup cleanup failed: %w", result, cleanupErr)
-		}
-		return fmt.Errorf("%w: cgroup cleanup failed: %v", ErrUnavailable, cleanupErr)
+		return fmt.Errorf("%w: cgroup cleanup failed: %v (workload result: %v)", ErrUnavailable, cleanupErr, result)
 	}
 	return result
 }
@@ -139,8 +136,12 @@ func createCgroup(limits Limits) (*workloadCgroup, error) {
 		}
 	}()
 
-	if _, err := os.Stat(filepath.Join(path, "cgroup.kill")); err != nil {
+	killControl := filepath.Join(path, "cgroup.kill")
+	if _, err := os.Stat(killControl); err != nil {
 		return nil, fmt.Errorf("%w: cgroup.kill is required to terminate the complete process group", ErrUnavailable)
+	}
+	if err := writeControl(killControl, "1"); err != nil {
+		return nil, fmt.Errorf("%w: cgroup.kill is not writable: %v", ErrUnavailable, err)
 	}
 	if limits.MemoryMaxBytes > 0 {
 		if err := writeControl(filepath.Join(path, "memory.max"), strconv.FormatInt(limits.MemoryMaxBytes, 10)); err != nil {
