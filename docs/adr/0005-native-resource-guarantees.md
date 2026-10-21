@@ -7,7 +7,7 @@
 
 ## Context
 
-Aster has two execution paths with different resource controls. The bytecode VM enforces a deterministic instruction budget and bounded VM data structures. The Native backend emits an ordinary Go executable and enforces several per-value and output limits, but it does not charge each language operation against a fuel budget and does not account for all process memory.
+Aster has two execution paths with different resource controls. The bytecode VM enforces a deterministic instruction budget and bounded VM data structures. At the time this ADR was accepted, the Native backend had per-value and output limits but no language-level fuel budget. [ADR 0009](0009-native-fuel-budget.md) subsequently implemented Native fuel; neither backend accounts for all process memory.
 
 The Native toolchain also has two different deadlines:
 
@@ -22,7 +22,7 @@ These distinctions must be documented before adding another limit. A per-string 
 
 ### 1. State the current guarantees by enforcement layer
 
-The following limits are part of the current Aster implementation. They are not a sandbox or a comprehensive process resource guarantee.
+The table below shows current limits. Where this differs from the original 2026-10-20 decision, the subsequent [ADR 0009](0009-native-fuel-budget.md) is authoritative. These limits do not make either backend a sandbox or provide comprehensive process resource isolation.
 
 | Resource | Bytecode VM | Generated Native backend |
 |---|---|---|
@@ -31,18 +31,18 @@ The following limits are part of the current Aster implementation. They are not 
 | Array length | Maximum 262,144 elements, checked by bytecode validation and runtime operations | Maximum 262,144 elements for generated array literals; slices cannot extend beyond their source range |
 | Rendered value per `print` | Maximum 16 MiB | Maximum 16 MiB |
 | Cumulative stdout | Maximum 64 MiB, including each `print` newline | Maximum 64 MiB, including each `print` newline |
-| Instruction/fuel budget | Maximum 100,000,000 VM instruction steps per execution | No Native instruction/fuel budget |
+| Instruction/fuel budget | Maximum 100,000,000 VM instruction steps per execution | Maximum 100,000,000 Native fuel units per execution; see ADR 0009 for accounting semantics |
 | Operand stack | Maximum 1,048,576 VM values | VM stack cap does not apply |
 | Active local slots | Maximum 262,144 slots across live VM call frames | VM local-slot budget does not apply |
 | Bytecode JSON input | Maximum 64 MiB, plus structural and aggregate validation limits | Not applicable to generated Native execution |
 | Whole-process memory | No comprehensive process-wide allocation quota | No comprehensive process-wide memory quota |
 
-The per-value limits constrain individual language values and output. They do not establish a total memory bound. The VM instruction budget bounds VM dispatch work, not all host-side costs such as bytecode validation. The VM stack and active-local-slot limits bound selected VM structures, not every allocation in the process.
+The per-value limits constrain individual language values and output. They do not establish a total memory bound. The VM instruction budget bounds VM dispatch work, while the Native fuel budget counts executed statements, function entries, and loop iterations; neither fully accounts for all host-side costs or every allocation in the process.
 
 ### 2. Specify wrapper deadlines separately from executable guarantees
 
 - `aster build` applies a two-minute deadline to native source generation and host Go-toolchain work; that timeout does not limit the executable it creates.
-- `aster run --engine native` applies a five-minute deadline spanning native source generation, temporary build, and execution. The deadline clock starts before source loading and analysis. Source loading, parsing, and type checking are not cooperatively preemptible, so expiry during those phases is observed immediately after the phase returns. Native source generation is context-aware, and host-toolchain child processes are canceled at the deadline. This deadline is not a deterministic fuel budget.
+- `aster run --engine native` applies a five-minute deadline spanning native source generation, temporary build, and execution. The deadline clock starts before source loading and analysis. Source loading, parsing, and type checking are not cooperatively preemptible, so expiry during those phases is observed immediately after the phase returns. Native source generation is context-aware, and host-toolchain child processes are canceled at the deadline. This wrapper deadline is separate from the deterministic Native fuel budget in ADR 0009.
 - A standalone executable created by `aster build` has no Aster-provided execution timeout or comprehensive memory cap. Any limit supplied by the operating system, container, job runner, or caller is external to this contract.
 
 ### 3. Do not describe either backend as a sandbox
@@ -60,7 +60,7 @@ Do not claim that a single per-value cap, Go runtime memory setting, or VM local
 
 ### 4. Requirements for future resource enforcement
 
-Any future Native instruction budget must define what consumes budget, how loops and function calls are charged, how budget exhaustion is diagnosed, and how VM/Native failure class and exit-status parity is tested.
+Native fuel accounting is defined and implemented by ADR 0009. Future changes to its accounting rules or threshold must keep the unit definition, `RUN013` diagnostic, and regression tests aligned. A process-wide memory boundary remains future work.
 
 A hard whole-process memory ceiling for standalone executables requires a separately specified strategy that accounts for all relevant allocations and clearly names its scope. A language-level allocation counter alone is not a guarantee on resident process memory; a platform-enforced limit or supervised out-of-process execution may be necessary. Do not implement a partial cap and advertise it as a complete memory boundary.
 
@@ -75,7 +75,7 @@ This ADR records the resource contract and the criteria for future work. [ADR 00
 
 ## Consequences
 
-- Current Native per-value and output safeguards remain useful, but Native programs are not guaranteed to terminate within a fixed amount of CPU work or stay under a process-wide memory ceiling.
+- Native fuel bounds the specified statement/function/loop events, but it is not a wall-clock guarantee and does not keep a program under a process-wide memory ceiling.
 - The five-minute `aster run --engine native` deadline is useful for a CLI invocation, but it must not be presented as an execution limit on standalone binaries.
 - VM and Native can retain different internal budgets only when the documentation explicitly identifies the affected execution path. Cross-backend parity tests remain required for language-visible failures.
-- Stronger resource isolation is deferred until an implementation proposal defines measurable guarantees, diagnostics, platform coverage, and adversarial tests.
+- Process-wide resource isolation remains deferred until an implementation proposal defines measurable memory/CPU guarantees, diagnostics, platform coverage, and adversarial tests.
