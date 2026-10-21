@@ -203,6 +203,44 @@ func TestCPUStatReadDoesNotMaskExpiredContext(t *testing.T) {
 	}
 }
 
+func TestContextExpirationDuringCPUTimeLimitStopTakesPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"cgroup.kill":   "0",
+		"cgroup.events": "populated 0\nfrozen 0\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	samples := 0
+	group := &workloadCgroup{
+		path: dir,
+		cpuUsageReader: func(string) (uint64, error) {
+			samples++
+			if samples == 2 {
+				cancel()
+				return 60_000, nil
+			}
+			return 50_000, nil
+		},
+	}
+	err := group.wait(ctx, make(chan error), 50*time.Millisecond)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("wait() error = %v, want context.Canceled when context expires during stop", err)
+	}
+	if errors.Is(err, ErrCPUTimeLimitExceeded) {
+		t.Fatalf("wait() misclassified stop-time cancellation as a CPU limit: %v", err)
+	}
+	if samples != 2 {
+		t.Fatalf("cpu.stat samples = %d, want detection and final samples", samples)
+	}
+}
+
 func TestCPUTimeLimitErrorReportsPostTerminationOvershoot(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
