@@ -78,3 +78,24 @@ This harness is the measurement prerequisite for [Issue #82](https://github.com/
 ## Further workloads
 
 Parsing/type-checking time over a fixed source corpus, native build time and executable size, and process peak resident memory still need dedicated harnesses. AI/GPU, WebAssembly, game-loop latency, mobile and embedded benchmarks are deferred until those backends exist.
+
+
+## Native resource-isolation overhead and CPU-time overshoot
+
+The Linux-only harness for [Issue #93](https://github.com/musashimusashino666/aster/issues/93) compares the same Native Aster workloads under the ordinary CLI path and the opt-in constrained profile. It requires Go, Python 3, Git, Linux, and a genuinely delegated writable cgroup v2 hierarchy with both the cpu and memory controllers available and enabled for children. The script does not modify the host cgroup hierarchy or enable controllers automatically.
+
+Set the delegated root and explicitly classify the host before running:
+
+```bash
+ASTER_CGROUP_ROOT=/absolute/path/to/delegated/root \
+ASTER_BENCH_HOST_KIND=bare-metal \
+python3 scripts/bench-resource-isolation.py
+```
+
+Use `bare-metal` only on a directly booted non-WSL bare-metal Linux host. Accepted labels also include `virtual-machine`, `wsl2`, `container`, and `unknown`; each result records that label so WSL2 or VM evidence cannot be mistaken for bare-metal evidence. The default is 30 repeated comparisons for each workload/profile and 30 CPU-time termination samples, plus five independent build-time samples per workload. Output is a timestamped Markdown report and a companion TSV of raw samples under `bench/results/`. An optional positional argument selects the Markdown report path; the TSV uses the same basename.
+
+Workloads cover a launch-heavy no-op, an integer CPU loop, two retained 16 MiB strings below the default 256 MiB limit, and a CPU-bound infinite loop terminated by the default 50 ms cumulative CPU-time budget. Baseline and constrained executions use identical source and alternating measurement order. The report records end-to-end CLI wall time, independently measured Native build time and executable size, sampled process-tree RSS, cgroup `memory.peak` when observed, exit classification, and post-termination CPU budget/usage/overshoot. Override defaults with `ASTER_BENCH_REPEATS`, `ASTER_BENCH_BUILD_REPEATS`, `ASTER_BENCH_MEMORY_LIMIT`, `ASTER_BENCH_CPU_RATE`, and `ASTER_BENCH_CPU_TIME_LIMIT`.
+
+The end-to-end CLI time includes source analysis, Native code generation, the Go build, and execution. The independent build samples are not subtracted from that time: the current CLI does not expose a runtime-only constrained invocation or supervisor setup/cleanup duration, so those quantities are marked unavailable instead of inferred from the full latency delta. Process-tree RSS is sampled from `/proc`, can miss short-lived peaks, and can double-count shared pages; it is not the same accounting boundary as cgroup `memory.peak`.
+
+Run on an otherwise idle machine and preserve both output files. Report median, nearest-rank p95, and maximum observed values, alongside the raw rows and exact environment metadata. The largest observed CPU-time overshoot is only the maximum of this finite sample set; it is not a kernel-independent or workload-independent upper bound. A successful WSL2 run does not satisfy the bare-metal requirement in [Issue #92](https://github.com/musashimusashino666/aster/issues/92). This harness does not establish a sandbox or a fixed performance target.
