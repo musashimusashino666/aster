@@ -247,7 +247,9 @@ func generateTypedWithContextAndLimit(ctx context.Context, typed *checker.TypedP
 	return g.out.String(), nil
 }
 func (g *generator) writePreamble() {
-	g.out.WriteString(nativePreamble)
+	const fuelLimitMarker = "const asterMaxFuelUnits = 100000000"
+	fuelLimit := "const asterMaxFuelUnits = " + strconv.Itoa(limits.MaxNativeFuelUnits)
+	g.out.WriteString(strings.Replace(nativePreamble, fuelLimitMarker, fuelLimit, 1))
 }
 
 func goType(t string) string {

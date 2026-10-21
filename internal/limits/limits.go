@@ -53,5 +53,9 @@ const MaxGenericMonomorphizedDeclarations = 1 << 13
 // MaxNativeSourceBytes bounds generated Native Go source by UTF-8 byte length.
 const MaxNativeSourceBytes = 64 << 20
 
+// MaxNativeFuelUnits bounds generated Native execution by charged statements,
+// function entries, and loop iterations. It is not identical to VM instruction steps.
+const MaxNativeFuelUnits = 100_000_000
+
 // MaxGenericExpansionDepth bounds chains of expanding generic instantiations.
 const MaxGenericExpansionDepth = 256
