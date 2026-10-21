@@ -36,7 +36,7 @@ Asterは、静的型検査を持つ独自言語と、複数の実行方式を統
 
 ## 必要な環境
 
-- Go 1.23以降。ネイティブバックエンドでは `go` と `gofmt` が `PATH` 上に必要です（`gofmt` は通常Goに同梱されています）。
+- Go 1.26以降。ネイティブバックエンドでは `go` と `gofmt` が `PATH` 上に必要です（`gofmt` は通常Goに同梱されています）。
 - 現在の実装はサードパーティのGoモジュールを必要としません。
 
 ## CLIのインストール
@@ -197,7 +197,7 @@ make examples
 go test -race ./...
 ```
 
-GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）でも、Go 1.23と最新安定版Goについて、書式チェック、テスト、race detector、静的解析、ビルド、サンプル実行を検証します。
+GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）でも、最低対応ラインのGo 1.26.xと最新安定版Goについて、書式チェック、テスト、race detector、静的解析、ビルド、サンプル実行を検証します。
 
 ## 詳細ドキュメント
 

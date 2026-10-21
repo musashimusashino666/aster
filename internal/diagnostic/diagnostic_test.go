@@ -317,6 +317,18 @@ func TestRenderPreservesWrappedPrefixesAndRejectsInvalidRanges(t *testing.T) {
 	}
 }
 
+func TestToolchainCodeUsesSupportedGoMinimum(t *testing.T) {
+	messages := []string{
+		`native backend requires Go 1.26 or newer; executable "go" was not found in PATH`,
+		"native backend requires gofmt (normally installed with Go 1.26 or newer)",
+	}
+	for _, message := range messages {
+		if got := ToolchainCode(message); got != ToolchainUnavailable {
+			t.Errorf("ToolchainCode(%q) = %q, want %q", message, got, ToolchainUnavailable)
+		}
+	}
+}
+
 func TestResourceIsolationDiagnosticCodes(t *testing.T) {
 	if got := RuntimeCode("process memory limit exceeded"); got != RuntimeProcessMemoryLimit {
 		t.Fatalf("RuntimeCode(memory limit) = %q, want %q", got, RuntimeProcessMemoryLimit)
