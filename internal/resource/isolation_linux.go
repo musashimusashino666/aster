@@ -96,6 +96,10 @@ type workloadCgroup struct {
 	path                 string
 	limits               Limits
 	initialOOMGroupKills uint64
+
+	// cpuUsageReader permits deterministic testing of cancellation during a cpu.stat read.
+	// In production, nil uses the kernel-backed readCPUUsage function.
+	cpuUsageReader func(string) (uint64, error)
 }
 
 type cpuTimeLimitError struct {
@@ -333,13 +337,19 @@ func (group *workloadCgroup) wait(ctx context.Context, waitCh <-chan error, cpuB
 				_ = group.kill()
 				return err
 			}
-			usage, err := readCPUUsage(group.path)
+			usage, err := group.currentCPUUsage()
+			// A deadline may expire while cpu.stat is being read. Re-check before
+			// interpreting the sample as a CPU-budget violation.
+			if contextErr := ctx.Err(); contextErr != nil {
+				_ = group.kill()
+				return contextErr
+			}
 			if err != nil {
 				_ = group.kill()
 				return fmt.Errorf("%w: monitor cpu.stat: %v", ErrUnavailable, err)
 			}
 			if usage >= uint64(cpuBudget.Microseconds()) {
-				return group.stopForCPUTimeLimit(cpuBudget, usage)
+				return group.stopForCPUTimeLimit(ctx, cpuBudget, usage)
 			}
 		}
 	}
@@ -348,19 +358,41 @@ func (group *workloadCgroup) wait(ctx context.Context, waitCh <-chan error, cpuB
 // stopForCPUTimeLimit stops the whole workload and, when possible, takes a
 // final cpu.stat sample after the cgroup has become empty. This captures CPU
 // time consumed while the supervisor is delivering the kill request.
-func (group *workloadCgroup) stopForCPUTimeLimit(budget time.Duration, usageAtDetection uint64) error {
+func (group *workloadCgroup) stopForCPUTimeLimit(ctx context.Context, budget time.Duration, usageAtDetection uint64) error {
 	limitErr := newCPUTimeLimitError(budget, usageAtDetection, "threshold-detection")
-	if err := group.kill(); err != nil {
-		return fmt.Errorf("%w: cgroup.kill failed; final CPU usage unavailable: %v", limitErr, err)
+
+	// Complete termination and take the final sample even if cancellation races
+	// with these steps. The context check below decides the externally visible
+	// result, so a deadline during stop cannot be misreported as RUN019.
+	killErr := group.kill()
+	waitErr := group.waitUntilEmpty()
+	var finalUsage uint64
+	var sampleErr error
+	if waitErr == nil {
+		finalUsage, sampleErr = group.currentCPUUsage()
 	}
-	if err := group.waitUntilEmpty(); err != nil {
-		return fmt.Errorf("%w: final CPU usage unavailable after stop request: %v", limitErr, err)
+	if contextErr := ctx.Err(); contextErr != nil {
+		return contextErr
 	}
-	finalUsage, err := readCPUUsage(group.path)
-	if err != nil {
-		return fmt.Errorf("%w: final CPU usage unavailable after workload termination: %v", limitErr, err)
+	if killErr != nil {
+		return fmt.Errorf("%w: cgroup.kill failed; final CPU usage unavailable: %v", limitErr, killErr)
+	}
+	if waitErr != nil {
+		return fmt.Errorf("%w: final CPU usage unavailable after stop request: %v", limitErr, waitErr)
+	}
+	if sampleErr != nil {
+		return fmt.Errorf("%w: final CPU usage unavailable after workload termination: %v", limitErr, sampleErr)
 	}
 	return newCPUTimeLimitError(budget, finalUsage, "post-termination")
+}
+
+// currentCPUUsage uses an injected reader in deterministic unit tests and the
+// kernel-backed cpu.stat reader during normal execution.
+func (group *workloadCgroup) currentCPUUsage() (uint64, error) {
+	if group.cpuUsageReader != nil {
+		return group.cpuUsageReader(group.path)
+	}
+	return readCPUUsage(group.path)
 }
 
 func (group *workloadCgroup) waitUntilEmpty() error {
