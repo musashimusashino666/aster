@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aster-lang/aster/internal/ir"
-	"github.com/aster-lang/aster/internal/langtypes"
-	"github.com/aster-lang/aster/internal/limits"
+	"github.com/musashimusashino666/aster/internal/ir"
+	"github.com/musashimusashino666/aster/internal/langtypes"
+	"github.com/musashimusashino666/aster/internal/limits"
 )
 
 func irLocalName(id ir.SymbolID) string {
