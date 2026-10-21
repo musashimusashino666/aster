@@ -59,6 +59,8 @@ func dispatch(args []string) error {
 		return commandExec(args[1:])
 	case "build":
 		return commandBuild(args[1:])
+	case "__resource-launcher":
+		return commandResourceLauncher(args[1:])
 	default:
 		usage(os.Stderr)
 		return fmt.Errorf("unknown command %q", args[0])
