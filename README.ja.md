@@ -114,7 +114,7 @@ Linux では、CLI の Native 実行に cgroup v2 の制限を明示的に要求
 
 要求した制限に必要なコントローラーが有効な委譲済みcgroup v2ディレクトリと、`cgroup.kill` が必要です。`ASTER_CGROUP_ROOT` で絶対パスを指定するか、現在のプロセスのcgroupを自動検出します。OS制御を利用できない場合は `TOOL008` で実行前に失敗し、無制限実行には切り替えません。Windows／macOSのプロセスツリー単位の制限、通常のNative実行、`aster build` で生成した単独実行ファイルのプロセス全体の分離は未実装です。この機能はファイル／ネットワークのサンドボックスではありません。
 
-詳しくは [ADR 0010](docs/adr/0010-process-resource-isolation.md) を参照してください。
+実際に委譲された cgroup v2 上でのOS制限の実効性は、まだ検証が必要です。コントローラーを利用できないホストCIではカーネルレベルの統合テストが skip される場合があります。検証作業は [Issue #85](https://github.com/musashimusashino666/aster/issues/85) で追跡します。設計と制約は [ADR 0010](docs/adr/0010-process-resource-isolation.md) を参照してください。
 
 ## Asterのコード例
 
