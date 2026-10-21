@@ -63,7 +63,7 @@ The selected backend must expose which of these controls it actually enforces. T
 ### 4. Diagnostics and observability
 
 - Keep RUN013 exclusively for Native fuel exhaustion. Do not reuse it for OS memory or CPU enforcement.
-- The initial Linux implementation uses RUN018 only when the cgroup `memory.events` `oom_kill` count confirms a workload memory OOM event, and RUN019 when measured aggregate `cpu.stat` usage reaches the configured CPU-time budget. Do not assign these codes based solely on an exit status.
+- The initial Linux implementation uses RUN018 only when both the cgroup `memory.events` `oom` and `oom_kill` counters increase during the workload. It sets `memory.oom.group=1` so a memcg OOM treats the workload as indivisible. RUN019 is used when measured aggregate `cpu.stat` usage reaches the configured CPU-time budget. Do not assign either code based solely on an exit status.
 - Keep the existing CLI wall-clock timeout classification separate (currently TOOL002). A CPU-rate cap is throttling, not an exhaustion diagnostic.
 - Structured resource diagnostics should include the resource type, configured threshold, observed OS metric when available, enforcement backend, termination cause, and source path when known.
 - A process-wide limit is not reliably attributable to one Aster expression. Do not fabricate a source line or span for an OS/supervisor event. Preserve a source location only when the runtime can establish that the location is causally valid.
