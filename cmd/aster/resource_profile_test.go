@@ -36,6 +36,11 @@ func TestCommandRunRejectsInvalidResourceLimitsBeforeReadingSource(t *testing.T)
 			want: "--cpu-time-limit must be greater than zero",
 		},
 		{
+			name: "zero CPU rate",
+			args: []string{"--engine", "native", "--resource-profile", "constrained", "--memory-limit", "64MiB", "--cpu-rate", "0", "missing.ast"},
+			want: "--cpu-rate must be greater than zero",
+		},
+		{
 			name: "unknown profile",
 			args: []string{"--resource-profile", "unlimited", "missing.ast"},
 			want: "unknown resource profile",
