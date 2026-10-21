@@ -46,10 +46,10 @@ func (b *limitedBuffer) WriteByte(value byte) error {
 func (b *limitedBuffer) String() string { return b.data.String() }
 
 type generator struct {
-	out          limitedBuffer
-	indent       int
-	ctx          context.Context
-	sourceSpans  map[sourceSpanKey]sourceSpanValue
+	out         limitedBuffer
+	indent      int
+	ctx         context.Context
+	sourceSpans map[sourceSpanKey]sourceSpanValue
 }
 
 func (g *generator) checkContext() error {
