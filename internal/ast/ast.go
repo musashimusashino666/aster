@@ -14,13 +14,18 @@ type Node interface {
 	EndPos() token.Position
 }
 
-// SourceRangeStart returns the syntactic left edge used when displaying a
-// source range. Pos remains the diagnostic anchor and may point at an operator
-// or postfix delimiter. Parentheses are transparent to this anchor; EndPos
-// still includes a closing parenthesis when the parser retains it.
+// SourceRangeStart returns the syntactic left edge for the user-visible
+// source range. Pos remains the legacy diagnostic anchor, which can point at an
+// operator or postfix delimiter. Parenthesized expressions retain the opening
+// parenthesis as RangeAt while their existing diagnostic anchor remains stable.
 func SourceRangeStart(node Node) token.Position {
 	if node == nil {
 		return token.Position{}
+	}
+	if expr, ok := node.(Expr); ok {
+		if start := expressionRangeStart(expr); start.Line > 0 && start.Column > 0 && start.Offset >= 0 {
+			return start
+		}
 	}
 	switch n := node.(type) {
 	case *BinaryExpr:
@@ -35,6 +40,35 @@ func SourceRangeStart(node Node) token.Position {
 		return SourceRangeStart(n.Callee)
 	default:
 		return node.Pos()
+	}
+}
+
+func expressionRangeStart(expr Expr) token.Position {
+	switch n := expr.(type) {
+	case *IdentifierExpr:
+		return n.RangeAt
+	case *FieldExpr:
+		return n.RangeAt
+	case *LiteralExpr:
+		return n.RangeAt
+	case *UnaryExpr:
+		return n.RangeAt
+	case *BinaryExpr:
+		return n.RangeAt
+	case *CallExpr:
+		return n.RangeAt
+	case *EnumVariantExpr:
+		return n.RangeAt
+	case *MatchExpr:
+		return n.RangeAt
+	case *ArrayExpr:
+		return n.RangeAt
+	case *IndexExpr:
+		return n.RangeAt
+	case *SliceExpr:
+		return n.RangeAt
+	default:
+		return token.Position{}
 	}
 }
 type Decl interface {
@@ -228,6 +262,7 @@ func (*ReturnStmt) stmtNode()                {}
 
 type IdentifierExpr struct {
 	At    token.Position
+	RangeAt token.Position
 	EndAt token.Position
 	Name  string
 }
@@ -239,6 +274,7 @@ func (*IdentifierExpr) exprNode()                {}
 // FieldExpr reads a declared field from a struct value.
 type FieldExpr struct {
 	At     token.Position
+	RangeAt token.Position
 	EndAt  token.Position
 	Object Expr
 	Name   string
@@ -250,6 +286,7 @@ func (*FieldExpr) exprNode()                {}
 
 type LiteralExpr struct {
 	At     token.Position
+	RangeAt token.Position
 	EndAt  token.Position
 	Kind   string
 	Text   string
@@ -265,6 +302,7 @@ func (*LiteralExpr) exprNode()                {}
 
 type UnaryExpr struct {
 	At    token.Position
+	RangeAt token.Position
 	EndAt token.Position
 	Op    string
 	Right Expr
@@ -276,6 +314,7 @@ func (*UnaryExpr) exprNode()                {}
 
 type BinaryExpr struct {
 	At    token.Position
+	RangeAt token.Position
 	EndAt token.Position
 	Left  Expr
 	Op    string
@@ -288,6 +327,7 @@ func (*BinaryExpr) exprNode()                {}
 
 type CallExpr struct {
 	At       token.Position
+	RangeAt token.Position
 	EndAt    token.Position
 	Callee   Expr
 	TypeArgs []TypeRef
@@ -301,6 +341,7 @@ func (*CallExpr) exprNode()                {}
 // EnumVariantExpr constructs a concrete enum variant using a qualified name.
 type EnumVariantExpr struct {
 	At          token.Position
+	RangeAt token.Position
 	EndAt       token.Position
 	EnumName    string
 	VariantName string
@@ -340,6 +381,7 @@ func (n MatchArm) EndPos() token.Position { return n.EndAt }
 // MatchExpr evaluates its subject once and returns the selected arm expression.
 type MatchExpr struct {
 	At      token.Position
+	RangeAt token.Position
 	EndAt   token.Position
 	Subject Expr
 	Arms    []MatchArm
@@ -352,6 +394,7 @@ func (*MatchExpr) exprNode()                {}
 // ArrayExpr creates a homogeneous, dynamically sized array literal.
 type ArrayExpr struct {
 	At       token.Position
+	RangeAt token.Position
 	EndAt    token.Position
 	Elements []Expr
 }
@@ -363,6 +406,7 @@ func (*ArrayExpr) exprNode()                {}
 // IndexExpr reads one element from an array. Bounds are checked at runtime.
 type IndexExpr struct {
 	At         token.Position
+	RangeAt token.Position
 	EndAt      token.Position
 	Collection Expr
 	Index      Expr
@@ -376,6 +420,7 @@ func (*IndexExpr) exprNode()                {}
 // The start is inclusive and the end is exclusive.
 type SliceExpr struct {
 	At         token.Position
+	RangeAt token.Position
 	EndAt      token.Position
 	Collection Expr
 	Start      Expr
