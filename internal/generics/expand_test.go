@@ -132,6 +132,30 @@ func TestExpansionDiagnosticRangesCoverFunctionStructAndEnumPaths(t *testing.T) 
 			code:   "TYP089",
 			marker: "Nest<Array<T>>",
 		},
+		{
+			name:   "wrong generic function argument count",
+			source: "fn identity<T>(value: T) -> T { return value; }\nlet result = identity::<i64, string>(1);",
+			code:   diagnostic.TypeGenericArgumentCount,
+			marker: "identity::<i64, string>(1)",
+		},
+		{
+			name:   "wrong generic struct argument count",
+			source: "struct Box<T> { value: T }\nlet result = Box::<i64, string>(1);",
+			code:   diagnostic.TypeGenericStructArgumentCount,
+			marker: "Box::<i64, string>(1)",
+		},
+		{
+			name:   "unknown generic enum variant",
+			source: "enum Option<T> { Some(T) }\nlet result = Option::<i64>::Missing(1);",
+			code:   diagnostic.TypeUnknownEnumVariant,
+			marker: "Option::<i64>::Missing(1)",
+		},
+		{
+			name:   "invalid type in generic expansion",
+			source: "fn identity<T>(value: T) -> T { return value; }\nfn broken(value: Missing) { }",
+			code:   diagnostic.TypeInvalidTypeAnnotation,
+			marker: "Missing",
+		},
 	}
 
 	for _, tt := range tests {
