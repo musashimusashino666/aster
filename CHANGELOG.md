@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## [Unreleased]
+
+- Documented the release/tagging process, strict bytecode-format compatibility, and the Go 1.26+ support policy.
 
 - Include the original source path when rendering generic-expansion diagnostics with validated source ranges, without changing the legacy `Diagnostic.Error()` text.
 
@@ -24,7 +26,7 @@
 - Expanded regression coverage for VM/native parity and malformed bytecode; added fuzz targets for bytecode loading and validation and an example-to-bytecode verification test.
 - Restored generated-artifact ignore rules and pinned GitHub Actions dependencies to immutable commit SHAs.
 
-## 0.1.0 — initial prototype
+## Prototype baseline (not a published release)
 
 - Added lexer, parser, AST, and static type checker.
 - Added bytecode compiler and bounded stack-based VM.
