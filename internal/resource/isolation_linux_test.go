@@ -172,4 +172,3 @@ func TestWorkloadExitDoesNotMaskExpiredContext(t *testing.T) {
 		t.Fatalf("cgroup.kill = %q, want %q after expired context", got, "1")
 	}
 }
-
