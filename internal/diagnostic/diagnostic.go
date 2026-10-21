@@ -142,6 +142,10 @@ func RuntimeCode(message string) string {
 		return RuntimeCallDepthLimit
 	case strings.Contains(message, "instruction budget exceeded"):
 		return RuntimeInstructionBudget
+	case strings.Contains(message, "process memory limit exceeded"):
+		return RuntimeProcessMemoryLimit
+	case strings.Contains(message, "cumulative CPU-time budget exceeded"):
+		return RuntimeCPUTimeLimit
 	case strings.Contains(message, "operand stack limit exceeded"):
 		return RuntimeOperandStackLimit
 	case strings.Contains(message, "active local slot limit exceeded"):
@@ -193,6 +197,8 @@ func ToolchainCode(message string) string {
 	switch {
 	case strings.Contains(lower, "canceled"), strings.Contains(lower, "cancelled"):
 		return ToolchainCanceled
+	case strings.Contains(lower, "resource isolation unavailable"):
+		return ToolchainResourceIsolationUnavailable
 	case strings.Contains(lower, "timed out"), strings.Contains(lower, "deadline exceeded"):
 		return ToolchainTimeout
 	case strings.Contains(lower, "not found in path"), strings.Contains(lower, "requires go 1.23"),
@@ -348,6 +354,8 @@ const (
 	RuntimeLocalSlotLimit         = "RUN015"
 	RuntimeOutputWrite            = "RUN016"
 	RuntimeArrayLimit             = "RUN017"
+	RuntimeProcessMemoryLimit     = "RUN018"
+	RuntimeCPUTimeLimit           = "RUN019"
 
 	BytecodeGeneric        = "BC000"
 	BytecodeFormat         = "BC001"
@@ -365,4 +373,5 @@ const (
 	ToolchainBuild       = "TOOL005"
 	ToolchainRun         = "TOOL006"
 	ToolchainFilesystem  = "TOOL007"
+	ToolchainResourceIsolationUnavailable = "TOOL008"
 )
