@@ -107,30 +107,29 @@ func TestExpansionDiagnosticRetainsSyntacticSourceRange(t *testing.T) {
 	}
 }
 
-
 func TestExpansionDiagnosticRangesCoverFunctionStructAndEnumPaths(t *testing.T) {
 	tests := []struct {
-		name       string
-		source     string
-		code       string
-		marker     string
+		name   string
+		source string
+		code   string
+		marker string
 	}{
 		{
-			name: "function inference",
+			name:   "function inference",
 			source: "fn make<T>() -> T { return 1; }\nlet result = make();",
-			code: diagnostic.TypeGenericInference,
+			code:   diagnostic.TypeGenericInference,
 			marker: "make();",
 		},
 		{
-			name: "growing generic struct",
+			name:   "growing generic struct",
 			source: "struct Nest<T> { next: Nest<Array<T>> }\nfn take(value: Nest<i64>) { }",
-			code: "TYP086",
+			code:   "TYP086",
 			marker: "Nest<i64>",
 		},
 		{
-			name: "growing generic enum",
+			name:   "growing generic enum",
 			source: "enum Nest<T> { End, Next(Nest<Array<T>>), }\nfn consume(value: Nest<i64>) { }",
-			code: "TYP089",
+			code:   "TYP089",
 			marker: "Nest<i64>",
 		},
 	}
