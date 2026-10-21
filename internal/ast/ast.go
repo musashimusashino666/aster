@@ -71,6 +71,7 @@ func expressionRangeStart(expr Expr) token.Position {
 		return token.Position{}
 	}
 }
+
 type Decl interface {
 	Node
 	declNode()
@@ -261,10 +262,10 @@ func (n *ReturnStmt) EndPos() token.Position { return n.EndAt }
 func (*ReturnStmt) stmtNode()                {}
 
 type IdentifierExpr struct {
-	At    token.Position
+	At      token.Position
 	RangeAt token.Position
-	EndAt token.Position
-	Name  string
+	EndAt   token.Position
+	Name    string
 }
 
 func (n *IdentifierExpr) Pos() token.Position    { return n.At }
@@ -273,11 +274,11 @@ func (*IdentifierExpr) exprNode()                {}
 
 // FieldExpr reads a declared field from a struct value.
 type FieldExpr struct {
-	At     token.Position
+	At      token.Position
 	RangeAt token.Position
-	EndAt  token.Position
-	Object Expr
-	Name   string
+	EndAt   token.Position
+	Object  Expr
+	Name    string
 }
 
 func (n *FieldExpr) Pos() token.Position    { return n.At }
@@ -285,15 +286,15 @@ func (n *FieldExpr) EndPos() token.Position { return n.EndAt }
 func (*FieldExpr) exprNode()                {}
 
 type LiteralExpr struct {
-	At     token.Position
+	At      token.Position
 	RangeAt token.Position
-	EndAt  token.Position
-	Kind   string
-	Text   string
-	Int    int64
-	Float  float64
-	String string
-	Bool   bool
+	EndAt   token.Position
+	Kind    string
+	Text    string
+	Int     int64
+	Float   float64
+	String  string
+	Bool    bool
 }
 
 func (n *LiteralExpr) Pos() token.Position    { return n.At }
@@ -301,11 +302,11 @@ func (n *LiteralExpr) EndPos() token.Position { return n.EndAt }
 func (*LiteralExpr) exprNode()                {}
 
 type UnaryExpr struct {
-	At    token.Position
+	At      token.Position
 	RangeAt token.Position
-	EndAt token.Position
-	Op    string
-	Right Expr
+	EndAt   token.Position
+	Op      string
+	Right   Expr
 }
 
 func (n *UnaryExpr) Pos() token.Position    { return n.At }
@@ -313,12 +314,12 @@ func (n *UnaryExpr) EndPos() token.Position { return n.EndAt }
 func (*UnaryExpr) exprNode()                {}
 
 type BinaryExpr struct {
-	At    token.Position
+	At      token.Position
 	RangeAt token.Position
-	EndAt token.Position
-	Left  Expr
-	Op    string
-	Right Expr
+	EndAt   token.Position
+	Left    Expr
+	Op      string
+	Right   Expr
 }
 
 func (n *BinaryExpr) Pos() token.Position    { return n.At }
@@ -327,7 +328,7 @@ func (*BinaryExpr) exprNode()                {}
 
 type CallExpr struct {
 	At       token.Position
-	RangeAt token.Position
+	RangeAt  token.Position
 	EndAt    token.Position
 	Callee   Expr
 	TypeArgs []TypeRef
@@ -341,7 +342,7 @@ func (*CallExpr) exprNode()                {}
 // EnumVariantExpr constructs a concrete enum variant using a qualified name.
 type EnumVariantExpr struct {
 	At          token.Position
-	RangeAt token.Position
+	RangeAt     token.Position
 	EndAt       token.Position
 	EnumName    string
 	VariantName string
@@ -394,7 +395,7 @@ func (*MatchExpr) exprNode()                {}
 // ArrayExpr creates a homogeneous, dynamically sized array literal.
 type ArrayExpr struct {
 	At       token.Position
-	RangeAt token.Position
+	RangeAt  token.Position
 	EndAt    token.Position
 	Elements []Expr
 }
@@ -406,7 +407,7 @@ func (*ArrayExpr) exprNode()                {}
 // IndexExpr reads one element from an array. Bounds are checked at runtime.
 type IndexExpr struct {
 	At         token.Position
-	RangeAt token.Position
+	RangeAt    token.Position
 	EndAt      token.Position
 	Collection Expr
 	Index      Expr
@@ -420,7 +421,7 @@ func (*IndexExpr) exprNode()                {}
 // The start is inclusive and the end is exclusive.
 type SliceExpr struct {
 	At         token.Position
-	RangeAt token.Position
+	RangeAt    token.Position
 	EndAt      token.Position
 	Collection Expr
 	Start      Expr
