@@ -50,6 +50,9 @@ func TestCgroupMetricParsers(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "memory.events"), []byte("low 0\nhigh 0\nmax 2\noom 1\noom_kill 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if got, err := readOOMCount(dir); err != nil || got != 1 {
+		t.Fatalf("readOOMCount() = (%d, %v), want (1, nil)", got, err)
+	}
 	if got, err := readOOMKillCount(dir); err != nil || got != 1 {
 		t.Fatalf("readOOMKillCount() = (%d, %v), want (1, nil)", got, err)
 	}
