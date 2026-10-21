@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Defined a separate syntactic source-range start for compound expressions, propagated it through typed IR, bytecode v9, VM and Native diagnostics, and rendered ranges in standalone Native executables while keeping legacy diagnostic anchors stable.
+
 - Added CLI rendering of validated exclusive source ranges while preserving the legacy programmatic `Diagnostic.Error()` format; added regression coverage for wrapped diagnostics and invalid-span fallback.
 
 - Added explicit `i64(value)` and `f64(value)` casts, documented truncation/range semantics, and VM/Native parity coverage; bumped JSON bytecode format to v5 for `TO_I64` and `TO_F64`.
