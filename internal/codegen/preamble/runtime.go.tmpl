@@ -31,10 +31,13 @@ type asterSourcePosition struct {
 }
 
 type asterSourceSpan struct {
-	offset    int
-	endOffset int
-	endLine   int
-	endColumn int
+	rangeStartOffset int
+	rangeStartLine   int
+	rangeStartColumn int
+	offset           int
+	endOffset        int
+	endLine          int
+	endColumn        int
 }
 
 func asterSourceSpanAt(line, column int) (asterSourceSpan, bool) {
@@ -146,17 +149,20 @@ func (failure asterRuntimeFailure) Error() string {
 }
 
 type asterRuntimeProtocolDiagnostic struct {
-	Kind      string `json:"kind"`
-	Code      string `json:"code"`
-	Source    string `json:"source"`
-	Message   string `json:"message"`
-	Offset    int    `json:"offset"`
-	Line      int    `json:"line"`
-	Column    int    `json:"column"`
-	EndOffset int    `json:"end_offset"`
-	EndLine   int    `json:"end_line"`
-	EndColumn int    `json:"end_column"`
-	HasSpan   bool   `json:"has_span"`
+	Kind               string `json:"kind"`
+	Code               string `json:"code"`
+	Source             string `json:"source"`
+	Message            string `json:"message"`
+	Offset             int    `json:"offset"`
+	Line               int    `json:"line"`
+	Column             int    `json:"column"`
+	RangeStartOffset   int    `json:"range_start_offset"`
+	RangeStartLine     int    `json:"range_start_line"`
+	RangeStartColumn   int    `json:"range_start_column"`
+	EndOffset          int    `json:"end_offset"`
+	EndLine            int    `json:"end_line"`
+	EndColumn          int    `json:"end_column"`
+	HasSpan            bool   `json:"has_span"`
 }
 
 func asterWriteRuntimeDiagnostic(failure asterRuntimeFailure) {
@@ -167,7 +173,11 @@ func asterWriteRuntimeDiagnostic(failure asterRuntimeFailure) {
 		Kind: "aster-runtime-diagnostic", Code: failure.code,
 		Source: failure.source, Message: failure.detail,
 		Line: failure.line, Column: failure.column,
-		Offset: failure.span.offset, EndOffset: failure.span.endOffset,
+		Offset: failure.span.offset,
+		RangeStartOffset: failure.span.rangeStartOffset,
+		RangeStartLine: failure.span.rangeStartLine,
+		RangeStartColumn: failure.span.rangeStartColumn,
+		EndOffset: failure.span.endOffset,
 		EndLine: failure.span.endLine, EndColumn: failure.span.endColumn,
 		HasSpan: failure.hasSpan,
 	}
