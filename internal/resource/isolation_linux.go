@@ -292,31 +292,17 @@ func (group *workloadCgroup) wait(ctx context.Context, waitCh <-chan error, cpuB
 	for {
 		select {
 		case err := <-waitCh:
-			if group.limits.MemoryMaxBytes > 0 {
-				oomCount, oomErr := readOOMCount(group.path)
-				killCount, killErr := readOOMKillCount(group.path)
-				if oomErr == nil && killErr == nil &&
-					oomCount > group.initialOOM && killCount > group.initialOOMKills {
-					return ErrMemoryLimitExceeded
-				}
-			}
-			// The workload may finish between polling ticks after consuming more
-			// than its CPU-time budget. Check the final cumulative metric before
-			// accepting the process exit result.
-			if cpuBudget > 0 {
-				usage, usageErr := readCPUUsage(group.path)
-				if usageErr != nil {
-					return fmt.Errorf("%w: read cpu.stat after workload exit: %v", ErrUnavailable, usageErr)
-				}
-				if usage >= uint64(cpuBudget.Microseconds()) {
-					return ErrCPUTimeLimitExceeded
-				}
-			}
-			return err
+			return group.handleWorkloadExit(ctx, err, cpuBudget)
 		case <-ctx.Done():
 			_ = group.kill()
 			return ctx.Err()
 		case <-tickerCh:
+			// select may choose the ticker even when the context deadline has
+			// become ready. Prefer cancellation over a resource classification.
+			if err := ctx.Err(); err != nil {
+				_ = group.kill()
+				return err
+			}
 			usage, err := readCPUUsage(group.path)
 			if err != nil {
 				_ = group.kill()
@@ -328,6 +314,38 @@ func (group *workloadCgroup) wait(ctx context.Context, waitCh <-chan error, cpuB
 			}
 		}
 	}
+}
+
+
+// handleWorkloadExit resolves the race where process completion and context
+// cancellation become ready together. Cancellation takes precedence over a
+// successful exit, and the whole cgroup is asked to stop before returning.
+func (group *workloadCgroup) handleWorkloadExit(ctx context.Context, waitErr error, cpuBudget time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		_ = group.kill()
+		return err
+	}
+	if group.limits.MemoryMaxBytes > 0 {
+		oomCount, oomErr := readOOMCount(group.path)
+		killCount, killErr := readOOMKillCount(group.path)
+		if oomErr == nil && killErr == nil &&
+			oomCount > group.initialOOM && killCount > group.initialOOMKills {
+			return ErrMemoryLimitExceeded
+		}
+	}
+	// The workload may finish between polling ticks after consuming more
+	// than its CPU-time budget. Check the final cumulative metric before
+	// accepting the process exit result.
+	if cpuBudget > 0 {
+		usage, usageErr := readCPUUsage(group.path)
+		if usageErr != nil {
+			return fmt.Errorf("%w: read cpu.stat after workload exit: %v", ErrUnavailable, usageErr)
+		}
+		if usage >= uint64(cpuBudget.Microseconds()) {
+			return ErrCPUTimeLimitExceeded
+		}
+	}
+	return waitErr
 }
 
 func (group *workloadCgroup) kill() error {
