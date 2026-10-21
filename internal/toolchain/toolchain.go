@@ -257,7 +257,7 @@ func parseNativeRuntimeDiagnostic(stderr []byte) error {
 			if rangeStart.Offset < 0 || rangeStart.Line <= 0 || rangeStart.Column <= 0 ||
 				rangeStart.Offset > record.Offset || record.Offset > record.EndOffset ||
 				(record.EndLine < rangeStart.Line ||
-				(record.EndLine == rangeStart.Line && record.EndColumn < rangeStart.Column)) {
+					(record.EndLine == rangeStart.Line && record.EndColumn < rangeStart.Column)) {
 				return nil
 			}
 			end := token.Position{Offset: record.EndOffset, Line: record.EndLine, Column: record.EndColumn}
