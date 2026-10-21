@@ -332,7 +332,7 @@ func TestSourceRangeStartUsesSyntacticLeftEdge(t *testing.T) {
 	}
 	call := binary.Right.(*ast.CallExpr)
 	callOpen := strings.Index(source, "target(") + len("target")
-	if got := call.Pos().Offset, want := callOpen; got != want {
+	if got, want := call.Pos().Offset, callOpen; got != want {
 		t.Fatalf("call diagnostic anchor offset = %d, want '(' offset %d", got, want)
 	}
 	if got, want := ast.SourceRangeStart(call).Offset, strings.Index(source, "target"); got != want {
