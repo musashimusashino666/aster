@@ -45,4 +45,4 @@ Per-value limits also do not guarantee a process-wide memory ceiling. This ADR t
 
 - Unit-test the `RUN013` diagnostic-classifier parity between VM and generated Native runtime.
 - Lower the fuel constant in a test-generated executable and verify that an empty infinite loop terminates with `RUN013` and a source span.
-- Run the full CI matrix on Go stable and Go 1.23.x, including race detection, static analysis, examples, and the 32-bit check.
+- Run the full CI matrix on Go 1.26.x (the minimum supported line) and stable, including race detection, static analysis, examples, and the 32-bit check.
