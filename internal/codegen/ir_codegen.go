@@ -208,7 +208,9 @@ func (g *generator) writeSourceSpanTable() error {
 		}
 		return keys[i].column < keys[j].column
 	})
-	g.line("var asterSourceSpans = map[asterSourcePosition]asterSourceSpan{")
+	g.line("func init() {")
+	g.indent++
+	g.line("asterSourceSpans = map[asterSourcePosition]asterSourceSpan{")
 	g.indent++
 	for _, key := range keys {
 		if err := g.checkContext(); err != nil {
@@ -218,6 +220,8 @@ func (g *generator) writeSourceSpanTable() error {
 		g.line(fmt.Sprintf("{line: %d, column: %d}: {offset: %d, endOffset: %d, endLine: %d, endColumn: %d},",
 			key.line, key.column, span.offset, span.endOffset, span.endLine, span.endColumn))
 	}
+	g.indent--
+	g.line("}")
 	g.indent--
 	g.line("}")
 	return nil
