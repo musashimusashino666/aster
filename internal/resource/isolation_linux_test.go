@@ -4,10 +4,15 @@ package resource
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -172,3 +177,385 @@ func TestWorkloadExitDoesNotMaskExpiredContext(t *testing.T) {
 		t.Fatalf("cgroup.kill = %q, want %q after expired context", got, "1")
 	}
 }
+
+const (
+	resourceTestModeEnv   = "ASTER_RESOURCE_TEST_MODE"
+	resourceTestReportEnv = "ASTER_RESOURCE_TEST_REPORT"
+	resourceTestBinaryEnv = "ASTER_RESOURCE_TEST_BINARY"
+	resourceTestNameEnv   = "ASTER_RESOURCE_TEST_NAME"
+	resourceTestChildPID  = "ASTER_RESOURCE_TEST_CHILD_PID"
+)
+
+type cgroupIntegrationReport struct {
+	CgroupPath   string `json:"cgroup_path"`
+	CPUmax       string `json:"cpu_max,omitempty"`
+	MemoryMax    string `json:"memory_max,omitempty"`
+	SwapMax      string `json:"memory_swap_max,omitempty"`
+	OOMGroup     string `json:"memory_oom_group,omitempty"`
+	CPUStat      string `json:"cpu_stat,omitempty"`
+	WallNanos    int64  `json:"wall_nanos,omitempty"`
+	ProcessNanos int64  `json:"process_cpu_nanos,omitempty"`
+}
+
+// requireDelegatedCgroup skips with an explicit reason unless this runner can
+// create, configure, and remove a real delegated cgroup for the requested
+// controls. A skip is a capability result, not evidence of enforcement.
+func requireDelegatedCgroup(t *testing.T, limits Limits) string {
+	t.Helper()
+	root, err := delegatedCgroupRoot()
+	if err != nil {
+		t.Skipf("delegated cgroup v2 root unavailable: %v", err)
+	}
+	t.Setenv("ASTER_CGROUP_ROOT", root)
+	probe, err := createCgroup(limits)
+	if err != nil {
+		t.Skipf("required cgroup v2 controllers are not delegated: %v", err)
+	}
+	if err := probe.cleanup(); err != nil {
+		t.Fatalf("clean up cgroup capability probe: %v", err)
+	}
+	return root
+}
+
+func snapshotAsterCgroups(t *testing.T, root string) map[string]struct{} {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read delegated cgroup root %s: %v", root, err)
+	}
+	found := make(map[string]struct{})
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), "aster-run-") {
+			found[entry.Name()] = struct{}{}
+		}
+	}
+	return found
+}
+
+func assertNoNewAsterCgroups(t *testing.T, root string, before map[string]struct{}) {
+	t.Helper()
+	after := snapshotAsterCgroups(t, root)
+	for name := range after {
+		if _, existed := before[name]; !existed {
+			t.Errorf("temporary workload cgroup remains after Run: %s", filepath.Join(root, name))
+		}
+	}
+}
+
+func newGatedTestCommand(t *testing.T, testName, mode, reportPath string) *exec.Cmd {
+	t.Helper()
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Do not spawn helper children while waiting for the release gate. Once the
+	// supervisor releases the gate, exec the Go test helper in the same PID.
+	script := `while [ ! -e "$ASTER_RESOURCE_GATE" ]; do :; done; unset ASTER_RESOURCE_GATE; exec "$ASTER_RESOURCE_TEST_BINARY" -test.run="$ASTER_RESOURCE_TEST_NAME"`
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = append(os.Environ(),
+		resourceTestModeEnv+"="+mode,
+		resourceTestReportEnv+"="+reportPath,
+		resourceTestBinaryEnv+"="+binary,
+		resourceTestNameEnv+"="+testName,
+	)
+	return cmd
+}
+
+func readCgroupControlForCurrentProcess(name string) (string, error) {
+	procPath, err := currentUnifiedCgroupPath()
+	if err != nil {
+		return "", err
+	}
+	mount, mountRoot, err := cgroup2Mount()
+	if err != nil {
+		return "", err
+	}
+	relative := procPath
+	if mountRoot != "/" && strings.HasPrefix(procPath, strings.TrimSuffix(mountRoot, "/")+"/") {
+		relative = strings.TrimPrefix(procPath, mountRoot)
+	} else if procPath == mountRoot {
+		relative = "/"
+	}
+	dir := filepath.Clean(filepath.Join(mount, strings.TrimPrefix(relative, "/")))
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+func writeCgroupIntegrationReport(report cgroupIntegrationReport) error {
+	path := os.Getenv(resourceTestReportEnv)
+	if path == "" {
+		return fmt.Errorf("%s is not set", resourceTestReportEnv)
+	}
+	data, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o600)
+}
+
+// TestCgroupIntegrationHelper is invoked only as a child process by the
+// conditional integration tests. Ordinary go test runs return immediately.
+func TestCgroupIntegrationHelper(t *testing.T) {
+	mode := os.Getenv(resourceTestModeEnv)
+	if mode == "" {
+		return
+	}
+	procPath, err := currentUnifiedCgroupPath()
+	if err != nil {
+		t.Fatalf("read workload cgroup membership: %v", err)
+	}
+	report := cgroupIntegrationReport{CgroupPath: procPath}
+	if report.CPUmax, err = readCgroupControlForCurrentProcess("cpu.max"); err != nil && mode != "memory-inspect" {
+		t.Fatalf("read workload cpu.max: %v", err)
+	}
+	if mode == "memory-inspect" {
+		if report.MemoryMax, err = readCgroupControlForCurrentProcess("memory.max"); err != nil {
+			t.Fatalf("read workload memory.max: %v", err)
+		}
+		if report.SwapMax, err = readCgroupControlForCurrentProcess("memory.swap.max"); err != nil {
+			t.Fatalf("read workload memory.swap.max: %v", err)
+		}
+		if report.OOMGroup, err = readCgroupControlForCurrentProcess("memory.oom.group"); err != nil {
+			t.Fatalf("read workload memory.oom.group: %v", err)
+		}
+		if err := writeCgroupIntegrationReport(report); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if mode == "cpu-throttle" {
+		start := time.Now()
+		var work uint64
+		for time.Since(start) < 400*time.Millisecond {
+			work++
+		}
+		report.WallNanos = time.Since(start).Nanoseconds()
+		var usage syscall.Rusage
+		if err := syscall.Getrusage(syscall.RUSAGE_SELF, &usage); err != nil {
+			t.Fatalf("get process CPU usage: %v", err)
+		}
+		report.ProcessNanos = int64(usage.Utime.Sec+usage.Stime.Sec)*int64(time.Second) +
+			int64(usage.Utime.Usec+usage.Stime.Usec)*int64(time.Microsecond)
+		if report.CPUStat, err = readCgroupControlForCurrentProcess("cpu.stat"); err != nil {
+			t.Fatalf("read workload cpu.stat: %v", err)
+		}
+		if work == 0 {
+			t.Fatal("CPU workload did not execute")
+		}
+		if err := writeCgroupIntegrationReport(report); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if mode == "process-tree" {
+		child := exec.Command("sh", "-c", "while :; do :; done")
+		if err := child.Start(); err != nil {
+			t.Fatalf("start descendant process: %v", err)
+		}
+		pidPath := os.Getenv(resourceTestChildPID)
+		if pidPath == "" {
+			t.Fatal("child PID report path is not set")
+		}
+		if err := os.WriteFile(pidPath, []byte(strconv.Itoa(child.Process.Pid)), 0o600); err != nil {
+			t.Fatalf("record descendant PID: %v", err)
+		}
+		for {
+			// Deliberately consume CPU until the supervisor kills the complete
+			// cgroup or the wrapper context expires.
+		}
+	}
+	t.Fatalf("unknown resource integration helper mode %q", mode)
+}
+
+func readIntegrationReport(t *testing.T, path string) cgroupIntegrationReport {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read integration report: %v", err)
+	}
+	var report cgroupIntegrationReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatalf("decode integration report: %v", err)
+	}
+	return report
+}
+
+func readCPUStatValue(t *testing.T, raw, key string) uint64 {
+	t.Helper()
+	for _, line := range strings.Split(raw, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == key {
+			value, err := strconv.ParseUint(fields[1], 10, 64)
+			if err != nil {
+				t.Fatalf("parse cpu.stat %s value %q: %v", key, fields[1], err)
+			}
+			return value
+		}
+	}
+	t.Fatalf("cpu.stat does not contain %q: %q", key, raw)
+	return 0
+}
+
+func assertProcessNotRunning(t *testing.T, pid int) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("inspect descendant process %d: %v", pid, err)
+	}
+	endComm := strings.LastIndex(string(data), ")")
+	if endComm < 0 {
+		t.Fatalf("malformed /proc/%d/stat: %q", pid, data)
+	}
+	fields := strings.Fields(string(data)[endComm+1:])
+	if len(fields) == 0 {
+		t.Fatalf("missing process state in /proc/%d/stat", pid)
+	}
+	if fields[0] != "Z" && fields[0] != "X" {
+		t.Fatalf("descendant process %d is still running (state %s)", pid, fields[0])
+	}
+}
+
+func TestRunConfiguresCPUQuotaBeforeWorkloadAndCleansUp(t *testing.T) {
+	limits := Limits{CPUQuota: 0.5}
+	root := requireDelegatedCgroup(t, limits)
+	before := snapshotAsterCgroups(t, root)
+	reportPath := filepath.Join(t.TempDir(), "report.json")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := newGatedTestCommand(t, "TestCgroupIntegrationHelper", "inspect", reportPath)
+	// The helper reads /proc/self/cgroup and cpu.max only after the gate lets
+	// it exec; membership must already be inside the temporary workload group.
+	err := Run(ctx, cmd, filepath.Join(t.TempDir(), "release"), limits)
+	if err != nil {
+		t.Fatalf("Run() error = %v, want normal exit", err)
+	}
+	report := readIntegrationReport(t, reportPath)
+	if filepath.Base(report.CgroupPath) == "" || !strings.HasPrefix(filepath.Base(report.CgroupPath), "aster-run-") {
+		t.Fatalf("workload began outside its temporary cgroup: %q", report.CgroupPath)
+	}
+	if report.CPUmax != "50000 100000" {
+		t.Fatalf("workload cpu.max = %q, want %q", report.CPUmax, "50000 100000")
+	}
+	assertNoNewAsterCgroups(t, root, before)
+	t.Logf("membership=%s cpu.max=%s cleanup=clean", report.CgroupPath, report.CPUmax)
+}
+
+func TestRunCPUQuotaThrottlesAndReportsKernelMetrics(t *testing.T) {
+	limits := Limits{CPUQuota: 0.1}
+	root := requireDelegatedCgroup(t, limits)
+	before := snapshotAsterCgroups(t, root)
+	reportPath := filepath.Join(t.TempDir(), "cpu-report.json")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := newGatedTestCommand(t, "TestCgroupIntegrationHelper", "cpu-throttle", reportPath)
+	if err := Run(ctx, cmd, filepath.Join(t.TempDir(), "release"), limits); err != nil {
+		t.Fatalf("Run() error = %v, want normal completion of measured workload", err)
+	}
+	report := readIntegrationReport(t, reportPath)
+	if report.CPUmax != "10000 100000" {
+		t.Fatalf("workload cpu.max = %q, want %q", report.CPUmax, "10000 100000")
+	}
+	if report.WallNanos < int64(350*time.Millisecond) || report.ProcessNanos <= 0 {
+		t.Fatalf("invalid CPU-throttle measurements: wall=%s process CPU=%s", time.Duration(report.WallNanos), time.Duration(report.ProcessNanos))
+	}
+	if report.ProcessNanos*10 >= report.WallNanos*7 {
+		t.Fatalf("CPU quota did not sufficiently throttle workload: wall=%s process CPU=%s", time.Duration(report.WallNanos), time.Duration(report.ProcessNanos))
+	}
+	if got := readCPUStatValue(t, report.CPUStat, "nr_throttled"); got == 0 {
+		t.Fatalf("cpu.stat nr_throttled = 0; expected kernel throttling, stats=%q", report.CPUStat)
+	}
+	if got := readCPUStatValue(t, report.CPUStat, "throttled_usec"); got == 0 {
+		t.Fatalf("cpu.stat throttled_usec = 0; expected kernel throttling, stats=%q", report.CPUStat)
+	}
+	assertNoNewAsterCgroups(t, root, before)
+	t.Logf("cpu.max=%s wall=%s process_cpu=%s cpu.stat=%q cleanup=clean", report.CPUmax, time.Duration(report.WallNanos), time.Duration(report.ProcessNanos), report.CPUStat)
+}
+
+func TestRunConfiguresMemoryControlsAndCleansUp(t *testing.T) {
+	limits := Limits{MemoryMaxBytes: 128 << 20}
+	root := requireDelegatedCgroup(t, limits)
+	before := snapshotAsterCgroups(t, root)
+	reportPath := filepath.Join(t.TempDir(), "memory-report.json")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := newGatedTestCommand(t, "TestCgroupIntegrationHelper", "memory-inspect", reportPath)
+	if err := Run(ctx, cmd, filepath.Join(t.TempDir(), "release"), limits); err != nil {
+		t.Fatalf("Run() error = %v, want normal exit", err)
+	}
+	report := readIntegrationReport(t, reportPath)
+	if !strings.HasPrefix(filepath.Base(report.CgroupPath), "aster-run-") {
+		t.Fatalf("workload began outside its temporary cgroup: %q", report.CgroupPath)
+	}
+	if report.MemoryMax != strconv.FormatInt(limits.MemoryMaxBytes, 10) {
+		t.Fatalf("memory.max = %q, want %d", report.MemoryMax, limits.MemoryMaxBytes)
+	}
+	if report.SwapMax != "0" {
+		t.Fatalf("memory.swap.max = %q, want 0", report.SwapMax)
+	}
+	if report.OOMGroup != "1" {
+		t.Fatalf("memory.oom.group = %q, want 1", report.OOMGroup)
+	}
+	assertNoNewAsterCgroups(t, root, before)
+	t.Logf("membership=%s memory.max=%s memory.swap.max=%s memory.oom.group=%s cleanup=clean", report.CgroupPath, report.MemoryMax, report.SwapMax, report.OOMGroup)
+}
+
+func TestRunKillsDescendantsAndCleansUpOnCPUTimeLimit(t *testing.T) {
+	limits := Limits{CPUTimeLimit: 100 * time.Millisecond}
+	root := requireDelegatedCgroup(t, limits)
+	before := snapshotAsterCgroups(t, root)
+	reportPath := filepath.Join(t.TempDir(), "unused-report.json")
+	pidPath := filepath.Join(t.TempDir(), "child.pid")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := newGatedTestCommand(t, "TestCgroupIntegrationHelper", "process-tree", reportPath)
+	cmd.Env = append(cmd.Env, resourceTestChildPID+"="+pidPath)
+	err := Run(ctx, cmd, filepath.Join(t.TempDir(), "release"), limits)
+	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
+		t.Fatalf("Run() error = %v, want ErrCPUTimeLimitExceeded", err)
+	}
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		t.Fatalf("read descendant PID (helper may not have started): %v", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatalf("parse descendant PID %q: %v", data, err)
+	}
+	assertProcessNotRunning(t, pid)
+	assertNoNewAsterCgroups(t, root, before)
+	t.Logf("termination=CPU-time-limit child_pid=%d child_stopped=true cleanup=clean", pid)
+}
+
+func TestRunKillsDescendantsAndCleansUpOnContextDeadline(t *testing.T) {
+	limits := Limits{CPUQuota: 1.0}
+	root := requireDelegatedCgroup(t, limits)
+	before := snapshotAsterCgroups(t, root)
+	reportPath := filepath.Join(t.TempDir(), "unused-report.json")
+	pidPath := filepath.Join(t.TempDir(), "child.pid")
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	cmd := newGatedTestCommand(t, "TestCgroupIntegrationHelper", "process-tree", reportPath)
+	cmd.Env = append(cmd.Env, resourceTestChildPID+"="+pidPath)
+	err := Run(ctx, cmd, filepath.Join(t.TempDir(), "release"), limits)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run() error = %v, want context.DeadlineExceeded", err)
+	}
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		t.Fatalf("read descendant PID (helper may not have started): %v", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatalf("parse descendant PID %q: %v", data, err)
+	}
+	assertProcessNotRunning(t, pid)
+	assertNoNewAsterCgroups(t, root, before)
+	t.Logf("termination=context-deadline child_pid=%d child_stopped=true cleanup=clean", pid)
+}
+
