@@ -27,7 +27,7 @@ type Diagnostic struct {
 	Cause        error
 }
 
- // RuntimeFailure carries a stable runtime diagnostic code alongside its
+// RuntimeFailure carries a stable runtime diagnostic code alongside its
  // human-readable message. Backends can propagate this value without
  // inferring the code from message text.
 type RuntimeFailure struct {
