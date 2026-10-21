@@ -891,7 +891,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			irArm.Expr = lowered
 			arms = append(arms, irArm)
 		}
-		return &MatchExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
+		return &MatchExpr{At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
 	case *ast.FieldExpr:
 		object, err := l.lowerExpr(n.Object)
 		if err != nil {
