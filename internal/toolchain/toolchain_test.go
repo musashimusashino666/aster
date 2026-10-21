@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aster-lang/aster/internal/diagnostic"
-	"github.com/aster-lang/aster/internal/resource"
+	"github.com/musashimusashino666/aster/internal/diagnostic"
+	"github.com/musashimusashino666/aster/internal/resource"
 )
 
 func requireNativeToolchain(t *testing.T) {
