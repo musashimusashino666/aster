@@ -56,15 +56,18 @@ func ParseMemoryBytes(value string) (int64, error) {
 	}
 	unit := int64(1)
 	number := text
-	for suffix, multiplier := range map[string]int64{
-		"GiB": 1 << 30,
-		"MiB": 1 << 20,
-		"KiB": 1 << 10,
-		"B":   1,
+	for _, item := range []struct {
+		suffix string
+		unit   int64
+	}{
+		{suffix: "GiB", unit: 1 << 30},
+		{suffix: "MiB", unit: 1 << 20},
+		{suffix: "KiB", unit: 1 << 10},
+		{suffix: "B", unit: 1},
 	} {
-		if strings.HasSuffix(strings.ToLower(text), strings.ToLower(suffix)) {
-			number = strings.TrimSpace(text[:len(text)-len(suffix)])
-			unit = multiplier
+		if strings.HasSuffix(strings.ToLower(text), strings.ToLower(item.suffix)) {
+			number = strings.TrimSpace(text[:len(text)-len(item.suffix)])
+			unit = item.unit
 			break
 		}
 	}
