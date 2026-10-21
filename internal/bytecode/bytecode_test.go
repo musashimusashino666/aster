@@ -1012,20 +1012,29 @@ func TestInstructionSourceSpanValidation(t *testing.T) {
 			want: "end offset precedes start offset",
 		},
 		{
-			name: "end position before start",
+			name: "end position before syntactic range start",
 			instruction: Instruction{
 				Op: OpHalt, Line: 2, Column: 3,
-				Offset: 5, EndOffset: 6, EndLine: 1, EndColumn: 8,
+				Offset: 5, RangeStartOffset: 5, RangeStartLine: 2, RangeStartColumn: 3,
+				EndOffset: 6, EndLine: 1, EndColumn: 8,
 			},
-			want: "end position precedes start position",
+			want: "end position precedes syntactic range start",
 		},
 		{
 			name: "partial end position",
 			instruction: Instruction{
 				Op: OpHalt, Line: 1, Column: 1,
-				Offset: 0, EndOffset: 1,
+				Offset: 0, RangeStartOffset: 0, RangeStartLine: 1, RangeStartColumn: 1,
+				EndOffset: 1,
 			},
 			want: "span has no valid end line/column",
+		},
+		{
+			name: "missing syntactic range start",
+			instruction: Instruction{
+				Op: OpHalt, Line: 1, Column: 1, Offset: 0, EndOffset: 1, EndLine: 1, EndColumn: 2,
+			},
+			want: "span has no valid syntactic range start",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
