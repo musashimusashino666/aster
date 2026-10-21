@@ -148,3 +148,28 @@ func TestRunChecksCPUTimeBudgetWhenWorkloadExitsBetweenPolls(t *testing.T) {
 		t.Fatalf("wait() error = %v, want ErrCPUTimeLimitExceeded when completed workload used 2ms against a 1ms budget", err)
 	}
 }
+
+func TestWorkloadExitDoesNotMaskExpiredContext(t *testing.T) {
+	dir := t.TempDir()
+	killPath := filepath.Join(dir, "cgroup.kill")
+	if err := os.WriteFile(killPath, []byte("0"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	group := &workloadCgroup{path: dir}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	err := group.handleWorkloadExit(ctx, nil, 0)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("handleWorkloadExit() error = %v, want context.DeadlineExceeded", err)
+	}
+	got, err := os.ReadFile(killPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "1" {
+		t.Fatalf("cgroup.kill = %q, want %q after expired context", got, "1")
+	}
+}
+
