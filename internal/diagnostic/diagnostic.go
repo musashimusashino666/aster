@@ -23,8 +23,8 @@ type Diagnostic struct {
 	HasEndPosition        bool
 	Source                string
 	// RenderSource is used only for range-aware presentation; Error() ignores it.
-	RenderSource          string
-	Cause                 error
+	RenderSource string
+	Cause        error
 }
 
 // New constructs a diagnostic with a stable code, phase, position, and message.
