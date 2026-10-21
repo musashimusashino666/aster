@@ -16,10 +16,12 @@ type Diagnostic struct {
 	Code           string
 	Phase          string
 	Message        string
-	Position       token.Position
-	EndPosition    token.Position
-	HasEndPosition bool
-	Source         string
+	Position             token.Position
+	RangeStartPosition   token.Position
+	HasRangeStartPosition bool
+	EndPosition          token.Position
+	HasEndPosition       bool
+	Source               string
 	Cause          error
 }
 
@@ -33,6 +35,7 @@ func New(code, phase string, position token.Position, message string) *Diagnosti
 func NewSpan(code, phase string, start, end token.Position, message string) *Diagnostic {
 	return &Diagnostic{
 		Code: code, Phase: phase, Position: start,
+		RangeStartPosition: start, HasRangeStartPosition: true,
 		EndPosition: end, HasEndPosition: true, Message: message,
 	}
 }
@@ -44,12 +47,13 @@ func (d *Diagnostic) Error() string { return d.formatError(false) }
 func (d *Diagnostic) formatError(includeEnd bool) string {
 	prefix := fmt.Sprintf("%s error: %s", d.Phase, d.Message)
 	if includeEnd && d.hasValidSourceSpan() {
+		rangeStart := d.sourceRangeStart()
 		if d.Source != "" {
 			prefix = fmt.Sprintf("%s:%d:%d-%d:%d: %s", d.Source,
-				d.Position.Line, d.Position.Column, d.EndPosition.Line, d.EndPosition.Column, prefix)
+				rangeStart.Line, rangeStart.Column, d.EndPosition.Line, d.EndPosition.Column, prefix)
 		} else {
 			prefix = fmt.Sprintf("%d:%d-%d:%d: %s",
-				d.Position.Line, d.Position.Column, d.EndPosition.Line, d.EndPosition.Column, prefix)
+				rangeStart.Line, rangeStart.Column, d.EndPosition.Line, d.EndPosition.Column, prefix)
 		}
 	} else if d.Source != "" && d.Position.Line > 0 && d.Position.Column > 0 {
 		prefix = fmt.Sprintf("%s:%d:%d: %s", d.Source, d.Position.Line, d.Position.Column, prefix)
@@ -64,11 +68,21 @@ func (d *Diagnostic) formatError(includeEnd bool) string {
 	return fmt.Sprintf("%s [%s]", prefix, d.Code)
 }
 
+func (d *Diagnostic) sourceRangeStart() token.Position {
+	if d != nil && d.HasRangeStartPosition {
+		return d.RangeStartPosition
+	}
+	if d == nil {
+		return token.Position{}
+	}
+	return d.Position
+}
+
 func (d *Diagnostic) hasValidSourceSpan() bool {
 	if d == nil || !d.HasEndPosition {
 		return false
 	}
-	start, end := d.Position, d.EndPosition
+	start, end := d.sourceRangeStart(), d.EndPosition
 	if start.Offset < 0 || end.Offset < start.Offset ||
 		start.Line <= 0 || start.Column <= 0 || end.Line <= 0 || end.Column <= 0 {
 		return false
@@ -114,8 +128,16 @@ func NewAtSource(code, phase, source string, position token.Position, message st
 // NewAtSourceSpan constructs a source-path diagnostic with an exclusive end
 // position. Its Error string remains compatible with start-only diagnostics.
 func NewAtSourceSpan(code, phase, source string, start, end token.Position, message string) *Diagnostic {
+	return NewAtSourceRange(code, phase, source, start, start, end, message)
+}
+
+// NewAtSourceRange keeps the diagnostic anchor separate from the syntactic
+// start of the range shown to the user. anchor remains the legacy line/column;
+// rangeStart is the left edge of the source syntax, and end is exclusive.
+func NewAtSourceRange(code, phase, source string, anchor, rangeStart, end token.Position, message string) *Diagnostic {
 	return &Diagnostic{
-		Code: code, Phase: phase, Source: source, Position: start,
+		Code: code, Phase: phase, Source: source, Position: anchor,
+		RangeStartPosition: rangeStart, HasRangeStartPosition: true,
 		EndPosition: end, HasEndPosition: true, Message: message,
 	}
 }
