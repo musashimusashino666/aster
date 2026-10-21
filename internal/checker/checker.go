@@ -150,7 +150,7 @@ func Analyze(program *ast.Program) (*TypedProgram, error) {
 	c := &Checker{
 		sourceName:      program.SourceName,
 		functions:       map[string]FunctionInfo{},
-		structs:         map[string]StructInfo{
+		structs:         map[string]StructInfo{},
 		enums:           map[string]EnumInfo{},
 		expressionTypes: map[ast.Expr]Type{},
 	}
