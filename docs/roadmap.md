@@ -23,7 +23,7 @@ This roadmap is a planning document, not a commitment that work is already in pr
 - [ ] Full end-to-end source spans including end offsets/columns for front-end, bytecode, and runtime diagnostics (lexer tokens, lexer/parser diagnostics, parsed AST nodes, shared typed IR, Bytecode v8 instructions, and CLI-run VM/Native runtime diagnostics now retain exclusive end positions structurally; standalone Native executables and rendered error ranges remain start-only)
 - [x] Document current VM/Native resource guarantees, CLI deadlines, and non-guarantees in [ADR 0005](adr/0005-native-resource-guarantees.md)
 - [x] Define and implement the deterministic Native fuel budget (100,000,000 units charged per executed statement, function entry, and loop iteration; see [ADR 0009](adr/0009-native-fuel-budget.md))
-- [ ] Define and implement process-wide memory/CPU isolation with guarantees distinct from wrapper deadlines, Native fuel, and per-value limits
+- [ ] Define and implement process-wide memory/CPU isolation with guarantees distinct from wrapper deadlines, Native fuel, and per-value limits (design proposal: [ADR 0010](adr/0010-process-resource-isolation.md); OS-backed enforcement and adversarial validation remain pending)
 - [x] Return-flow analysis for literal-boolean `if` conditions and literal-true `while` loops (nonconstant loops remain conservative)
 - [x] Benchmark harness with pinned VM workloads and reproducible methodology (numeric loops, recursion, function calls, array traversal, string/Unicode operations, and array formatting; end-to-end parse/build and process-memory harnesses remain future work)
 
