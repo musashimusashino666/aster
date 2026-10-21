@@ -1196,6 +1196,9 @@ func (e *expander) typeError(pos token.Position, code, format string, args ...an
 	if e == nil || e.program == nil {
 		return d
 	}
+	// Keep the source path out of Error() for compatibility, but include it
+	// when Render can display a validated source range.
+	d.RenderSource = e.program.SourceName
 	if e.sourceSpans == nil {
 		e.sourceSpans = collectSourceSpans(e.program)
 	}

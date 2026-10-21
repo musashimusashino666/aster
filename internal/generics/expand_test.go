@@ -102,8 +102,8 @@ func TestExpansionDiagnosticRetainsSyntacticSourceRange(t *testing.T) {
 	if !strings.HasPrefix(got.Error(), "2:18: type error:") {
 		t.Fatalf("legacy diagnostic text = %q, want the call-delimiter location", got.Error())
 	}
-	if rendered := diagnostic.Render(err); !strings.HasPrefix(rendered, "2:14-2:20: type error:") {
-		t.Fatalf("rendered expansion diagnostic = %q, want the call's source range", rendered)
+	if rendered := diagnostic.Render(err); !strings.HasPrefix(rendered, "generics.ast:2:14-2:20: type error:") {
+		t.Fatalf("rendered expansion diagnostic = %q, want the source path and call range", rendered)
 	}
 }
 
@@ -131,6 +131,30 @@ func TestExpansionDiagnosticRangesCoverFunctionStructAndEnumPaths(t *testing.T) 
 			source: "enum Nest<T> { End, Next(Nest<Array<T>>), }\nfn consume(value: Nest<i64>) { }",
 			code:   "TYP089",
 			marker: "Nest<Array<T>>",
+		},
+		{
+			name:   "wrong generic function argument count",
+			source: "fn identity<T>(value: T) -> T { return value; }\nlet result = identity::<i64, string>(1);",
+			code:   diagnostic.TypeGenericArgumentCount,
+			marker: "identity::<i64, string>(1)",
+		},
+		{
+			name:   "wrong generic struct argument count",
+			source: "struct Box<T> { value: T }\nlet result = Box::<i64, string>(1);",
+			code:   diagnostic.TypeGenericStructArgumentCount,
+			marker: "Box::<i64, string>(1)",
+		},
+		{
+			name:   "inconsistent generic enum payload inference",
+			source: "enum Pair<T> { Item(T, T) }\nlet result = Pair::Item(1, \"x\");",
+			code:   diagnostic.TypeGenericEnumInference,
+			marker: "\"x\"",
+		},
+		{
+			name:   "invalid type in generic expansion",
+			source: "fn identity<T>(value: T) -> T { return value; }\nfn broken(value: Missing) { }",
+			code:   diagnostic.TypeInvalidTypeAnnotation,
+			marker: "Missing",
 		},
 	}
 
@@ -164,8 +188,8 @@ func TestExpansionDiagnosticRangesCoverFunctionStructAndEnumPaths(t *testing.T) 
 			if !strings.Contains(fragment, tt.marker) {
 				t.Fatalf("displayed source range %q does not cover marker %q", fragment, tt.marker)
 			}
-			if rendered := diagnostic.Render(err); !strings.Contains(rendered, "-") {
-				t.Fatalf("rendered diagnostic lacks a source range: %q", rendered)
+			if rendered := diagnostic.Render(err); !strings.HasPrefix(rendered, "generic-ranges.ast:") || !strings.Contains(rendered, "-") {
+				t.Fatalf("rendered diagnostic lacks its source path and range: %q", rendered)
 			}
 			// Range presentation must not change the legacy anchor-based Error text.
 			if got.Error() != err.Error() {

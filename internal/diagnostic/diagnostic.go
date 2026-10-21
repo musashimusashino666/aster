@@ -22,7 +22,9 @@ type Diagnostic struct {
 	EndPosition           token.Position
 	HasEndPosition        bool
 	Source                string
-	Cause                 error
+	// RenderSource is used only for range-aware presentation; Error() ignores it.
+	RenderSource string
+	Cause        error
 }
 
 // New constructs a diagnostic with a stable code, phase, position, and message.
@@ -48,8 +50,12 @@ func (d *Diagnostic) formatError(includeEnd bool) string {
 	prefix := fmt.Sprintf("%s error: %s", d.Phase, d.Message)
 	if includeEnd && d.hasValidSourceSpan() {
 		rangeStart := d.sourceRangeStart()
-		if d.Source != "" {
-			prefix = fmt.Sprintf("%s:%d:%d-%d:%d: %s", d.Source,
+		renderSource := d.Source
+		if d.RenderSource != "" {
+			renderSource = d.RenderSource
+		}
+		if renderSource != "" {
+			prefix = fmt.Sprintf("%s:%d:%d-%d:%d: %s", renderSource,
 				rangeStart.Line, rangeStart.Column, d.EndPosition.Line, d.EndPosition.Column, prefix)
 		} else {
 			prefix = fmt.Sprintf("%d:%d-%d:%d: %s",

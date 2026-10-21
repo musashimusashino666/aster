@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Include the original source path when rendering generic-expansion diagnostics with validated source ranges, without changing the legacy `Diagnostic.Error()` text.
+
 - Added structured source ranges to generic-expansion diagnostics when their legacy anchors map to source-backed AST nodes, while preserving stable diagnostic anchors and the existing `Diagnostic.Error()` text.
 - Defined a separate syntactic source-range start for compound expressions, propagated it through typed IR, bytecode v9, VM and Native diagnostics, and rendered ranges in standalone Native executables while keeping legacy diagnostic anchors stable.
 
