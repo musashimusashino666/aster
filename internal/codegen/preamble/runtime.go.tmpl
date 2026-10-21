@@ -21,6 +21,7 @@ const asterMinI64 int64 = -1 << 63
 var asterCallDepth int
 var asterStdoutBytes int64
 var asterSourceName string
+var asterSourceSpans = map[asterSourcePosition]asterSourceSpan{}
 
 type asterSourcePosition struct {
 	line   int
@@ -120,14 +121,14 @@ func asterAddString(a, b string, line, column int) string {
 }
 
 type asterRuntimeFailure struct {
-	code     string
-	message  string
-	detail   string
-	source   string
-	line     int
-	column   int
-	span     asterSourceSpan
-	hasSpan  bool
+	code    string
+	message string
+	detail  string
+	source  string
+	line    int
+	column  int
+	span    asterSourceSpan
+	hasSpan bool
 }
 
 func (failure asterRuntimeFailure) Error() string {
