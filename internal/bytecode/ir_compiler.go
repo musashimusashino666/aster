@@ -141,6 +141,9 @@ func (c *irFunctionCompiler) emitABC(op Op, a, b, operandC, line, column int) in
 	ins := Instruction{Op: op, A: a, B: b, C: operandC, Line: line, Column: column}
 	if c.hasSpan && line == c.currentStart.Line && column == c.currentStart.Column {
 		ins.Offset = c.currentStart.Offset
+		ins.RangeStartOffset = c.currentRangeStart.Offset
+		ins.RangeStartLine = c.currentRangeStart.Line
+		ins.RangeStartColumn = c.currentRangeStart.Column
 		ins.EndOffset = c.currentEnd.Offset
 		ins.EndLine = c.currentEnd.Line
 		ins.EndColumn = c.currentEnd.Column
@@ -168,6 +171,9 @@ func (c *irFunctionCompiler) emitABCAt(op Op, a, b, operandC int, start, end tok
 	ins := Instruction{Op: op, A: a, B: b, C: operandC, Line: start.Line, Column: start.Column}
 	if start.Line > 0 && start.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= start.Offset {
 		ins.Offset = start.Offset
+		ins.RangeStartOffset = start.Offset
+		ins.RangeStartLine = start.Line
+		ins.RangeStartColumn = start.Column
 		ins.EndOffset = end.Offset
 		ins.EndLine = end.Line
 		ins.EndColumn = end.Column
