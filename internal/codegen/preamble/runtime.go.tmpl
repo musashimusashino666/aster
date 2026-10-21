@@ -170,16 +170,20 @@ func asterWriteRuntimeDiagnostic(failure asterRuntimeFailure) {
 		return
 	}
 	record := asterRuntimeProtocolDiagnostic{
-		Kind: "aster-runtime-diagnostic", Code: failure.code,
-		Source: failure.source, Message: failure.detail,
-		Line: failure.line, Column: failure.column,
-		Offset: failure.span.offset,
+		Kind            : "aster-runtime-diagnostic",
+		Code            : failure.code,
+		Source          : failure.source,
+		Message         : failure.detail,
+		Line            : failure.line,
+		Column          : failure.column,
+		Offset          : failure.span.offset,
 		RangeStartOffset: failure.span.rangeStartOffset,
-		RangeStartLine: failure.span.rangeStartLine,
+		RangeStartLine  : failure.span.rangeStartLine,
 		RangeStartColumn: failure.span.rangeStartColumn,
-		EndOffset: failure.span.endOffset,
-		EndLine: failure.span.endLine, EndColumn: failure.span.endColumn,
-		HasSpan: failure.hasSpan,
+		EndOffset       : failure.span.endOffset,
+		EndLine         : failure.span.endLine,
+		EndColumn       : failure.span.endColumn,
+		HasSpan         : failure.hasSpan,
 	}
 	encoded, err := json.Marshal(record)
 	if err != nil {
