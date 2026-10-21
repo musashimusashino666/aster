@@ -151,11 +151,11 @@ type IndexAssignStmt struct {
 	At         token.Position
 	EndAt      token.Position
 	RangeStart token.Position
-	Target   SymbolID
-	Name     string
-	RootType Type
-	Indices  []Expr
-	Value    Expr
+	Target     SymbolID
+	Name       string
+	RootType   Type
+	Indices    []Expr
+	Value      Expr
 }
 
 func (n *IndexAssignStmt) Pos() token.Position    { return n.At }
