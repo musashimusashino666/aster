@@ -235,6 +235,10 @@ func asterRuntimeDiagnosticCode(message string) string {
 		return "RUN012"
 	case strings.Contains(message, "instruction budget exceeded"):
 		return "RUN013"
+	case strings.Contains(message, "process memory limit exceeded"):
+		return "RUN018"
+	case strings.Contains(message, "cumulative CPU-time budget exceeded"):
+		return "RUN019"
 	case strings.Contains(message, "operand stack limit exceeded"):
 		return "RUN014"
 	case strings.Contains(message, "active local slot limit exceeded"):
