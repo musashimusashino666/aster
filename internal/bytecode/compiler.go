@@ -3,8 +3,8 @@ package bytecode
 import (
 	"fmt"
 
-	"github.com/aster-lang/aster/internal/ast"
-	"github.com/aster-lang/aster/internal/checker"
+	"github.com/musashimusashino666/aster/internal/ast"
+	"github.com/musashimusashino666/aster/internal/checker"
 )
 
 // Compile type-checks an Aster AST and lowers its normalized IR to portable
