@@ -84,7 +84,7 @@ func TestExpansionDiagnosticRetainsSyntacticSourceRange(t *testing.T) {
 	if !errors.As(err, &got) {
 		t.Fatalf("expansion error type = %T, want *diagnostic.Diagnostic", err)
 	}
-	callStart := strings.Index(source, "make();",)
+	callStart := strings.Index(source, "make();")
 	if callStart < 0 {
 		t.Fatal("generic call marker missing")
 	}
@@ -99,15 +99,11 @@ func TestExpansionDiagnosticRetainsSyntacticSourceRange(t *testing.T) {
 	if !got.HasEndPosition || got.EndPosition.Offset != endOffset {
 		t.Fatalf("range end = %+v (present=%v), want exclusive call end offset %d", got.EndPosition, got.HasEndPosition, endOffset)
 	}
-	if got.Error() == diagnostic.Render(err) {
-		t.Fatal("programmatic Error() should preserve the legacy start-only location while Render shows the source range")
+	if !strings.HasPrefix(got.Error(), "2:18: type error:") {
+		t.Fatalf("legacy diagnostic text = %q, want the call-delimiter location", got.Error())
 	}
-	if rendered := diagnostic.Render(err); !strings.Contains(rendered, "-") || !strings.Contains(rendered, "generics.ast") {
-		// Generic expansion diagnostics historically omit the source name from
-		// Error(); range rendering adds coordinates while retaining that behavior.
-		if !strings.Contains(rendered, "-") {
-			t.Fatalf("rendered expansion diagnostic lacks the range: %q", rendered)
-		}
+	if rendered := diagnostic.Render(err); !strings.HasPrefix(rendered, "2:14-2:20: type error:") {
+		t.Fatalf("rendered expansion diagnostic = %q, want the call's source range", rendered)
 	}
 }
 
