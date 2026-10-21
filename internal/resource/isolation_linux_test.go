@@ -133,3 +133,19 @@ func TestCgroupMemoryHelper(t *testing.T) {
 		t.Fatal("memory test payload was not retained")
 	}
 }
+
+
+func TestRunChecksCPUTimeBudgetWhenWorkloadExitsBetweenPolls(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cpu.stat"), []byte("usage_usec 2000\\nuser_usec 2000\\nsystem_usec 0\\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	waitCh := make(chan error, 1)
+	waitCh <- nil
+	group := &workloadCgroup{path: dir}
+	err := group.wait(context.Background(), waitCh, time.Millisecond)
+	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
+		t.Fatalf("wait() error = %v, want ErrCPUTimeLimitExceeded when completed workload used 2ms against a 1ms budget", err)
+	}
+}
