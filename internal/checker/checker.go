@@ -1167,9 +1167,6 @@ func (c *Checker) nodeTypeError(node ast.Node, code, format string, args ...any)
 		return diagnostic.New(code, "type", token.Position{}, message)
 	}
 	anchor := node.Pos()
-	if expr, ok := node.(ast.Expr); ok {
-		_ = expr
-	}
 	rangeStart := ast.SourceRangeStart(node)
 	end := node.EndPos()
 	valid := anchor.Offset >= rangeStart.Offset && end.Offset >= anchor.Offset &&
