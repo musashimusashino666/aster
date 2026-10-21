@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/parser"
 )
 
 func runGeneratedNativeFailure(t *testing.T, source string) string {
