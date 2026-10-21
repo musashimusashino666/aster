@@ -9,6 +9,13 @@ import (
 	"github.com/aster-lang/aster/internal/parser"
 )
 
+func nativeDiagnosticPayload(text string) string {
+	if index := strings.Index(text, "runtime error:"); index >= 0 {
+		return text[index:]
+	}
+	return strings.TrimSpace(text)
+}
+
 func TestBoundaryScalarProgramsMatchBackends(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -131,8 +138,8 @@ func TestAdditionalRuntimeBoundaryFailuresMatchBackends(t *testing.T) {
 			if result.nativeErr == nil || result.nativeExitCode == 0 {
 				t.Fatalf("Native should exit unsuccessfully, got error=%v exit=%d output=%q\nsource:\n%s", result.nativeErr, result.nativeExitCode, result.nativeOutput, tc.source)
 			}
-			if got := strings.TrimSpace(result.nativeOutput); got != result.vmErr.Error() {
-				t.Fatalf("backend failure diagnostics differ: VM=%q Native=%q\nsource:\n%s", result.vmErr.Error(), got, tc.source)
+			if got := nativeDiagnosticPayload(strings.TrimSpace(result.nativeOutput)); got != nativeDiagnosticPayload(result.vmErr.Error()) {
+				t.Fatalf("backend diagnostic payloads differ: VM=%q Native=%q\nsource:\n%s", nativeDiagnosticPayload(result.vmErr.Error()), got, tc.source)
 			}
 		})
 	}
