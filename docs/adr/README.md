@@ -16,6 +16,7 @@ This directory is the canonical home for Aster Architecture Decision Records (AD
 | [ADR 0008: Bytecode source spans and runtime diagnostics](0008-bytecode-source-spans.md) | Versioned instruction spans and structured VM runtime locations | Accepted | 2026-10-21 |
 | [ADR 0009: Deterministic Native fuel budget](0009-native-fuel-budget.md) | Native statement/function/loop fuel accounting and RUN013 exhaustion | Accepted | 2026-10-21 |
 | [ADR 0010: Process-wide Native resource isolation](0010-process-resource-isolation.md) | Proposed OS-backed process-tree memory/CPU controls, platform support, and diagnostics | Proposed | 2026-10-21 |
+| [ADR 0011: Release, toolchain, and bytecode compatibility policy](0011-release-toolchain-and-bytecode-policy.md) | Product release process, Go support baseline, and strict bytecode compatibility | Accepted | 2026-10-21 |
 
 ## Numbering and file names
 
