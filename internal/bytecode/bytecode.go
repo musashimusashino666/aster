@@ -319,8 +319,8 @@ type Instruction struct {
 	RangeStartLine   int `json:"range_start_line,omitempty"`
 	RangeStartColumn int `json:"range_start_column,omitempty"`
 	EndOffset        int `json:"end_offset,omitempty"`
-	EndLine   int `json:"end_line,omitempty"`
-	EndColumn int `json:"end_column,omitempty"`
+	EndLine          int `json:"end_line,omitempty"`
+	EndColumn        int `json:"end_column,omitempty"`
 }
 type Function struct {
 	Name        string        `json:"name"`
