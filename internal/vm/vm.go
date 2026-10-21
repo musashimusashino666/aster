@@ -2,6 +2,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
