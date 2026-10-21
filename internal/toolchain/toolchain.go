@@ -156,7 +156,6 @@ func RunNativeContext(ctx context.Context, goSource string) (resultErr error) {
 	return nil
 }
 
-
 // RunNativeConstrainedContext builds and runs a Native program inside an
 // explicitly requested OS resource boundary. Unsupported platforms or missing
 // cgroup v2 delegation fail before Aster code is released.
