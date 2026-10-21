@@ -300,6 +300,18 @@ func (group *workloadCgroup) wait(ctx context.Context, waitCh <-chan error, cpuB
 					return ErrMemoryLimitExceeded
 				}
 			}
+			// The workload may finish between polling ticks after consuming more
+			// than its CPU-time budget. Check the final cumulative metric before
+			// accepting the process exit result.
+			if cpuBudget > 0 {
+				usage, usageErr := readCPUUsage(group.path)
+				if usageErr != nil {
+					return fmt.Errorf("%w: read cpu.stat after workload exit: %v", ErrUnavailable, usageErr)
+				}
+				if usage >= uint64(cpuBudget.Microseconds()) {
+					return ErrCPUTimeLimitExceeded
+				}
+			}
 			return err
 		case <-ctx.Done():
 			_ = group.kill()
