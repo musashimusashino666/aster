@@ -1,6 +1,6 @@
 # ADR 0010: Process-wide Native resource isolation
 
-- **Status:** Proposed
+- **Status:** Initial Linux CLI scope validated on WSL2; broader platform proposal remains open
 - **Date:** 2026-10-21
 - **Relationship:** Complements [ADR 0005: Native resource guarantees](0005-native-resource-guarantees.md) and [ADR 0009: Deterministic Native fuel budget](0009-native-fuel-budget.md). This proposal does not change Aster language semantics; the initial opt-in Linux implementation is tracked separately and does not imply cross-platform support.
 
@@ -87,17 +87,31 @@ The first opt-in CLI implementation is intentionally narrower than the complete 
 - Linux requires a delegated cgroup v2 directory where each requested controller is already enabled for child cgroups and `cgroup.kill` is available. `ASTER_CGROUP_ROOT` can select the delegated root; no controller is enabled or host hierarchy modified automatically.
 - The CLI starts its internal launcher, moves that PID into the cgroup, and releases it to `exec` the Native artifact only after membership succeeds. User Aster code therefore cannot run before the boundary is installed.
 - Memory uses `memory.max` plus `memory.swap.max=0`. CPU rate uses `cpu.max`; cumulative CPU time is monitored from `cpu.stat` at a 10 ms polling interval. When the threshold is observed, the supervisor kills the cgroup, waits for it to become empty, and reads `cpu.stat` again. The resulting `RUN019` error records `budget_usec`, final `observed_usec`, `overshoot_usec`, and `sample=post-termination`; if stopping or the final read fails, the error identifies the threshold-detection sample and says why the final sample was unavailable. The privileged validation script requires and preserves the post-termination measurement in its raw log. This measures the observed cgroup-accounted CPU-time excess for that run; it does not guarantee a fixed worst-case overshoot across kernels or workloads.
-- RUN018 is emitted only when both cgroup `memory.events` counters `oom` and `oom_kill` increase during the workload; `memory.oom.group=1` keeps the OOM treatment indivisible. CPU-time enforcement maps to RUN019. Missing controls, inability to establish the cgroup, or cleanup failure fail closed; those failures do not claim the requested limit was enforced. Successful end-to-end enforcement validation on a delegated hierarchy remains tracked by [Issue #85](https://github.com/musashimusashino666/aster/issues/85).
+- RUN018 is emitted only when both cgroup `memory.events` counters `oom` and `oom_kill` increase during the workload; `memory.oom.group=1` keeps the OOM treatment indivisible. CPU-time enforcement maps to RUN019. Missing controls, inability to establish the cgroup, or cleanup failure fail closed; those failures do not claim the requested limit was enforced. Successful end-to-end enforcement validation is recorded below and in [Issue #85](https://github.com/musashimusashino666/aster/issues/85); the supported evidence scope is the WSL2 environment listed there, not a general claim for every Linux kernel or bare-metal host.
 - Windows and macOS implementations, CI integration that grants OS-controller capabilities, resource overhead/overshoot benchmarks, and isolated standalone artifacts remain outstanding. Until those are validated, no cross-platform process-isolation guarantee is made.
 - For privileged Linux validation, run `ASTER_CGROUP_ROOT=/absolute/delegated/root bash scripts/test-resource-isolation.sh`. The script records kernel/controller metadata and verbose raw test output, and fails if any required cgroup integration test skips or does not pass. A regular hosted-CI success does not replace this run.
 
+## Recorded validation evidence
+
+The manual acceptance script `scripts/test-resource-isolation.sh` completed with all required integration tests passing and no skips on:
+
+- Host: Windows 11 / WSL2, Ubuntu 26.04.1 LTS
+- Kernel: `6.18.54.1-microsoft-standard-WSL2`
+- Go: `go1.26.8 linux/amd64`
+- Delegated root: `/sys/fs/cgroup/aster-acceptance`
+- Child controllers: `cpu memory pids`
+
+Measured CPU-time results for a 50,000 µs budget were 59,999 µs after termination (9,999 µs overshoot); a second run observed 60,620 µs (10,620 µs overshoot). At the 0.1 logical-CPU quota, the test observed `cpu.max=10000 100000`, `nr_throttled=5`, and `throttled_usec=440777`. Memory control files were verified at `memory.max=134217728`, `memory.swap.max=0`, and `memory.oom.group=1`. Descendant termination and temporary-cgroup cleanup passed for CPU-time exhaustion and context-deadline cancellation.
+
+These values are per-run observations, not a guaranteed maximum overshoot. Hosted CI may skip the enforcement tests because it does not delegate CPU/memory controllers to child cgroups; the skip reasons are now shown in verbose CI output. The successful manual raw log and reproduction notes are linked from [Issue #85](https://github.com/musashimusashino666/aster/issues/85). Bare-metal Linux has not been independently tested.
+
 ## Staged rollout
 
-1. Review this ADR and settle the public configuration surface and initial measured thresholds.
-2. Implement the capability model and Linux cgroup v2 backend behind explicit constrained mode, including adversarial integration tests.
-3. Add a Windows Job Object backend and platform-specific CI.
-4. Keep hard process-tree memory isolation unavailable on macOS until a suitable outer boundary is validated.
-5. Integrate a standalone-artifact launcher only after it can install the OS boundary before executing user code; until then document standalone Native fuel and existing value limits without claiming process-wide isolation.
+1. [ ] Obtain third-party review of this ADR and PR #84; choose any future default thresholds only from additional end-to-end measurements.
+2. [x] Implement the capability model and Linux cgroup v2 backend behind explicit constrained mode, including adversarial integration tests; the delegated-hierarchy acceptance suite has passed on the recorded WSL2 setup, while wider platform coverage remains limited.
+3. [ ] Add a Windows Job Object backend and platform-specific CI.
+4. [x] Keep hard process-tree memory isolation unavailable on macOS until a suitable outer boundary is validated.
+5. [ ] Integrate a standalone-artifact launcher only after it can install the OS boundary before executing user code; until then document standalone Native fuel and existing value limits without claiming process-wide isolation.
 
 ## References
 
