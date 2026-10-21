@@ -1052,7 +1052,8 @@ func TestInstructionSourceSpanRoundTripsThroughJSON(t *testing.T) {
 			Name: "main", Return: "unit",
 			Code: []Instruction{{
 				Op: OpHalt, Line: 2, Column: 4,
-				Offset: 12, EndOffset: 15, EndLine: 2, EndColumn: 7,
+				Offset: 12, RangeStartOffset: 9, RangeStartLine: 2, RangeStartColumn: 1,
+				EndOffset: 15, EndLine: 2, EndColumn: 7,
 			}},
 		}},
 		Entry: 0,
@@ -1070,13 +1071,13 @@ func TestInstructionSourceSpanRoundTripsThroughJSON(t *testing.T) {
 	}
 }
 
-func TestRejectsBytecodeVersionSevenAfterSourceSpanSchemaBump(t *testing.T) {
+func TestRejectsBytecodeVersionEightAfterRangeStartSchemaBump(t *testing.T) {
 	p := &Program{
-		Format: "aster-bytecode", Version: 7, Constants: []Value{},
+		Format: "aster-bytecode", Version: 8, Constants: []Value{},
 		Functions: []Function{{Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}}}},
 		Entry:     0,
 	}
 	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported bytecode version") {
-		t.Fatalf("expected version 7 to be rejected, got %v", err)
+		t.Fatalf("expected version 8 to be rejected, got %v", err)
 	}
 }
