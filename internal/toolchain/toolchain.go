@@ -211,17 +211,20 @@ func RunNativeConstrainedContext(ctx context.Context, goSource string, limits re
 const nativeRuntimeDiagnosticPrefix = "\x1eASTER-RUNTIME-DIAGNOSTIC:"
 
 type nativeRuntimeDiagnosticRecord struct {
-	Kind      string `json:"kind"`
-	Code      string `json:"code"`
-	Source    string `json:"source"`
-	Message   string `json:"message"`
-	Offset    int    `json:"offset"`
-	Line      int    `json:"line"`
-	Column    int    `json:"column"`
-	EndOffset int    `json:"end_offset"`
-	EndLine   int    `json:"end_line"`
-	EndColumn int    `json:"end_column"`
-	HasSpan   bool   `json:"has_span"`
+	Kind             string `json:"kind"`
+	Code             string `json:"code"`
+	Source           string `json:"source"`
+	Message          string `json:"message"`
+	Offset           int    `json:"offset"`
+	Line             int    `json:"line"`
+	Column           int    `json:"column"`
+	RangeStartOffset int    `json:"range_start_offset"`
+	RangeStartLine   int    `json:"range_start_line"`
+	RangeStartColumn int    `json:"range_start_column"`
+	EndOffset        int    `json:"end_offset"`
+	EndLine          int    `json:"end_line"`
+	EndColumn        int    `json:"end_column"`
+	HasSpan          bool   `json:"has_span"`
 }
 
 func parseNativeRuntimeDiagnostic(stderr []byte) error {
@@ -244,8 +247,21 @@ func parseNativeRuntimeDiagnostic(stderr []byte) error {
 				(record.EndLine == record.Line && record.EndColumn < record.Column) {
 				return nil
 			}
+			rangeStart := token.Position{
+				Offset: record.RangeStartOffset, Line: record.RangeStartLine, Column: record.RangeStartColumn,
+			}
+			// Older structured records do not carry a distinct range start.
+			if record.RangeStartLine == 0 && record.RangeStartColumn == 0 && record.RangeStartOffset == 0 {
+				rangeStart = start
+			}
+			if rangeStart.Offset < 0 || rangeStart.Line <= 0 || rangeStart.Column <= 0 ||
+				rangeStart.Offset > record.Offset || record.Offset > record.EndOffset ||
+				(record.EndLine < rangeStart.Line ||
+				(record.EndLine == rangeStart.Line && record.EndColumn < rangeStart.Column)) {
+				return nil
+			}
 			end := token.Position{Offset: record.EndOffset, Line: record.EndLine, Column: record.EndColumn}
-			return diagnostic.NewAtSourceSpan(record.Code, "runtime", record.Source, start, end, record.Message)
+			return diagnostic.NewAtSourceRange(record.Code, "runtime", record.Source, start, rangeStart, end, record.Message)
 		}
 		return diagnostic.NewAtSource(record.Code, "runtime", record.Source, start, record.Message)
 	}
