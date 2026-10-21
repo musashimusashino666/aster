@@ -87,14 +87,14 @@ func Run(ctx context.Context, cmd *exec.Cmd, releasePath string, limits Limits) 
 // secondary failure to stop and remove the temporary cgroup.
 func cleanupAfterFailure(group *workloadCgroup, cause error) error {
 	if cleanupErr := group.cleanup(); cleanupErr != nil {
-		return errors.Join(cause, fmt.Errorf("%w: cgroup cleanup after setup failure at %s: %v", ErrUnavailable, group.path, cleanupErr))
+		return errors.Join(cause, fmt.Errorf("%w: cgroup cleanup after pre-execution failure at %s: %v", ErrUnavailable, group.path, cleanupErr))
 	}
 	return cause
 }
 
 type workloadCgroup struct {
-	path            string
-	limits          Limits
+	path                 string
+	limits               Limits
 	initialOOMGroupKills uint64
 }
 
@@ -384,12 +384,11 @@ func (group *workloadCgroup) waitUntilEmpty() error {
 	}
 }
 
-// handleWorkloadExit resolves the race where process completion and context
-// cancellation become ready together. Cancellation takes precedence over a
-// successful exit, and the whole cgroup is asked to stop before returning.
-// handleWorkloadExit does not finalize the workload result until the entire
-// cgroup is empty. The main process may exit while descendants still consume
-// CPU or trigger OOM events, so stop them before taking final metric samples.
+// handleWorkloadExit resolves process-exit and context-cancellation races. It
+// does not finalize the workload result until the entire cgroup is empty. The
+// main process may exit while descendants still consume CPU or trigger OOM
+// events, so stop them before taking final metric samples. Cancellation takes
+// precedence over a resource classification when the context has expired.
 func (group *workloadCgroup) handleWorkloadExit(ctx context.Context, waitErr error, cpuBudget time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		_ = group.kill()
