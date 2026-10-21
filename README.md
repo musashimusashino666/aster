@@ -104,6 +104,22 @@ Build a native executable:
 
 The native build currently uses generated Go source and the installed Go compiler. Aster users do not need to edit generated source, but Go is a build-time dependency. The VM and native backend are distinct execution paths; they are not two independent language implementations. Both backends enforce function call-depth, string-size, array-size, a 16 MiB rendered-value limit for each individual `print`, and a 64 MiB cumulative stdout limit (counting each trailing newline). The VM additionally enforces an instruction budget, operand-stack limit, and active-local-slot budget; these VM-specific budgets do not apply to generated Native executables and are not a process sandbox. `aster build` applies a two-minute deadline to native source generation and host Go-toolchain work; that is not a runtime limit for the resulting executable. `aster run --engine native` applies a five-minute deadline spanning native source generation, build, and execution. The deadline clock starts before source loading and analysis. Source loading, parsing, and type checking are not cooperatively preemptible, so expiry during one of those phases is reported immediately after the phase returns; Native code generation checks the context recursively, and host-toolchain child processes are canceled at the deadline. A standalone Native executable enforces a deterministic budget of 100,000,000 Native fuel units per execution (one unit per executed IR statement, function entry, and loop iteration; exhaustion is RUN013), but these units are not equivalent to VM instruction steps and do not cap CPU seconds or process memory. It has no Aster-controlled wall-clock supervisor and runs with the host process's privileges, so it is not a sandbox for untrusted source.
 
+### Opt-in Linux Native process limits
+
+On Linux, CLI Native execution can opt in to cgroup v2 controls:
+
+```bash
+./bin/aster run --engine native --resource-profile constrained \
+  --memory-limit 256MiB --cpu-rate 1.0 --cpu-time-limit 30s \
+  examples/hello.ast
+```
+
+The flags are independent: `--memory-limit` accepts a positive byte count or `B`, `KiB`, `MiB`, or `GiB`; `--cpu-rate` is a maximum throughput in logical CPUs (for example, `0.5`); `--cpu-time-limit` is an aggregate cgroup CPU-time budget such as `30s`. At least one limit is required. The memory limit configures `memory.max` and disables cgroup-accounted swap for the workload. CPU-time enforcement polls `cpu.stat`, so termination can overshoot the requested budget; no exact CPU-time deadline is claimed.
+
+This mode requires a delegated cgroup v2 directory with the requested `memory`/`cpu` controllers enabled for child cgroups and a working `cgroup.kill` control. `ASTER_CGROUP_ROOT` can name an explicit absolute path to such a delegated directory; otherwise Aster inspects the current process's cgroup. Unsupported or unavailable controls fail with `TOOL008` before Native Aster code is executed; they do not fall back to unrestricted execution. Windows and macOS process-tree resource enforcement are not implemented. The normal Native mode and standalone binaries produced by `aster build` do not gain process-wide isolation, and constrained execution is not a filesystem/network sandbox.
+
+See [ADR 0010](docs/adr/0010-process-resource-isolation.md) for the enforcement contract and limitations.
+
 ## Language tour
 
 ```aster
