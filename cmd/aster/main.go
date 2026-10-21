@@ -13,15 +13,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aster-lang/aster/internal/bytecode"
-	"github.com/aster-lang/aster/internal/checker"
-	"github.com/aster-lang/aster/internal/codegen"
-	"github.com/aster-lang/aster/internal/diagnostic"
-	"github.com/aster-lang/aster/internal/formatter"
-	"github.com/aster-lang/aster/internal/parser"
-	"github.com/aster-lang/aster/internal/resource"
-	"github.com/aster-lang/aster/internal/toolchain"
-	"github.com/aster-lang/aster/internal/vm"
+	"github.com/musashimusashino666/aster/internal/bytecode"
+	"github.com/musashimusashino666/aster/internal/checker"
+	"github.com/musashimusashino666/aster/internal/codegen"
+	"github.com/musashimusashino666/aster/internal/diagnostic"
+	"github.com/musashimusashino666/aster/internal/formatter"
+	"github.com/musashimusashino666/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/resource"
+	"github.com/musashimusashino666/aster/internal/toolchain"
+	"github.com/musashimusashino666/aster/internal/vm"
 )
 
 //go:embed VERSION
