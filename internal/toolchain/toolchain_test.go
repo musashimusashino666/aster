@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/aster-lang/aster/internal/resource"
 )
 
 func requireNativeToolchain(t *testing.T) {
@@ -109,5 +111,21 @@ func TestRunNativeContextStopsLongRunningProgram(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "native program timed out") || !strings.Contains(err.Error(), "[TOOL002]") {
 		t.Fatalf("expected coded native program timeout diagnostic, got %v", err)
+	}
+}
+
+func TestRunNativeConstrainedFailsClosedWithoutCgroupV2(t *testing.T) {
+	requireNativeToolchain(t)
+	t.Setenv("ASTER_CGROUP_ROOT", t.TempDir())
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	const source = "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"must not execute\") }\n"
+	err := RunNativeConstrainedContext(ctx, source, resource.Limits{MemoryMaxBytes: 64 << 20})
+	if err == nil {
+		t.Fatal("RunNativeConstrainedContext() succeeded without cgroup v2 controls")
+	}
+	if !strings.Contains(err.Error(), "[TOOL008]") {
+		t.Fatalf("expected TOOL008 fail-closed diagnostic, got %v", err)
 	}
 }
