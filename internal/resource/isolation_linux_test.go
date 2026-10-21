@@ -171,6 +171,38 @@ func TestRunChecksCPUTimeBudgetWhenWorkloadExitsBetweenPolls(t *testing.T) {
 	}
 }
 
+func TestCPUStatReadDoesNotMaskExpiredContext(t *testing.T) {
+	dir := t.TempDir()
+	killPath := filepath.Join(dir, "cgroup.kill")
+	if err := os.WriteFile(killPath, []byte("0"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	group := &workloadCgroup{
+		path: dir,
+		cpuUsageReader: func(string) (uint64, error) {
+			cancel()
+			return 1_000, nil
+		},
+	}
+	err := group.wait(ctx, make(chan error), time.Millisecond)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("wait() error = %v, want context.Canceled when context expires during cpu.stat read", err)
+	}
+	if errors.Is(err, ErrCPUTimeLimitExceeded) {
+		t.Fatalf("wait() misclassified read-time cancellation as a CPU limit: %v", err)
+	}
+	got, err := os.ReadFile(killPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "1" {
+		t.Fatalf("cgroup.kill = %q, want %q after canceled context", got, "1")
+	}
+}
+
 func TestCPUTimeLimitErrorReportsPostTerminationOvershoot(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
