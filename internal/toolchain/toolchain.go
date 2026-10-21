@@ -50,11 +50,11 @@ func BuildNativeContext(ctx context.Context, goSource, output string) (resultErr
 	}
 	goPath, err := exec.LookPath("go")
 	if err != nil {
-		return fmt.Errorf("native backend requires Go 1.23 or newer; executable %q was not found in PATH", "go")
+		return fmt.Errorf("native backend requires Go 1.26 or newer; executable %q was not found in PATH", "go")
 	}
 	gofmtPath, err := exec.LookPath("gofmt")
 	if err != nil {
-		return fmt.Errorf("native backend requires gofmt (normally installed with Go 1.23 or newer)")
+		return fmt.Errorf("native backend requires gofmt (normally installed with Go 1.26 or newer)")
 	}
 	abs, err := filepath.Abs(output)
 	if err != nil {
