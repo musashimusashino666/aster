@@ -2,6 +2,8 @@ package tests
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -14,8 +16,10 @@ import (
 	"github.com/aster-lang/aster/internal/bytecode"
 	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/codegen"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/parser"
 	"github.com/aster-lang/aster/internal/toolchain"
+	"github.com/aster-lang/aster/internal/token"
 	"github.com/aster-lang/aster/internal/vm"
 )
 
@@ -1285,5 +1289,53 @@ print(match throughCall { Option::Some(value) => value, Option::None => 0, });
 	}
 	if got := string(nativeOutput); got != vmOutput.String() {
 		t.Fatalf("generic enum backend output differs: VM=%q Native=%q", vmOutput.String(), got)
+	}
+}
+
+func TestNativeRunContextReturnsStructuredRuntimeSpan(t *testing.T) {
+	source := "let result = 10 / 0;"
+	const sourceName = "native-span.ast"
+	tree, err := parser.Parse(source, sourceName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, err := bytecode.Compile(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	vmErr := vm.Run(program, &output)
+	if vmErr == nil {
+		t.Fatal("VM execution should fail for division by zero")
+	}
+	goSource, err := codegen.Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeErr := toolchain.RunNativeContext(context.Background(), goSource)
+	if nativeErr == nil {
+		t.Fatal("Native execution should fail for division by zero")
+	}
+
+	var vmDiagnostic, nativeDiagnostic *diagnostic.Diagnostic
+	if !errors.As(vmErr, &vmDiagnostic) || !errors.As(nativeErr, &nativeDiagnostic) {
+		t.Fatalf("runtime errors should retain Diagnostic types: VM=%T Native=%T", vmErr, nativeErr)
+	}
+	startOffset := strings.Index(source, "/")
+	endOffset := strings.Index(source, "0;") + 1
+	wantStart := token.Position{Offset: startOffset, Line: 1, Column: startOffset + 1}
+	wantEnd := token.Position{Offset: endOffset, Line: 1, Column: endOffset + 1}
+	for name, got := range map[string]*diagnostic.Diagnostic{"VM": vmDiagnostic, "Native": nativeDiagnostic} {
+		if !got.HasEndPosition || got.Position != wantStart || got.EndPosition != wantEnd {
+			t.Errorf("%s runtime span = %+v..%+v (has=%v), want %+v..%+v",
+				name, got.Position, got.EndPosition, got.HasEndPosition, wantStart, wantEnd)
+		}
+		if got.Source != sourceName || got.Code != diagnostic.RuntimeDivisionByZero {
+			t.Errorf("%s runtime diagnostic source/code = %q/%q, want %q/%q",
+				name, got.Source, got.Code, sourceName, diagnostic.RuntimeDivisionByZero)
+		}
+	}
+	if vmErr.Error() != nativeErr.Error() {
+		t.Fatalf("VM and Native error strings differ: VM=%q Native=%q", vmErr.Error(), nativeErr.Error())
 	}
 }
