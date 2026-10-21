@@ -279,7 +279,7 @@ func TestMemoryLimitClassificationRequiresBothOOMCounters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			data := fmt.Sprintf("low 0\\nhigh 0\\nmax 0\\noom %d\\noom_kill %d\\n", tt.currentOOM, tt.currentKill)
+			data := fmt.Sprintf("low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\n", tt.currentOOM, tt.currentKill)
 			if err := os.WriteFile(filepath.Join(dir, "memory.events"), []byte(data), 0o600); err != nil {
 				t.Fatal(err)
 			}
