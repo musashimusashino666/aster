@@ -46,9 +46,10 @@ func (b *limitedBuffer) WriteByte(value byte) error {
 func (b *limitedBuffer) String() string { return b.data.String() }
 
 type generator struct {
-	out    limitedBuffer
-	indent int
-	ctx    context.Context
+	out          limitedBuffer
+	indent       int
+	ctx          context.Context
+	sourceSpans  map[sourceSpanKey]sourceSpanValue
 }
 
 func (g *generator) checkContext() error {
@@ -163,7 +164,10 @@ func generateTypedWithContextAndLimit(ctx context.Context, typed *checker.TypedP
 	if err := validateEnumResourceLimits(typed.IR.EnumTypes); err != nil {
 		return "", err
 	}
-	g := &generator{out: limitedBuffer{limit: sourceLimit}, ctx: ctx}
+	g := &generator{
+		out: limitedBuffer{limit: sourceLimit}, ctx: ctx,
+		sourceSpans: make(map[sourceSpanKey]sourceSpanValue),
+	}
 	for _, fn := range typed.IR.Functions {
 		ret := string(fn.ReturnType)
 		if !langtypes.ValidName(ret) {
@@ -220,7 +224,7 @@ func generateTypedWithContextAndLimit(ctx context.Context, typed *checker.TypedP
 	g.indent++
 	g.line("asterCallDepth = 1")
 	g.line("asterSourceName = " + strconv.Quote(typed.IR.SourceName))
-	g.line("defer func() { if recovered := recover(); recovered != nil { if failure, ok := recovered.(asterRuntimeFailure); ok { fmt.Fprintln(os.Stderr, failure.Error()); os.Exit(1) }; panic(recovered) } }()")
+	g.line("defer func() { if recovered := recover(); recovered != nil { if failure, ok := recovered.(asterRuntimeFailure); ok { fmt.Fprintln(os.Stderr, failure.Error()); asterWriteRuntimeDiagnostic(failure); os.Exit(1) }; panic(recovered) } }()")
 	for _, stmt := range typed.IR.Body {
 		if err := g.checkContext(); err != nil {
 			return "", err
@@ -234,6 +238,9 @@ func generateTypedWithContextAndLimit(ctx context.Context, typed *checker.TypedP
 	}
 	g.indent--
 	g.line("}")
+	if err := g.writeSourceSpanTable(); err != nil {
+		return "", err
+	}
 	if err := g.checkNativeSourceLimit(typed.IR.SourceName, firstNativeSourcePosition(typed.Tree)); err != nil {
 		return "", err
 	}
