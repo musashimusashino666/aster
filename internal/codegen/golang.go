@@ -222,7 +222,6 @@ func generateTypedWithContextAndLimit(ctx context.Context, typed *checker.TypedP
 	}
 	g.line("func main() {")
 	g.indent++
-	g.line("asterAwaitResourceRelease()")
 	g.line("asterCallDepth = 1")
 	g.line("asterSourceName = " + strconv.Quote(typed.IR.SourceName))
 	g.line("defer func() { if recovered := recover(); recovered != nil { if failure, ok := recovered.(asterRuntimeFailure); ok { fmt.Fprintln(os.Stderr, failure.Error()); asterWriteRuntimeDiagnostic(failure); os.Exit(1) }; panic(recovered) } }()")
