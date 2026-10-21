@@ -8,36 +8,9 @@ import (
 	"os"
 	"reflect"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
-
-// asterAwaitResourceRelease blocks user Aster code until the Native process has
-// been attached to its requested OS resource controller. Normal runs unset the
-// gate, so this path is used only for opt-in constrained execution.
-func asterAwaitResourceRelease() {
-	gate := os.Getenv("ASTER_RESOURCE_GATE")
-	if gate == "" {
-		return
-	}
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		_, err := os.Stat(gate)
-		if err == nil {
-			return
-		}
-		if !os.IsNotExist(err) {
-			fmt.Fprintln(os.Stderr, "native resource supervisor gate failed")
-			os.Exit(125)
-		}
-		if time.Now().After(deadline) {
-			fmt.Fprintln(os.Stderr, "native resource supervisor gate timed out")
-			os.Exit(125)
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
 
 const asterMaxStringBytes = 16777216
 const asterMaxStdoutBytes = 67108864
