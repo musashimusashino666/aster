@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-21
-- **Relationship:** Complements [ADR 0005: Native resource guarantees](0005-native-resource-guarantees.md) and [ADR 0009: Deterministic Native fuel budget](0009-native-fuel-budget.md). This proposal does not change Aster language semantics and is not an implementation claim.
+- **Relationship:** Complements [ADR 0005: Native resource guarantees](0005-native-resource-guarantees.md) and [ADR 0009: Deterministic Native fuel budget](0009-native-fuel-budget.md). This proposal does not change Aster language semantics; the initial opt-in Linux implementation is tracked separately and does not imply cross-platform support.
 
 ## Context
 
@@ -43,7 +43,7 @@ The selected backend must expose which of these controls it actually enforces. T
 **Linux**
 
 - Prefer a dedicated cgroup v2 for each workload when the caller has permission to create or use a delegated cgroup.
-- Use memory.max for the cgroup memory boundary, cpu.max for CPU throughput, and cpu.stat for measured aggregate CPU usage. Configure and inspect the available controller files before launch.
+- Use memory.max for the cgroup RAM-accounting boundary and set memory.swap.max to 0 so the workload cannot extend the budget with cgroup-accounted swap. Use cpu.max for CPU throughput and cpu.stat for measured aggregate CPU usage. Configure and inspect the available controller files before launch; if memory.swap.max cannot be set, fail closed.
 - Treat memory.max as an OS memory-accounting limit, not as a promise that observed usage can never be temporarily above the configured value. The kernel may invoke OOM handling when memory cannot be reclaimed. Confirm a cgroup OOM event before classifying a termination as a configured memory-limit failure.
 - Enforce a cumulative CPU-time budget by monitoring the cgroup's measured usage and terminating the whole workload when the threshold is reached. The polling interval and resulting maximum observed overshoot must be measured and documented.
 - If cgroup v2 or required controller delegation is unavailable, constrained mode must fail closed rather than claim that RLIMIT_AS or a language allocation counter provides an equivalent Go-process memory cap.
@@ -78,6 +78,17 @@ The selected backend must expose which of these controls it actually enforces. T
 - On macOS, verify that unsupported hard-memory requests fail closed and that any supported wall-clock/process-group behavior is reported only at the strength it actually provides.
 - A platform test skipped because the runner lacks required permissions or controllers is not a passing isolation test. CI must report unsupported/skipped capability explicitly.
 - Benchmark startup latency, runtime overhead, controller polling interval, cleanup latency, and measured CPU-time overshoot. Record OS and kernel/runtime versions with results.
+
+## Initial Linux implementation scope
+
+The first opt-in CLI implementation is intentionally narrower than the complete proposal:
+
+- `aster run --engine native --resource-profile constrained` requires at least one explicit `--memory-limit`, `--cpu-rate`, or `--cpu-time-limit` value. Normal Native execution and standalone artifacts remain unchanged.
+- Linux requires a delegated cgroup v2 directory where each requested controller is already enabled for child cgroups and `cgroup.kill` is available. `ASTER_CGROUP_ROOT` can select the delegated root; no controller is enabled or host hierarchy modified automatically.
+- The CLI starts its internal launcher, moves that PID into the cgroup, and releases it to `exec` the Native artifact only after membership succeeds. User Aster code therefore cannot run before the boundary is installed.
+- Memory uses `memory.max` plus `memory.swap.max=0`. CPU rate uses `cpu.max`; cumulative CPU time is monitored from `cpu.stat` at a 10 ms polling interval, so overshoot is possible and must be measured.
+- A confirmed increase in cgroup `memory.events:oom_kill` maps to RUN018. CPU-time enforcement maps to RUN019. Missing controls, inability to establish the cgroup, or cleanup failure fail closed; those failures do not claim the requested limit was enforced.
+- Windows and macOS implementations, CI integration that grants OS-controller capabilities, resource overhead/overshoot benchmarks, and isolated standalone artifacts remain outstanding. Until those are validated, no cross-platform process-isolation guarantee is made.
 
 ## Staged rollout
 
