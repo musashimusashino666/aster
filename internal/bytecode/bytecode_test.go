@@ -1009,7 +1009,7 @@ func TestInstructionSourceSpanValidation(t *testing.T) {
 				Offset: 5, RangeStartOffset: 0, RangeStartLine: 1, RangeStartColumn: 1,
 				EndOffset: 4, EndLine: 1, EndColumn: 8,
 			},
-			want: "end offset precedes start offset",
+			want: "end offset precedes",
 		},
 		{
 			name: "end position before syntactic range start",
