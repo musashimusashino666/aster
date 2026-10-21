@@ -84,5 +84,11 @@ for test_name in "${required_tests[@]}"; do
   fi
 done
 
-echo "all delegated-cgroup integration tests passed" | tee -a "$log_file"
+if ! grep -Eq 'cpu_time_measurement budget_usec=[0-9]+ observed_usec=[0-9]+ overshoot_usec=[0-9]+ sample=post-termination cpu_poll_interval=10ms' "$log_file"; then
+  echo "post-termination CPU-time overshoot measurement is missing from the raw log" >&2
+  echo "inspect raw output: $log_file" >&2
+  exit 1
+fi
+
+echo "all delegated-cgroup integration tests passed with a post-termination CPU-time measurement" | tee -a "$log_file"
 echo "raw validation output: $log_file"
