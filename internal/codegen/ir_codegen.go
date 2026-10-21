@@ -291,6 +291,9 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 	if err := g.checkContext(); err != nil {
 		return err
 	}
+	pos := stmt.Pos()
+	_ = g.irPositionArgs(stmt)
+	g.line(fmt.Sprintf("asterConsumeFuel(%d, %d)", pos.Line, pos.Column))
 	switch n := stmt.(type) {
 	case *ir.BlockStmt:
 		g.line("{")
@@ -384,12 +387,14 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		}
 		return nil
 	case *ir.WhileStmt:
+		pos := n.Pos()
 		if condition, constant := ir.BoolLiteral(n.Condition); constant {
 			if !condition {
 				return nil
 			}
 			g.line("for {")
 			g.indent++
+			g.line(fmt.Sprintf("asterConsumeFuel(%d, %d)", pos.Line, pos.Column))
 			err := g.irBlockContents(n.Body)
 			g.indent--
 			g.line("}")
@@ -399,8 +404,10 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 		if err != nil {
 			return err
 		}
-		g.line("for " + condition + " {")
+		g.line("for {")
 		g.indent++
+		g.line(fmt.Sprintf("asterConsumeFuel(%d, %d)", pos.Line, pos.Column))
+		g.line("if !(" + condition + ") { break }")
 		err = g.irBlockContents(n.Body)
 		g.indent--
 		g.line("}")
