@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-21
+
 - Documented the release/tagging process, strict bytecode-format compatibility, and the Go 1.26+ support policy.
 
 - Include the original source path when rendering generic-expansion diagnostics with validated source ranges, without changing the legacy `Diagnostic.Error()` text.
@@ -26,11 +28,12 @@
 - Expanded regression coverage for VM/native parity and malformed bytecode; added fuzz targets for bytecode loading and validation and an example-to-bytecode verification test.
 - Restored generated-artifact ignore rules and pinned GitHub Actions dependencies to immutable commit SHAs.
 
-## Prototype baseline (not a published release)
+### Initial prototype capabilities
 
-- Added lexer, parser, AST, and static type checker.
-- Added bytecode compiler and bounded stack-based VM.
-- Added native executable generation through Go source lowering.
-- Added CLI commands for check, run, compile, exec, build, and version.
-- Added examples, language/architecture/security docs, CI, and initial regression tests.
-- Documented unsupported language features and backend limitations.
+- Added the lexer, parser, AST, source formatter, static type checker, and typed intermediate representation.
+- Added the statically typed language core: functions, recursion, conditionals, loops, arrays, structs, enums, flat exhaustive `match`, and user-defined generic functions, structs, and enums.
+- Added versioned JSON bytecode compilation, strict bytecode verification, and a bounded stack-based virtual machine.
+- Added native executable generation by lowering supported Aster code to Go and invoking the host Go toolchain.
+- Added CLI commands for `check`, `fmt`, `run`, `compile`, `exec`, `build`, and `version`, with examples and regression, differential, and fuzz coverage.
+- Added language, architecture, diagnostics, resource-limit, security, and roadmap documentation, plus GitHub Actions CI.
+- Documented unsupported language features, resource-budget distinctions, and Native execution's lack of a general-purpose sandbox.
