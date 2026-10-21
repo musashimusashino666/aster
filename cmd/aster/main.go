@@ -224,6 +224,9 @@ func commandRun(args []string) error {
 			if err != nil {
 				return fmt.Errorf("invalid --cpu-rate %q: %w", *cpuRate, err)
 			}
+			if limits.CPUQuota <= 0 {
+				return fmt.Errorf("--cpu-rate must be greater than zero")
+			}
 		}
 		if *cpuTimeLimit != "" {
 			limits.CPUTimeLimit, err = time.ParseDuration(*cpuTimeLimit)
