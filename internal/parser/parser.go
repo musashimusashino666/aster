@@ -590,16 +590,16 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		if err != nil {
 			return nil, 0, p.errorAtCode(t, diagnostic.ParserInvalidFloat, "invalid float")
 		}
-		left = &ast.LiteralExpr{At: t.Pos, EndAt: p.previous().End, Kind: "f64", Text: t.Lexeme, Float: n}
+		left = &ast.LiteralExpr{At: t.Pos, RangeAt: t.Pos, EndAt: p.previous().End, Kind: "f64", Text: t.Lexeme, Float: n}
 		leftDepth = 1
 	case token.String:
-		left = &ast.LiteralExpr{At: t.Pos, EndAt: p.previous().End, Kind: "string", Text: t.Lexeme, String: t.Lexeme}
+		left = &ast.LiteralExpr{At: t.Pos, RangeAt: t.Pos, EndAt: p.previous().End, Kind: "string", Text: t.Lexeme, String: t.Lexeme}
 		leftDepth = 1
 	case token.True:
-		left = &ast.LiteralExpr{At: t.Pos, EndAt: p.previous().End, Kind: "bool", Text: "true", Bool: true}
+		left = &ast.LiteralExpr{At: t.Pos, RangeAt: t.Pos, EndAt: p.previous().End, Kind: "bool", Text: "true", Bool: true}
 		leftDepth = 1
 	case token.False:
-		left = &ast.LiteralExpr{At: t.Pos, EndAt: p.previous().End, Kind: "bool", Text: "false", Bool: false}
+		left = &ast.LiteralExpr{At: t.Pos, RangeAt: t.Pos, EndAt: p.previous().End, Kind: "bool", Text: "false", Bool: false}
 		leftDepth = 1
 	case token.Ident:
 		if p.match(token.DoubleColon) {
@@ -693,7 +693,7 @@ func (p *Parser) parseExpression(min int) (ast.Expr, int, error) {
 		if err != nil {
 			return nil, 0, err
 		}
-		left = &ast.UnaryExpr{At: t.Pos, EndAt: p.previous().End, Op: string(t.Kind), Right: right}
+		left = &ast.UnaryExpr{At: t.Pos, RangeAt: t.Pos, EndAt: p.previous().End, Op: string(t.Kind), Right: right}
 		leftDepth = rightDepth + 1
 	case token.LParen:
 		e, expressionDepth, err := p.parseExpression(0)
