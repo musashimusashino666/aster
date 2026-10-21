@@ -32,6 +32,7 @@ func TestRuntimeCodeAssignsStableFailureClasses(t *testing.T) {
 		{"stdout byte limit exceeded (maximum 64 bytes)", RuntimeStdoutLimit},
 		{"call depth limit exceeded (maximum 4)", RuntimeCallDepthLimit},
 		{"instruction budget exceeded (100 steps)", RuntimeInstructionBudget},
+		{"instruction budget exceeded (maximum 100000000 Native fuel units)", RuntimeInstructionBudget},
 		{"operand stack limit exceeded", RuntimeOperandStackLimit},
 		{"active local slot limit exceeded", RuntimeLocalSlotLimit},
 		{"write output: broken pipe", RuntimeOutputWrite},
