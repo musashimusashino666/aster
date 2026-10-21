@@ -28,8 +28,8 @@ type Diagnostic struct {
 }
 
 // RuntimeFailure carries a stable runtime diagnostic code alongside its
- // human-readable message. Backends can propagate this value without
- // inferring the code from message text.
+// human-readable message. Backends can propagate this value without
+// inferring the code from message text.
 type RuntimeFailure struct {
 	Code    string
 	Message string
