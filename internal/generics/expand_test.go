@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/ast"
-	"github.com/aster-lang/aster/internal/diagnostic"
-	"github.com/aster-lang/aster/internal/limits"
-	"github.com/aster-lang/aster/internal/parser"
-	"github.com/aster-lang/aster/internal/token"
+	"github.com/musashimusashino666/aster/internal/ast"
+	"github.com/musashimusashino666/aster/internal/diagnostic"
+	"github.com/musashimusashino666/aster/internal/limits"
+	"github.com/musashimusashino666/aster/internal/parser"
+	"github.com/musashimusashino666/aster/internal/token"
 )
 
 func parse(t *testing.T, src string) *ast.Program {
