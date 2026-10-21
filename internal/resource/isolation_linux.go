@@ -43,20 +43,16 @@ func Run(ctx context.Context, cmd *exec.Cmd, releasePath string, limits Limits) 
 	}
 
 	if _, err := os.Lstat(releasePath); err == nil {
-		_ = cgroup.cleanup()
-		return fmt.Errorf("%w: release gate already exists", ErrUnavailable)
+		return cleanupAfterFailure(cgroup, fmt.Errorf("%w: release gate already exists", ErrUnavailable))
 	} else if !errors.Is(err, os.ErrNotExist) {
-		_ = cgroup.cleanup()
-		return fmt.Errorf("%w: inspect release gate: %v", ErrUnavailable, err)
+		return cleanupAfterFailure(cgroup, fmt.Errorf("%w: inspect release gate: %v", ErrUnavailable, err))
 	}
 	cmd.Env = replaceEnv(cmd.Env, gateEnvironment, releasePath)
 	if err := ctx.Err(); err != nil {
-		_ = cgroup.cleanup()
-		return err
+		return cleanupAfterFailure(cgroup, err)
 	}
 	if err := cmd.Start(); err != nil {
-		_ = cgroup.cleanup()
-		return err
+		return cleanupAfterFailure(cgroup, err)
 	}
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
@@ -64,22 +60,19 @@ func Run(ctx context.Context, cmd *exec.Cmd, releasePath string, limits Limits) 
 	if err := cgroup.attach(cmd.Process.Pid); err != nil {
 		_ = cmd.Process.Kill()
 		<-waitCh
-		_ = cgroup.cleanup()
-		return err
+		return cleanupAfterFailure(cgroup, err)
 	}
 	if err := ctx.Err(); err != nil {
 		_ = cgroup.kill()
 		_ = cmd.Process.Kill()
 		<-waitCh
-		_ = cgroup.cleanup()
-		return err
+		return cleanupAfterFailure(cgroup, err)
 	}
 	if err := os.WriteFile(releasePath, []byte("release\n"), 0o600); err != nil {
 		_ = cgroup.kill()
 		_ = cmd.Process.Kill()
 		<-waitCh
-		_ = cgroup.cleanup()
-		return fmt.Errorf("%w: release startup gate: %v", ErrUnavailable, err)
+		return cleanupAfterFailure(cgroup, fmt.Errorf("%w: release startup gate: %v", ErrUnavailable, err))
 	}
 
 	result := cgroup.wait(ctx, waitCh, limits.CPUTimeLimit)
@@ -90,11 +83,19 @@ func Run(ctx context.Context, cmd *exec.Cmd, releasePath string, limits Limits) 
 	return result
 }
 
+// cleanupAfterFailure preserves the original failure while surfacing any
+// secondary failure to stop and remove the temporary cgroup.
+func cleanupAfterFailure(group *workloadCgroup, cause error) error {
+	if cleanupErr := group.cleanup(); cleanupErr != nil {
+		return errors.Join(cause, fmt.Errorf("%w: cgroup cleanup after setup failure at %s: %v", ErrUnavailable, group.path, cleanupErr))
+	}
+	return cause
+}
+
 type workloadCgroup struct {
 	path            string
 	limits          Limits
-	initialOOM      uint64
-	initialOOMKills uint64
+	initialOOMGroupKills uint64
 }
 
 type cpuTimeLimitError struct {
@@ -128,7 +129,7 @@ func (err *cpuTimeLimitError) Unwrap() error {
 	return ErrCPUTimeLimitExceeded
 }
 
-func createCgroup(limits Limits) (*workloadCgroup, error) {
+func createCgroup(limits Limits) (result *workloadCgroup, resultErr error) {
 	base, err := delegatedCgroupRoot()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
@@ -164,7 +165,9 @@ func createCgroup(limits Limits) (*workloadCgroup, error) {
 	failed := true
 	defer func() {
 		if failed {
-			_ = group.cleanup()
+			if cleanupErr := group.cleanup(); cleanupErr != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("%w: cgroup setup cleanup failed at %s: %v", ErrUnavailable, group.path, cleanupErr))
+			}
 		}
 	}()
 
@@ -185,13 +188,9 @@ func createCgroup(limits Limits) (*workloadCgroup, error) {
 		if err := writeControl(filepath.Join(path, "memory.oom.group"), "1"); err != nil {
 			return nil, fmt.Errorf("%w: configure memory.oom.group: %v", ErrUnavailable, err)
 		}
-		group.initialOOM, err = readOOMCount(path)
+		group.initialOOMGroupKills, err = readOOMGroupKillCount(path)
 		if err != nil {
-			return nil, fmt.Errorf("%w: read memory.events oom counter: %v", ErrUnavailable, err)
-		}
-		group.initialOOMKills, err = readOOMKillCount(path)
-		if err != nil {
-			return nil, fmt.Errorf("%w: read memory.events oom_kill counter: %v", ErrUnavailable, err)
+			return nil, fmt.Errorf("%w: reliable memory-limit diagnosis requires memory.events.local:oom_group_kill: %v", ErrUnavailable, err)
 		}
 	}
 	if limits.CPUQuota > 0 {
@@ -388,30 +387,57 @@ func (group *workloadCgroup) waitUntilEmpty() error {
 // handleWorkloadExit resolves the race where process completion and context
 // cancellation become ready together. Cancellation takes precedence over a
 // successful exit, and the whole cgroup is asked to stop before returning.
+// handleWorkloadExit does not finalize the workload result until the entire
+// cgroup is empty. The main process may exit while descendants still consume
+// CPU or trigger OOM events, so stop them before taking final metric samples.
 func (group *workloadCgroup) handleWorkloadExit(ctx context.Context, waitErr error, cpuBudget time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		_ = group.kill()
 		return err
 	}
+	if err := group.kill(); err != nil {
+		return fmt.Errorf("%w: stop workload cgroup after main process exit: %v", ErrUnavailable, err)
+	}
+	if err := group.waitUntilEmpty(); err != nil {
+		return fmt.Errorf("%w: wait for workload cgroup to empty after main process exit: %v", ErrUnavailable, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if group.limits.MemoryMaxBytes > 0 {
-		oomCount, oomErr := readOOMCount(group.path)
-		killCount, killErr := readOOMKillCount(group.path)
-		if oomErr == nil && killErr == nil &&
-			oomCount > group.initialOOM && killCount > group.initialOOMKills {
+		groupOOMKills, oomErr := readOOMGroupKillCount(group.path)
+		if oomErr != nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("%w: read local cgroup group-OOM counter after workload exit: %v", ErrUnavailable, oomErr)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if groupOOMKills > group.initialOOMGroupKills {
 			return ErrMemoryLimitExceeded
 		}
 	}
-	// The workload may finish between polling ticks after consuming more
-	// than its CPU-time budget. Check the final cumulative metric before
-	// accepting the process exit result.
+
 	if cpuBudget > 0 {
 		usage, usageErr := readCPUUsage(group.path)
 		if usageErr != nil {
-			return fmt.Errorf("%w: read cpu.stat after workload exit: %v", ErrUnavailable, usageErr)
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("%w: read cpu.stat after workload cgroup termination: %v", ErrUnavailable, usageErr)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if usage >= uint64(cpuBudget.Microseconds()) {
-			return newCPUTimeLimitError(cpuBudget, usage, "workload-exit")
+			return newCPUTimeLimitError(cpuBudget, usage, "post-termination")
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return waitErr
 }
@@ -500,8 +526,12 @@ func readCPUUsage(path string) (uint64, error) {
 	return 0, fmt.Errorf("cpu.stat has no usage_usec field")
 }
 
-func readOOMCount(path string) (uint64, error) {
-	file, err := os.Open(filepath.Join(path, "memory.events"))
+// readOOMGroupKillCount reads the local group-OOM counter. Unlike
+// oom_kill, this counter records a group OOM event for this cgroup rather than
+// any process killed by any kind of OOM killer, allowing RUN018 to be tied to
+// the cgroup on which memory.oom.group was enabled.
+func readOOMGroupKillCount(path string) (uint64, error) {
+	file, err := os.Open(filepath.Join(path, "memory.events.local"))
 	if err != nil {
 		return 0, err
 	}
@@ -509,33 +539,14 @@ func readOOMCount(path string) (uint64, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		if len(fields) == 2 && fields[0] == "oom" {
+		if len(fields) == 2 && fields[0] == "oom_group_kill" {
 			return strconv.ParseUint(fields[1], 10, 64)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return 0, err
 	}
-	return 0, fmt.Errorf("memory.events has no oom field")
-}
-
-func readOOMKillCount(path string) (uint64, error) {
-	file, err := os.Open(filepath.Join(path, "memory.events"))
-	if err != nil {
-		return 0, err
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) == 2 && fields[0] == "oom_kill" {
-			return strconv.ParseUint(fields[1], 10, 64)
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return 0, err
-	}
-	return 0, fmt.Errorf("memory.events has no oom_kill field")
+	return 0, fmt.Errorf("memory.events.local has no oom_group_kill field")
 }
 
 func replaceEnv(existing []string, key, value string) []string {

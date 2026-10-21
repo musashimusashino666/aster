@@ -146,8 +146,15 @@ func TestCgroupMemoryHelper(t *testing.T) {
 
 func TestRunChecksCPUTimeBudgetWhenWorkloadExitsBetweenPolls(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "cpu.stat"), []byte("usage_usec 2000\nuser_usec 2000\nsystem_usec 0\n"), 0o600); err != nil {
-		t.Fatal(err)
+	files := map[string]string{
+		"cpu.stat":      "usage_usec 2000\nuser_usec 2000\nsystem_usec 0\n",
+		"cgroup.kill":   "0",
+		"cgroup.events": "populated 0\nfrozen 0\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
 	}
 
 	waitCh := make(chan error, 1)
@@ -162,8 +169,8 @@ func TestRunChecksCPUTimeBudgetWhenWorkloadExitsBetweenPolls(t *testing.T) {
 		t.Fatalf("wait() error = %T, want a measured cpuTimeLimitError", err)
 	}
 	if limitErr.budget != time.Millisecond || limitErr.observed != 2*time.Millisecond ||
-		limitErr.overshoot != time.Millisecond || limitErr.sample != "workload-exit" {
-		t.Fatalf("CPU-time measurement = %+v, want budget=1ms observed=2ms overshoot=1ms sample=workload-exit", limitErr)
+		limitErr.overshoot != time.Millisecond || limitErr.sample != "post-termination" {
+		t.Fatalf("CPU-time measurement = %+v, want budget=1ms observed=2ms overshoot=1ms sample=post-termination", limitErr)
 	}
 }
 
@@ -235,32 +242,98 @@ func TestWorkloadExitDoesNotMaskExpiredContext(t *testing.T) {
 	}
 }
 
-func TestMemoryLimitClassificationRequiresBothOOMCounters(t *testing.T) {
+func TestWorkloadExitIncludesCPUUsedByDescendantsUntilGroupIsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"cgroup.kill":   "0",
+		"cgroup.events": "populated 1\nfrozen 0\n",
+		"cpu.stat":      "usage_usec 49000\nuser_usec 48000\nsystem_usec 1000\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	// Simulate a descendant consuming CPU after the leader exits and while the
+	// supervisor is killing the cgroup. The final sample must be taken only
+	// after cgroup.events reports populated=0.
+	watcherDone := make(chan error, 1)
+	go func() {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			data, err := os.ReadFile(filepath.Join(dir, "cgroup.kill"))
+			if err != nil {
+				watcherDone <- err
+				return
+			}
+			if strings.TrimSpace(string(data)) == "1" {
+				if err := os.WriteFile(filepath.Join(dir, "cpu.stat"), []byte("usage_usec 60000\nuser_usec 59000\nsystem_usec 1000\n"), 0o600); err != nil {
+					watcherDone <- err
+					return
+				}
+				if err := os.WriteFile(filepath.Join(dir, "cgroup.events"), []byte("populated 0\nfrozen 0\n"), 0o600); err != nil {
+					watcherDone <- err
+					return
+				}
+				watcherDone <- nil
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		watcherDone <- fmt.Errorf("timed out waiting for cgroup.kill")
+	}()
+
+	group := &workloadCgroup{path: dir}
+	err := group.handleWorkloadExit(context.Background(), nil, 50*time.Millisecond)
+	if watcherErr := <-watcherDone; watcherErr != nil {
+		t.Fatal(watcherErr)
+	}
+	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
+		t.Fatalf("handleWorkloadExit() error = %v, want ErrCPUTimeLimitExceeded after descendant CPU use", err)
+	}
+	var limitErr *cpuTimeLimitError
+	if !errors.As(err, &limitErr) {
+		t.Fatalf("handleWorkloadExit() error = %T, want *cpuTimeLimitError", err)
+	}
+	if limitErr.observed != 60*time.Millisecond || limitErr.overshoot != 10*time.Millisecond || limitErr.sample != "post-termination" {
+		t.Fatalf("final CPU-time measurement = %+v, want 60ms observed, 10ms overshoot, post-termination sample", limitErr)
+	}
+}
+
+func TestMemoryLimitClassificationRequiresLocalOOMGroupKillCounter(t *testing.T) {
 	tests := []struct {
-		name            string
-		initialOOM      uint64
-		initialKill     uint64
-		currentOOM      uint64
-		currentKill     uint64
-		wantMemoryLimit bool
+		name                 string
+		initialGroupOOMKills uint64
+		currentGroupOOMKills uint64
+		currentOOM           uint64
+		currentOOMKill       uint64
+		wantMemoryLimit      bool
 	}{
-		{name: "both counters increase", initialOOM: 2, initialKill: 3, currentOOM: 3, currentKill: 4, wantMemoryLimit: true},
-		{name: "oom only", initialOOM: 2, initialKill: 3, currentOOM: 3, currentKill: 3},
-		{name: "oom_kill only", initialOOM: 2, initialKill: 3, currentOOM: 2, currentKill: 4},
-		{name: "neither increases", initialOOM: 2, initialKill: 3, currentOOM: 2, currentKill: 3},
+		{name: "local group OOM increases", initialGroupOOMKills: 4, currentGroupOOMKills: 5, currentOOM: 1, currentOOMKill: 1, wantMemoryLimit: true},
+		{name: "oom and oom_kill increase without group OOM", initialGroupOOMKills: 4, currentGroupOOMKills: 4, currentOOM: 2, currentOOMKill: 1},
+		{name: "oom only", initialGroupOOMKills: 4, currentGroupOOMKills: 4, currentOOM: 1, currentOOMKill: 0},
+		{name: "oom_kill only", initialGroupOOMKills: 4, currentGroupOOMKills: 4, currentOOM: 0, currentOOMKill: 1},
+		{name: "neither increases", initialGroupOOMKills: 4, currentGroupOOMKills: 4, currentOOM: 0, currentOOMKill: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			data := fmt.Sprintf("low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\n", tt.currentOOM, tt.currentKill)
-			if err := os.WriteFile(filepath.Join(dir, "memory.events"), []byte(data), 0o600); err != nil {
-				t.Fatal(err)
+			files := map[string]string{
+				"cgroup.kill":   "0",
+				"cgroup.events": "populated 0\nfrozen 0\n",
+				"memory.events": fmt.Sprintf("low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\n", tt.currentOOM, tt.currentOOMKill),
+				"memory.events.local": fmt.Sprintf("low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\noom_group_kill %d\n", tt.currentOOM, tt.currentOOMKill, tt.currentGroupOOMKills),
+			}
+			for name, content := range files {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+					t.Fatalf("write %s: %v", name, err)
+				}
 			}
 			group := &workloadCgroup{
-				path:            dir,
-				limits:          Limits{MemoryMaxBytes: 64 << 20},
-				initialOOM:      tt.initialOOM,
-				initialOOMKills: tt.initialKill,
+				path:                 dir,
+				limits:               Limits{MemoryMaxBytes: 64 << 20},
+				initialOOMGroupKills: tt.initialGroupOOMKills,
 			}
 			err := group.handleWorkloadExit(context.Background(), nil, 0)
 			gotMemoryLimit := errors.Is(err, ErrMemoryLimitExceeded)
@@ -268,6 +341,17 @@ func TestMemoryLimitClassificationRequiresBothOOMCounters(t *testing.T) {
 				t.Fatalf("handleWorkloadExit() memory-limit classification = %v, want %v (error %v)", gotMemoryLimit, tt.wantMemoryLimit, err)
 			}
 		})
+	}
+}
+
+func TestReadOOMGroupKillCountRequiresLocalCounter(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "memory.events.local")
+	if err := os.WriteFile(path, []byte("low 0\nhigh 0\noom 0\noom_kill 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readOOMGroupKillCount(dir); err == nil || !strings.Contains(err.Error(), "oom_group_kill") {
+		t.Fatalf("readOOMGroupKillCount() error = %v, want missing oom_group_kill counter error", err)
 	}
 }
 
