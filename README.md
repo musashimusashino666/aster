@@ -118,7 +118,7 @@ The flags are independent: `--memory-limit` accepts a positive byte count or `B`
 
 This mode requires a delegated cgroup v2 directory with the requested `memory`/`cpu` controllers enabled for child cgroups and a working `cgroup.kill` control. `ASTER_CGROUP_ROOT` can name an explicit absolute path to such a delegated directory; otherwise Aster inspects the current process's cgroup. Unsupported or unavailable controls fail with `TOOL008` before Native Aster code is executed; they do not fall back to unrestricted execution. Windows and macOS process-tree resource enforcement are not implemented. The normal Native mode and standalone binaries produced by `aster build` do not gain process-wide isolation, and constrained execution is not a filesystem/network sandbox.
 
-See [ADR 0010](docs/adr/0010-process-resource-isolation.md) for the enforcement contract and limitations.
+Successful OS enforcement still needs validation on a host with an actually delegated cgroup v2 hierarchy; a hosted CI run may skip the kernel-level integration tests when controllers are unavailable. Track this validation in [Issue #85](https://github.com/musashimusashino666/aster/issues/85). See [ADR 0010](docs/adr/0010-process-resource-isolation.md) for the enforcement contract and limitations.
 
 ## Language tour
 
