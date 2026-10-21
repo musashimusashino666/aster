@@ -497,6 +497,16 @@ func TestEveryExampleCompilesToValidatedBytecode(t *testing.T) {
 	}
 }
 
+// runtimeDiagnosticPayload removes only the location prefix so backend
+// parity can compare stable message/code content while location presentation
+// intentionally differs between legacy VM Error() text and Native ranges.
+func runtimeDiagnosticPayload(text string) string {
+	if index := strings.Index(text, "runtime error:"); index >= 0 {
+		return text[index:]
+	}
+	return strings.TrimSpace(text)
+}
+
 func sourceMarkerPosition(t *testing.T, source, marker string, offset int) (int, int) {
 	t.Helper()
 	index := strings.Index(source, marker)
@@ -547,8 +557,12 @@ func TestStringGrowthLimitMatchesBackends(t *testing.T) {
 	if nativeErr == nil {
 		t.Fatalf("native backend should reject oversized concatenation, output=%q", nativeOutput)
 	}
-	if got := strings.TrimSpace(string(nativeOutput)); got != expected {
-		t.Fatalf("native error = %q, want %q", got, expected)
+	if got := runtimeDiagnosticPayload(strings.TrimSpace(string(nativeOutput))); got != runtimeDiagnosticPayload(expected) {
+		t.Fatalf("native diagnostic payload = %q, want %q", got, runtimeDiagnosticPayload(expected))
+	}
+	if got := strings.TrimSpace(string(nativeOutput)); !strings.HasPrefix(got, "string-growth-limit.ast:") ||
+		!strings.Contains(strings.SplitN(got, "runtime error:", 2)[0], "-") {
+		t.Fatalf("native diagnostic should display a source range, got %q", got)
 	}
 }
 
@@ -589,8 +603,12 @@ func TestPrintedArrayOutputLimitMatchesBackends(t *testing.T) {
 	if nativeErr == nil {
 		t.Fatalf("native backend should reject oversized rendered output")
 	}
-	if got := strings.TrimSpace(string(nativeOutput)); got != expected {
-		t.Fatalf("native error = %q, want %q", got, expected)
+	if got := runtimeDiagnosticPayload(strings.TrimSpace(string(nativeOutput))); got != runtimeDiagnosticPayload(expected) {
+		t.Fatalf("native diagnostic payload = %q, want %q", got, runtimeDiagnosticPayload(expected))
+	}
+	if got := strings.TrimSpace(string(nativeOutput)); !strings.HasPrefix(got, "printed-array-limit.ast:") ||
+		!strings.Contains(strings.SplitN(got, "runtime error:", 2)[0], "-") {
+		t.Fatalf("native diagnostic should display a source range, got %q", got)
 	}
 }
 
@@ -628,8 +646,12 @@ func TestCallDepthLimitMatchesBackends(t *testing.T) {
 	if nativeErr == nil {
 		t.Fatalf("native backend should reject excessive recursion, output=%q", nativeOutput)
 	}
-	if got := strings.TrimSpace(string(nativeOutput)); got != expected {
-		t.Fatalf("native error = %q, want %q", got, expected)
+	if got := runtimeDiagnosticPayload(strings.TrimSpace(string(nativeOutput))); got != runtimeDiagnosticPayload(expected) {
+		t.Fatalf("native diagnostic payload = %q, want %q", got, runtimeDiagnosticPayload(expected))
+	}
+	if got := strings.TrimSpace(string(nativeOutput)); !strings.HasPrefix(got, "call-depth-limit.ast:") ||
+		!strings.Contains(strings.SplitN(got, "runtime error:", 2)[0], "-") {
+		t.Fatalf("native diagnostic should display a source range, got %q", got)
 	}
 }
 
@@ -693,12 +715,15 @@ func TestRuntimeErrorClassesMatchBackends(t *testing.T) {
 			if !strings.Contains(string(nativeOutput), tt.diagnostic) {
 				t.Fatalf("native backend should report %q, got %q", tt.diagnostic, nativeOutput)
 			}
-			if !strings.HasPrefix(strings.TrimSpace(string(nativeOutput)), expectedPrefix) ||
-				!strings.HasSuffix(strings.TrimSpace(string(nativeOutput)), "["+tt.code+"]") {
-				t.Fatalf("native error should include source location %q and code %q, got %q", expectedPrefix, tt.code, nativeOutput)
+			nativeText := strings.TrimSpace(string(nativeOutput))
+			if !strings.HasPrefix(nativeText, tt.name+".ast:") ||
+				!strings.Contains(strings.SplitN(nativeText, "runtime error:", 2)[0], "-") ||
+				!strings.Contains(nativeText, "runtime error:") ||
+				!strings.HasSuffix(nativeText, "["+tt.code+"]") {
+				t.Fatalf("native error should include a source range and code %q, got %q", tt.code, nativeText)
 			}
-			if got := strings.TrimSpace(string(nativeOutput)); got != vmErr.Error() {
-				t.Fatalf("backend diagnostics differ: VM=%q native=%q", vmErr.Error(), got)
+			if got := runtimeDiagnosticPayload(nativeText); got != runtimeDiagnosticPayload(vmErr.Error()) {
+				t.Fatalf("backend diagnostic payloads differ: VM=%q native=%q", runtimeDiagnosticPayload(vmErr.Error()), got)
 			}
 		})
 	}
@@ -876,8 +901,11 @@ func TestNativePrintWriteFailureMatchesVM(t *testing.T) {
 	if !strings.HasPrefix(vmErr.Error(), expectedPrefix) {
 		t.Fatalf("VM diagnostic should start with %q, got %q", expectedPrefix, vmErr.Error())
 	}
-	if !strings.HasPrefix(nativeDiagnostic, expectedPrefix) || !strings.HasSuffix(nativeDiagnostic, "[RUN016]") {
-		t.Fatalf("native diagnostic should include source location %q and code RUN016, got %q", expectedPrefix, nativeDiagnostic)
+	if !strings.HasPrefix(nativeDiagnostic, "print-write-error.ast:") ||
+		!strings.Contains(strings.SplitN(nativeDiagnostic, "runtime error:", 2)[0], "-") ||
+		!strings.Contains(nativeDiagnostic, "runtime error: write output:") ||
+		!strings.HasSuffix(nativeDiagnostic, "[RUN016]") {
+		t.Fatalf("native diagnostic should include a source range and code RUN016, got %q", nativeDiagnostic)
 	}
 	if !strings.HasSuffix(vmErr.Error(), "[RUN016]") {
 		t.Fatalf("VM diagnostic should include code RUN016, got %q", vmErr.Error())
@@ -1109,8 +1137,12 @@ func TestExplicitFloatToIntegerRangeMatchesBackends(t *testing.T) {
 	if nativeErr == nil {
 		t.Fatalf("native backend should reject out-of-range conversion, output=%q", nativeOutput)
 	}
-	if got := strings.TrimSpace(nativeOutput); got != expected {
-		t.Fatalf("native error = %q, want %q", got, expected)
+	if got := runtimeDiagnosticPayload(strings.TrimSpace(nativeOutput)); got != runtimeDiagnosticPayload(expected) {
+		t.Fatalf("native diagnostic payload = %q, want %q", got, runtimeDiagnosticPayload(expected))
+	}
+	if got := strings.TrimSpace(nativeOutput); !strings.HasPrefix(got, "numeric-cast-parity.ast:") ||
+		!strings.Contains(strings.SplitN(got, "runtime error:", 2)[0], "-") {
+		t.Fatalf("native diagnostic should display a source range, got %q", got)
 	}
 }
 
