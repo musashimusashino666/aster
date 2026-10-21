@@ -197,6 +197,7 @@ func commandRun(args []string) error {
 		return fmt.Errorf("usage: aster run [--engine vm|native] [--resource-profile constrained --memory-limit 256MiB] <file.ast>")
 	}
 
+	var err error
 	limits := resource.Limits{}
 	constrained := false
 	hasResourceOption := *memoryLimit != "" || *cpuRate != "" || *cpuTimeLimit != ""
