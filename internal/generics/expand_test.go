@@ -1,11 +1,13 @@
 package generics
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/limits"
 	"github.com/aster-lang/aster/internal/parser"
 	"github.com/aster-lang/aster/internal/token"
@@ -65,6 +67,43 @@ func TestExpandInfersGenericFunctionTypeArguments(t *testing.T) {
 	}
 	if len(instances) != 2 || instances[0].Params[0].Type.Name != "i64" || instances[1].Params[0].Type.Name != "string" {
 		t.Fatalf("inferred instances = %#v", instances)
+	}
+}
+
+func TestExpansionDiagnosticRetainsSyntacticSourceRange(t *testing.T) {
+	source := "fn make<T>() -> T { return 1; }\nlet result = make();"
+	program, err := parser.Parse(source, "generics.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Expand(program)
+	if err == nil {
+		t.Fatal("expected generic type inference failure")
+	}
+	var got *diagnostic.Diagnostic
+	if !errors.As(err, &got) {
+		t.Fatalf("expansion error type = %T, want *diagnostic.Diagnostic", err)
+	}
+	callStart := strings.Index(source, "make();")
+	if callStart < 0 {
+		t.Fatal("generic call marker missing")
+	}
+	anchorOffset := callStart + len("make")
+	endOffset := strings.Index(source[anchorOffset:], ")") + anchorOffset + 1
+	if got.Position.Offset != anchorOffset {
+		t.Fatalf("legacy diagnostic anchor offset = %d, want call delimiter offset %d", got.Position.Offset, anchorOffset)
+	}
+	if !got.HasRangeStartPosition || got.RangeStartPosition.Offset != callStart {
+		t.Fatalf("range start = %+v (present=%v), want call start offset %d", got.RangeStartPosition, got.HasRangeStartPosition, callStart)
+	}
+	if !got.HasEndPosition || got.EndPosition.Offset != endOffset {
+		t.Fatalf("range end = %+v (present=%v), want exclusive call end offset %d", got.EndPosition, got.HasEndPosition, endOffset)
+	}
+	if !strings.HasPrefix(got.Error(), "2:18: type error:") {
+		t.Fatalf("legacy diagnostic text = %q, want the call-delimiter location", got.Error())
+	}
+	if rendered := diagnostic.Render(err); !strings.HasPrefix(rendered, "2:14-2:20: type error:") {
+		t.Fatalf("rendered expansion diagnostic = %q, want the call's source range", rendered)
 	}
 }
 
