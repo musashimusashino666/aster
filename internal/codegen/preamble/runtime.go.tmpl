@@ -15,11 +15,13 @@ const asterMaxStringBytes = 16777216
 const asterMaxStdoutBytes = 67108864
 const asterMaxArrayNestingDepth = 256
 const asterMaxCallDepth = 4096
+const asterMaxFuelUnits = 100000000
 const asterMaxI64 int64 = 1<<63 - 1
 const asterMinI64 int64 = -1 << 63
 
 var asterCallDepth int
 var asterStdoutBytes int64
+var asterFuelRemaining int64 = asterMaxFuelUnits
 var asterSourceName string
 var asterSourceSpans = map[asterSourcePosition]asterSourceSpan{}
 
@@ -68,6 +70,13 @@ func asterEnterCall(line, column int) {
 		asterRuntimeError(line, column, fmt.Sprintf("call depth limit exceeded (maximum %d)", asterMaxCallDepth))
 	}
 	asterCallDepth++
+}
+
+func asterConsumeFuel(line, column int) {
+	if asterFuelRemaining <= 0 {
+		asterRuntimeError(line, column, fmt.Sprintf("instruction budget exceeded (maximum %d Native fuel units)", asterMaxFuelUnits))
+	}
+	asterFuelRemaining--
 }
 
 func asterLeaveCall() {
