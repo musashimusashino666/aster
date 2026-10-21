@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aster-lang/aster/internal/langtypes"
+	"github.com/musashimusashino666/aster/internal/langtypes"
 )
 
 func nestedArrayType(depth int) string {
