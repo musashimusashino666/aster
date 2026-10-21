@@ -53,14 +53,11 @@ func TestCgroupMetricParsers(t *testing.T) {
 	if got, err := readCPUUsage(dir); err != nil || got != 12345 {
 		t.Fatalf("readCPUUsage() = (%d, %v), want (12345, nil)", got, err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "memory.events"), []byte("low 0\nhigh 0\nmax 2\noom 1\noom_kill 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "memory.events.local"), []byte("low 0\nhigh 0\nmax 2\noom 1\noom_kill 1\noom_group_kill 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := readOOMCount(dir); err != nil || got != 1 {
-		t.Fatalf("readOOMCount() = (%d, %v), want (1, nil)", got, err)
-	}
-	if got, err := readOOMKillCount(dir); err != nil || got != 1 {
-		t.Fatalf("readOOMKillCount() = (%d, %v), want (1, nil)", got, err)
+	if got, err := readOOMGroupKillCount(dir); err != nil || got != 1 {
+		t.Fatalf("readOOMGroupKillCount() = (%d, %v), want (1, nil)", got, err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "cgroup.events"), []byte("populated 1\nfrozen 0\n"), 0o600); err != nil {
 		t.Fatal(err)
