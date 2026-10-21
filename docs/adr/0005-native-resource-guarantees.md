@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-20
 - **Relationship:** Clarifies the resource and threat-model consequences of [ADR 0001: Use generated Go as the first native backend](0001-native-backend.md). It does not change language semantics or implement new limits.
+- **Implementation update (2026-10-21):** Native fuel is now implemented under [ADR 0009](0009-native-fuel-budget.md). The process-wide memory guarantee remains unimplemented.
 
 ## Context
 
@@ -63,7 +64,7 @@ Any future Native instruction budget must define what consumes budget, how loops
 
 A hard whole-process memory ceiling for standalone executables requires a separately specified strategy that accounts for all relevant allocations and clearly names its scope. A language-level allocation counter alone is not a guarantee on resident process memory; a platform-enforced limit or supervised out-of-process execution may be necessary. Do not implement a partial cap and advertise it as a complete memory boundary.
 
-This ADR records the current contract and the criteria for future work. It does not choose numeric Native fuel values, add an allocator, or promise a portable OS-level memory sandbox.
+This ADR records the resource contract and the criteria for future work. [ADR 0009](0009-native-fuel-budget.md) now defines the Native fuel value and accounting unit. This ADR still does not add a comprehensive process-memory allocator, a portable OS-level memory ceiling, or a sandbox.
 
 ## Validation
 
