@@ -236,11 +236,13 @@ func TestToolchainCodeUsesSupportedGoMinimum(t *testing.T) {
 }
 
 func TestResourceIsolationDiagnosticCodes(t *testing.T) {
-	if got := RuntimeCode("process memory limit exceeded"); got != RuntimeProcessMemoryLimit {
-		t.Fatalf("RuntimeCode(memory limit) = %q, want %q", got, RuntimeProcessMemoryLimit)
+	memory := NewRuntimeFailure(RuntimeProcessMemoryLimit, "process memory limit exceeded")
+	if memory.Code != RuntimeProcessMemoryLimit {
+		t.Fatalf("memory failure code = %q, want %q", memory.Code, RuntimeProcessMemoryLimit)
 	}
-	if got := RuntimeCode("cumulative CPU-time budget exceeded"); got != RuntimeCPUTimeLimit {
-		t.Fatalf("RuntimeCode(CPU-time limit) = %q, want %q", got, RuntimeCPUTimeLimit)
+	cpu := NewRuntimeFailure(RuntimeCPUTimeLimit, "cumulative CPU-time budget exceeded")
+	if cpu.Code != RuntimeCPUTimeLimit {
+		t.Fatalf("CPU-time failure code = %q, want %q", cpu.Code, RuntimeCPUTimeLimit)
 	}
 	if got := ToolchainCode("resource isolation unavailable: cgroup v2 is missing"); got != ToolchainResourceIsolationUnavailable {
 		t.Fatalf("ToolchainCode(resource isolation) = %q, want %q", got, ToolchainResourceIsolationUnavailable)
