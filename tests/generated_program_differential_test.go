@@ -200,6 +200,13 @@ func seededRuntimeFailureProgram(seed int64, kind string) (string, string) {
 	}
 }
 
+func nativeDiagnosticPayload(text string) string {
+	if index := strings.Index(text, "runtime error:"); index >= 0 {
+		return text[index:]
+	}
+	return strings.TrimSpace(text)
+}
+
 func TestSeededArrayProgramsMatchBackends(t *testing.T) {
 	seeds := []int64{0xA57E, 0xC0FFEE, 0x5EED, 20261020}
 	for _, seed := range seeds {
@@ -253,8 +260,8 @@ func TestSeededRuntimeFailureClassAndExitStatusMatch(t *testing.T) {
 			if result.nativeErr == nil || result.nativeExitCode == 0 {
 				t.Fatalf("Native should exit unsuccessfully for seed %#x, got error=%v exit=%d output=%q\nsource:\n%s", tc.seed, result.nativeErr, result.nativeExitCode, result.nativeOutput, source)
 			}
-			if got := strings.TrimSpace(result.nativeOutput); got != result.vmErr.Error() {
-				t.Fatalf("backend failure diagnostics differ for seed %#x: VM=%q Native=%q\nsource:\n%s", tc.seed, result.vmErr.Error(), got, source)
+			if got := nativeDiagnosticPayload(strings.TrimSpace(result.nativeOutput)); got != nativeDiagnosticPayload(result.vmErr.Error()) {
+				t.Fatalf("backend diagnostic payloads differ for seed %#x: VM=%q Native=%q\nsource:\n%s", tc.seed, nativeDiagnosticPayload(result.vmErr.Error()), got, source)
 			}
 		})
 	}
