@@ -89,7 +89,7 @@ func setIndexPath(collection bytecode.Value, indices []int64, replacement byteco
 	collection.EnsureArrayStorage()
 	index := indices[0]
 	if index < 0 || index >= int64(len(collection.Array)) {
-		return bytecode.Value{}, fmt.Errorf("array index %d out of bounds for length %d", index, len(collection.Array))
+		return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArrayIndexBounds, fmt.Sprintf("array index %d out of bounds for length %d", index, len(collection.Array)))
 	}
 
 	// Only detach shared containers. An unshared local can be mutated in place,
@@ -623,7 +623,7 @@ func display(v bytecode.Value) (string, error) {
 func appendDisplay(out *strings.Builder, value bytecode.Value, depth int) error {
 	write := func(s string) error {
 		if len(s) > bytecode.MaxStringBytes-out.Len() {
-			return fmt.Errorf("printed value exceeds %d-byte output limit", bytecode.MaxStringBytes)
+			return diagnostic.NewRuntimeFailure(diagnostic.RuntimeRenderedOutputLimit, fmt.Sprintf("printed value exceeds %d-byte output limit", bytecode.MaxStringBytes))
 		}
 		out.WriteString(s)
 		return nil
@@ -631,7 +631,7 @@ func appendDisplay(out *strings.Builder, value bytecode.Value, depth int) error 
 
 	if value.Kind == bytecode.ValueArray {
 		if depth >= 256 && len(value.Array) > 0 {
-			return fmt.Errorf("printed array nesting exceeds depth limit")
+			return diagnostic.NewRuntimeFailure(diagnostic.RuntimeRenderedOutputLimit, "printed array nesting exceeds depth limit")
 		}
 		if err := write("["); err != nil {
 			return err
@@ -670,7 +670,7 @@ func applyBinary(op bytecode.Op, a, b bytecode.Value) (bytecode.Value, error) {
 		switch op {
 		case bytecode.OpAdd:
 			if len(b.String) > bytecode.MaxStringBytes || len(a.String) > bytecode.MaxStringBytes-len(b.String) {
-				return bytecode.Value{}, fmt.Errorf("string length limit exceeded (maximum %d UTF-8 bytes)", bytecode.MaxStringBytes)
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeStringLimit, fmt.Sprintf("string length limit exceeded (maximum %d UTF-8 bytes)", bytecode.MaxStringBytes))
 			}
 			return bytecode.Str(a.String + b.String), nil
 		case bytecode.OpLess:
@@ -690,37 +690,37 @@ func applyBinary(op bytecode.Op, a, b bytecode.Value) (bytecode.Value, error) {
 		switch op {
 		case bytecode.OpAdd:
 			if (y > 0 && x > maxInt64-y) || (y < 0 && x < minInt64-y) {
-				return bytecode.Value{}, fmt.Errorf("i64 overflow in addition")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in addition")
 			}
 			return bytecode.I64(x + y), nil
 		case bytecode.OpSub:
 			if (y < 0 && x > maxInt64+y) || (y > 0 && x < minInt64+y) {
-				return bytecode.Value{}, fmt.Errorf("i64 overflow in subtraction")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in subtraction")
 			}
 			return bytecode.I64(x - y), nil
 		case bytecode.OpMul:
 			if x != 0 && y != 0 {
 				if (x == minInt64 && y == -1) || (y == minInt64 && x == -1) {
-					return bytecode.Value{}, fmt.Errorf("i64 overflow in multiplication")
+					return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in multiplication")
 				}
 				z := x * y
 				if z/y != x {
-					return bytecode.Value{}, fmt.Errorf("i64 overflow in multiplication")
+					return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in multiplication")
 				}
 				return bytecode.I64(z), nil
 			}
 			return bytecode.I64(0), nil
 		case bytecode.OpDiv:
 			if y == 0 {
-				return bytecode.Value{}, fmt.Errorf("division by zero")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeDivisionByZero, "division by zero")
 			}
 			if x == minInt64 && y == -1 {
-				return bytecode.Value{}, fmt.Errorf("i64 overflow in division")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in division")
 			}
 			return bytecode.I64(x / y), nil
 		case bytecode.OpMod:
 			if y == 0 {
-				return bytecode.Value{}, fmt.Errorf("remainder by zero")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeRemainderByZero, "remainder by zero")
 			}
 			if x == minInt64 && y == -1 {
 				return bytecode.I64(0), nil
@@ -742,28 +742,28 @@ func applyBinary(op bytecode.Op, a, b bytecode.Value) (bytecode.Value, error) {
 		case bytecode.OpAdd:
 			z := x + y
 			if math.IsInf(z, 0) || math.IsNaN(z) {
-				return bytecode.Value{}, fmt.Errorf("non-finite floating-point result")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeNonFiniteFloat, "non-finite floating-point result")
 			}
 			return bytecode.F64(z), nil
 		case bytecode.OpSub:
 			z := x - y
 			if math.IsInf(z, 0) || math.IsNaN(z) {
-				return bytecode.Value{}, fmt.Errorf("non-finite floating-point result")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeNonFiniteFloat, "non-finite floating-point result")
 			}
 			return bytecode.F64(z), nil
 		case bytecode.OpMul:
 			z := x * y
 			if math.IsInf(z, 0) || math.IsNaN(z) {
-				return bytecode.Value{}, fmt.Errorf("non-finite floating-point result")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeNonFiniteFloat, "non-finite floating-point result")
 			}
 			return bytecode.F64(z), nil
 		case bytecode.OpDiv:
 			if y == 0 {
-				return bytecode.Value{}, fmt.Errorf("division by zero")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeDivisionByZero, "division by zero")
 			}
 			z := x / y
 			if math.IsInf(z, 0) || math.IsNaN(z) {
-				return bytecode.Value{}, fmt.Errorf("non-finite floating-point result")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeNonFiniteFloat, "non-finite floating-point result")
 			}
 			return bytecode.F64(z), nil
 		case bytecode.OpLess:
