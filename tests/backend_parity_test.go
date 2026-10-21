@@ -17,6 +17,7 @@ import (
 	"github.com/aster-lang/aster/internal/checker"
 	"github.com/aster-lang/aster/internal/codegen"
 	"github.com/aster-lang/aster/internal/diagnostic"
+	"github.com/aster-lang/aster/internal/limits"
 	"github.com/aster-lang/aster/internal/parser"
 	"github.com/aster-lang/aster/internal/token"
 	"github.com/aster-lang/aster/internal/toolchain"
@@ -1337,5 +1338,41 @@ func TestNativeRunContextReturnsStructuredRuntimeSpan(t *testing.T) {
 	}
 	if vmErr.Error() != nativeErr.Error() {
 		t.Fatalf("VM and Native error strings differ: VM=%q Native=%q", vmErr.Error(), nativeErr.Error())
+	}
+}
+
+func TestNativeFuelBudgetStopsEmptyInfiniteLoop(t *testing.T) {
+	const source = "while true {}"
+	tree, err := parser.Parse(source, "native-fuel.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	goSource, err := codegen.Generate(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := "const asterMaxFuelUnits = " + strconv.Itoa(limits.MaxNativeFuelUnits)
+	goSource = strings.Replace(goSource, original, "const asterMaxFuelUnits = 4", 1)
+	if !strings.Contains(goSource, "const asterMaxFuelUnits = 4") {
+		t.Fatal("failed to lower the generated Native fuel limit for the regression test")
+	}
+
+	err = toolchain.RunNativeContext(context.Background(), goSource)
+	if err == nil {
+		t.Fatal("empty infinite loop should exhaust the Native fuel budget")
+	}
+	var got *diagnostic.Diagnostic
+	if !errors.As(err, &got) {
+		t.Fatalf("native fuel exhaustion error type = %T, want *diagnostic.Diagnostic: %v", err, err)
+	}
+	if got.Code != diagnostic.RuntimeInstructionBudget {
+		t.Fatalf("native fuel diagnostic code = %q, want %q", got.Code, diagnostic.RuntimeInstructionBudget)
+	}
+	if !got.HasEndPosition || got.Source != "native-fuel.ast" || got.EndPosition.Offset != len(source) {
+		t.Fatalf("native fuel diagnostic span/source = %+v..%+v source=%q (has=%v), want end offset %d",
+			got.Position, got.EndPosition, got.Source, got.HasEndPosition, len(source))
+	}
+	if !strings.Contains(got.Message, "Native fuel units") {
+		t.Fatalf("native fuel diagnostic message is missing the defined budget unit: %q", got.Message)
 	}
 }
