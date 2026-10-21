@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/aster-lang/aster/internal/diagnostic"
+	"github.com/aster-lang/aster/internal/resource"
 )
 
 func requireNativeToolchain(t *testing.T) {
@@ -99,6 +102,23 @@ func TestBuildNativeContextHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestNativeRunFailurePrefersExpiredContextOverCPUTimeLimit(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	err := nativeRunFailure(ctx, resource.ErrCPUTimeLimitExceeded, nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("nativeRunFailure() error = %v, want context.DeadlineExceeded over CPU limit", err)
+	}
+	wrapped := diagnostic.WrapToolchain(err)
+	if !strings.Contains(wrapped.Error(), "[TOOL002]") {
+		t.Fatalf("expected TOOL002 for expired context, got %v", wrapped)
+	}
+	if strings.Contains(wrapped.Error(), "[RUN019]") {
+		t.Fatalf("expired context was misclassified as RUN019: %v", wrapped)
+	}
+}
+
 func TestRunNativeContextStopsLongRunningProgram(t *testing.T) {
 	requireNativeToolchain(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -109,5 +129,21 @@ func TestRunNativeContextStopsLongRunningProgram(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "native program timed out") || !strings.Contains(err.Error(), "[TOOL002]") {
 		t.Fatalf("expected coded native program timeout diagnostic, got %v", err)
+	}
+}
+
+func TestRunNativeConstrainedFailsClosedWithoutCgroupV2(t *testing.T) {
+	requireNativeToolchain(t)
+	t.Setenv("ASTER_CGROUP_ROOT", t.TempDir())
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	const source = "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"must not execute\") }\n"
+	err := RunNativeConstrainedContext(ctx, source, resource.Limits{MemoryMaxBytes: 64 << 20})
+	if err == nil {
+		t.Fatal("RunNativeConstrainedContext() succeeded without cgroup v2 controls")
+	}
+	if !strings.Contains(err.Error(), "[TOOL008]") {
+		t.Fatalf("expected TOOL008 fail-closed diagnostic, got %v", err)
 	}
 }

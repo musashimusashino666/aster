@@ -9,7 +9,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aster-lang/aster/internal/bytecode"
 	"github.com/aster-lang/aster/internal/checker"
@@ -17,6 +19,7 @@ import (
 	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/formatter"
 	"github.com/aster-lang/aster/internal/parser"
+	"github.com/aster-lang/aster/internal/resource"
 	"github.com/aster-lang/aster/internal/toolchain"
 	"github.com/aster-lang/aster/internal/vm"
 )
@@ -56,6 +59,8 @@ func dispatch(args []string) error {
 		return commandExec(args[1:])
 	case "build":
 		return commandBuild(args[1:])
+	case "__resource-launcher":
+		return commandResourceLauncher(args[1:])
 	default:
 		usage(os.Stderr)
 		return fmt.Errorf("unknown command %q", args[0])
@@ -66,7 +71,7 @@ func usage(w io.Writer) {
 
 Usage:
   aster check <file.ast>                 Parse and type-check source
-  aster run [--engine vm|native] <file>  Execute source (VM by default)
+  aster run [--engine vm|native] [resource flags] <file>  Execute source (VM by default)
   aster compile [-o file] <file.ast>     Compile to versioned Aster bytecode JSON
   aster exec <file.abc.json>             Execute compiled bytecode
   aster fmt [--check] <file.ast>          Format source or check its formatting
@@ -74,7 +79,9 @@ Usage:
   aster version                          Print version
 
 Security:
-  Native execution runs with host privileges and is not a sandbox. Do not
+  Native --resource-profile constrained uses Linux cgroup v2 when delegated.
+  Without required controls, constrained execution fails before Aster code runs.
+  Resource limits are not a filesystem/network sandbox. Native execution runs with host privileges and is not a sandbox. Do not
   execute untrusted Aster source with --engine native or run untrusted native
   binaries built from Aster source.
 
@@ -175,16 +182,71 @@ func flagsBeforePositionalsAndBooleans(args []string, booleanFlags []string, val
 }
 
 func commandRun(args []string) error {
-	args = flagsBeforePositionals(args, "--engine", "-engine")
+	args = flagsBeforePositionals(args,
+		"--engine", "-engine",
+		"--resource-profile", "-resource-profile",
+		"--memory-limit", "-memory-limit",
+		"--cpu-rate", "-cpu-rate",
+		"--cpu-time-limit", "-cpu-time-limit")
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	engine := fs.String("engine", "vm", "execution engine: vm or native")
+	resourceProfile := fs.String("resource-profile", "none", "resource profile: none or constrained")
+	memoryLimit := fs.String("memory-limit", "", "OS-accounted memory limit (for example 256MiB)")
+	cpuRate := fs.String("cpu-rate", "", "maximum CPU throughput in logical CPUs (for example 0.5 or 1.0)")
+	cpuTimeLimit := fs.String("cpu-time-limit", "", "cumulative cgroup CPU-time budget (for example 30s)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: aster run [--engine vm|native] <file.ast>")
+		return fmt.Errorf("usage: aster run [--engine vm|native] [--resource-profile constrained --memory-limit 256MiB] <file.ast>")
 	}
+
+	var err error
+	limits := resource.Limits{}
+	constrained := false
+	hasResourceOption := *memoryLimit != "" || *cpuRate != "" || *cpuTimeLimit != ""
+	switch *resourceProfile {
+	case "none":
+		if hasResourceOption {
+			return fmt.Errorf("resource limit flags require --resource-profile constrained")
+		}
+	case "constrained":
+		constrained = true
+		if *engine != "native" {
+			return fmt.Errorf("--resource-profile constrained requires --engine native")
+		}
+		if *memoryLimit != "" {
+			limits.MemoryMaxBytes, err = resource.ParseMemoryBytes(*memoryLimit)
+			if err != nil {
+				return err
+			}
+		}
+		if *cpuRate != "" {
+			limits.CPUQuota, err = strconv.ParseFloat(*cpuRate, 64)
+			if err != nil {
+				return fmt.Errorf("invalid --cpu-rate %q: %w", *cpuRate, err)
+			}
+			if limits.CPUQuota <= 0 {
+				return fmt.Errorf("--cpu-rate must be greater than zero")
+			}
+		}
+		if *cpuTimeLimit != "" {
+			limits.CPUTimeLimit, err = time.ParseDuration(*cpuTimeLimit)
+			if err != nil {
+				return fmt.Errorf("invalid --cpu-time-limit %q: %w", *cpuTimeLimit, err)
+			}
+			if limits.CPUTimeLimit <= 0 {
+				return fmt.Errorf("--cpu-time-limit must be greater than zero")
+			}
+		}
+		if err := limits.Validate(); err != nil {
+			return fmt.Errorf("invalid constrained resource limits: %w", err)
+		}
+	default:
+		return fmt.Errorf("unknown resource profile %q (choose none or constrained)", *resourceProfile)
+	}
+
 	var nativeCtx context.Context
 	var cancelNative context.CancelFunc
 	if *engine == "native" {
@@ -211,6 +273,9 @@ func commandRun(args []string) error {
 		src, err := codegen.GenerateTypedContext(nativeCtx, typed)
 		if err != nil {
 			return err
+		}
+		if constrained {
+			return toolchain.RunNativeConstrainedContext(nativeCtx, src, limits)
 		}
 		return toolchain.RunNativeContext(nativeCtx, src)
 	default:

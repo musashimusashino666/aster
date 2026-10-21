@@ -35,16 +35,20 @@ jobs:
       - name: Check formatting
         run: make fmt-check
 
-      - name: Check benchmark script syntax
+      - name: Check benchmark and resource-validation script syntax
         run: |
           bash -n scripts/bench-array-assignment.sh
           bash -n scripts/bench-native-memory.sh
+          bash -n scripts/test-resource-isolation.sh
 
       - name: Smoke-test Native child-process memory benchmark
         run: ASTER_BENCH_REPEATS=1 bash scripts/bench-native-memory.sh bench/native-memory-smoke.out
 
       - name: Run tests
         run: go test ./...
+
+      - name: Report cgroup integration capability and skips
+        run: go test -count=1 -v ./internal/resource
 
       - name: Build all packages
         run: go build ./...

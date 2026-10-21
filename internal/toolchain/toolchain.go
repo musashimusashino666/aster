@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aster-lang/aster/internal/diagnostic"
+	"github.com/aster-lang/aster/internal/resource"
 	"github.com/aster-lang/aster/internal/token"
 )
 
@@ -137,7 +138,7 @@ func RunNativeContext(ctx context.Context, goSource string) (resultErr error) {
 	cmd.Stdout = os.Stdout
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	cmd.Env = environmentWith("ASTER_RUNTIME_DIAGNOSTIC_PROTOCOL", "1")
+	cmd.Env = environmentSliceWith(environmentWith("ASTER_RUNTIME_DIAGNOSTIC_PROTOCOL", "1"), "ASTER_RESOURCE_GATE", "")
 	if err = cmd.Run(); err != nil {
 		if ctx.Err() == nil {
 			if runtimeDiagnostic := parseNativeRuntimeDiagnostic(stderr.Bytes()); runtimeDiagnostic != nil {
@@ -148,6 +149,58 @@ func RunNativeContext(ctx context.Context, goSource string) (resultErr error) {
 			_, _ = os.Stderr.Write(stderr.Bytes())
 		}
 		return commandFailure(ctx, "native program", err, nil)
+	}
+	if stderr.Len() > 0 {
+		_, _ = os.Stderr.Write(stderr.Bytes())
+	}
+	return nil
+}
+
+// RunNativeConstrainedContext builds and runs a Native program inside an
+// explicitly requested OS resource boundary. Unsupported platforms or missing
+// cgroup v2 delegation fail before Aster code is released.
+func RunNativeConstrainedContext(ctx context.Context, goSource string, limits resource.Limits) (resultErr error) {
+	defer func() { resultErr = diagnostic.WrapToolchain(resultErr) }()
+	if ctx == nil {
+		return fmt.Errorf("native constrained run requires a non-nil context")
+	}
+	if err := limits.Validate(); err != nil {
+		return fmt.Errorf("resource isolation unavailable: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("native run canceled: %w", err)
+	}
+	dir, err := os.MkdirTemp("", "aster-constrained-run-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	bin := filepath.Join(dir, "aster-program")
+	if os.PathSeparator == '\\' {
+		bin += ".exe"
+	}
+	if err = BuildNativeContext(ctx, goSource, bin); err != nil {
+		return err
+	}
+
+	gatePath := filepath.Join(dir, "resource-release")
+	launcherPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate Aster resource launcher: %w", err)
+	}
+	launcherPath, err = filepath.Abs(launcherPath)
+	if err != nil {
+		return fmt.Errorf("resolve Aster resource launcher: %w", err)
+	}
+	cmd := exec.Command(launcherPath, "__resource-launcher", bin)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Env = environmentSliceWith(environmentWith("ASTER_RUNTIME_DIAGNOSTIC_PROTOCOL", "1"), "ASTER_RESOURCE_GATE", gatePath)
+	err = resource.Run(ctx, cmd, gatePath, limits)
+	if err != nil {
+		return nativeRunFailure(ctx, err, stderr.Bytes())
 	}
 	if stderr.Len() > 0 {
 		_, _ = os.Stderr.Write(stderr.Bytes())
@@ -200,8 +253,11 @@ func parseNativeRuntimeDiagnostic(stderr []byte) error {
 }
 
 func environmentWith(key, value string) []string {
+	return environmentSliceWith(os.Environ(), key, value)
+}
+
+func environmentSliceWith(base []string, key, value string) []string {
 	prefix := key + "="
-	base := os.Environ()
 	env := make([]string, 0, len(base)+1)
 	for _, entry := range base {
 		if !strings.HasPrefix(entry, prefix) {
@@ -209,6 +265,46 @@ func environmentWith(key, value string) []string {
 		}
 	}
 	return append(env, prefix+value)
+}
+
+// nativeRunFailure prioritizes an expired external context over resource-limit
+// classifications so RUN019 does not mask a concurrent TOOL002 timeout.
+func nativeRunFailure(ctx context.Context, err error, stderr []byte) error {
+	writeStderr := func() {
+		if len(stderr) > 0 {
+			_, _ = os.Stderr.Write(stderr)
+		}
+	}
+	contextFailure := func() error {
+		writeStderr()
+		return commandFailure(ctx, "native program", err, nil)
+	}
+
+	if ctx.Err() != nil {
+		return contextFailure()
+	}
+	if errors.Is(err, resource.ErrMemoryLimitExceeded) {
+		if ctx.Err() != nil {
+			return contextFailure()
+		}
+		return diagnostic.New(diagnostic.RuntimeProcessMemoryLimit, "runtime", token.Position{}, err.Error())
+	}
+	if errors.Is(err, resource.ErrCPUTimeLimitExceeded) {
+		if ctx.Err() != nil {
+			return contextFailure()
+		}
+		return diagnostic.New(diagnostic.RuntimeCPUTimeLimit, "runtime", token.Position{}, err.Error())
+	}
+	if ctx.Err() == nil {
+		if runtimeDiagnostic := parseNativeRuntimeDiagnostic(stderr); runtimeDiagnostic != nil {
+			return runtimeDiagnostic
+		}
+	}
+	writeStderr()
+	if ctx.Err() != nil {
+		return commandFailure(ctx, "native program", err, nil)
+	}
+	return commandFailure(ctx, "native program", err, nil)
 }
 
 func commandFailure(ctx context.Context, operation string, err error, output []byte) error {
