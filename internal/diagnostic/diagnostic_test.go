@@ -284,6 +284,23 @@ func TestRenderIncludesExclusiveRangeWithoutChangingError(t *testing.T) {
 	}
 }
 
+func TestRenderUsesSyntacticRangeStartInsteadOfDiagnosticAnchor(t *testing.T) {
+	anchor := token.Position{Offset: 3, Line: 1, Column: 4}
+	rangeStart := token.Position{Offset: 0, Line: 1, Column: 1}
+	end := token.Position{Offset: 8, Line: 1, Column: 9}
+	err := NewAtSourceRange(RuntimeDivisionByZero, "runtime", "expr.ast",
+		anchor, rangeStart, end, "division by zero")
+
+	const legacy = "expr.ast:1:4: runtime error: division by zero [RUN003]"
+	if got := err.Error(); got != legacy {
+		t.Fatalf("Error() = %q, want diagnostic-anchor form %q", got, legacy)
+	}
+	const want = "expr.ast:1:1-1:9: runtime error: division by zero [RUN003]"
+	if got := Render(err); got != want {
+		t.Fatalf("Render() = %q, want syntactic source range %q", got, want)
+	}
+}
+
 func TestRenderPreservesWrappedPrefixesAndRejectsInvalidRanges(t *testing.T) {
 	start := token.Position{Offset: 10, Line: 2, Column: 4}
 	end := token.Position{Offset: 13, Line: 2, Column: 7}
