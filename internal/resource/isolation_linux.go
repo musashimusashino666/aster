@@ -98,10 +98,10 @@ type workloadCgroup struct {
 }
 
 type cpuTimeLimitError struct {
-	budget   time.Duration
-	observed time.Duration
+	budget    time.Duration
+	observed  time.Duration
 	overshoot time.Duration
-	sample   string
+	sample    string
 }
 
 func newCPUTimeLimitError(budget time.Duration, observedUsec uint64, sample string) *cpuTimeLimitError {
