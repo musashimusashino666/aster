@@ -80,6 +80,8 @@ func SourceRangeStart(node Node) token.Position {
 		start = n.RangeStart
 	case *CallExpr:
 		start = n.RangeStart
+	case *MatchExpr:
+		start = n.RangeStart
 	}
 	if start.Line > 0 && start.Column > 0 && start.Offset >= 0 {
 		return start
@@ -326,6 +328,7 @@ type MatchArm struct {
 type MatchExpr struct {
 	At           token.Position
 	EndAt        token.Position
+	RangeStart   token.Position
 	ResolvedType Type
 	EnumID       int
 	Subject      Expr
