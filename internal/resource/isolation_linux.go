@@ -97,6 +97,37 @@ type workloadCgroup struct {
 	initialOOMKills uint64
 }
 
+type cpuTimeLimitError struct {
+	budget   time.Duration
+	observed time.Duration
+	overshoot time.Duration
+	sample   string
+}
+
+func newCPUTimeLimitError(budget time.Duration, observedUsec uint64, sample string) *cpuTimeLimitError {
+	// cpu.stat reports aggregate usage in whole microseconds. Normalize the
+	// budget to the same unit before calculating and reporting the overshoot.
+	budget = time.Duration(budget.Microseconds()) * time.Microsecond
+	observed := time.Duration(observedUsec) * time.Microsecond
+	overshoot := observed - budget
+	if overshoot < 0 {
+		overshoot = 0
+	}
+	return &cpuTimeLimitError{
+		budget: budget, observed: observed, overshoot: overshoot, sample: sample,
+	}
+}
+
+func (err *cpuTimeLimitError) Error() string {
+	return fmt.Sprintf("%s (budget_usec=%d observed_usec=%d overshoot_usec=%d sample=%s)",
+		ErrCPUTimeLimitExceeded, err.budget.Microseconds(), err.observed.Microseconds(),
+		err.overshoot.Microseconds(), err.sample)
+}
+
+func (err *cpuTimeLimitError) Unwrap() error {
+	return ErrCPUTimeLimitExceeded
+}
+
 func createCgroup(limits Limits) (*workloadCgroup, error) {
 	base, err := delegatedCgroupRoot()
 	if err != nil {
@@ -309,10 +340,48 @@ func (group *workloadCgroup) wait(ctx context.Context, waitCh <-chan error, cpuB
 				return fmt.Errorf("%w: monitor cpu.stat: %v", ErrUnavailable, err)
 			}
 			if usage >= uint64(cpuBudget.Microseconds()) {
-				_ = group.kill()
-				return ErrCPUTimeLimitExceeded
+				return group.stopForCPUTimeLimit(cpuBudget, usage)
 			}
 		}
+	}
+}
+
+// stopForCPUTimeLimit stops the whole workload and, when possible, takes a
+// final cpu.stat sample after the cgroup has become empty. This captures CPU
+// time consumed while the supervisor is delivering the kill request.
+func (group *workloadCgroup) stopForCPUTimeLimit(budget time.Duration, usageAtDetection uint64) error {
+	limitErr := newCPUTimeLimitError(budget, usageAtDetection, "threshold-detection")
+	if err := group.kill(); err != nil {
+		return fmt.Errorf("%w: cgroup.kill failed; final CPU usage unavailable: %v", limitErr, err)
+	}
+	if err := group.waitUntilEmpty(); err != nil {
+		return fmt.Errorf("%w: final CPU usage unavailable after stop request: %v", limitErr, err)
+	}
+	finalUsage, err := readCPUUsage(group.path)
+	if err != nil {
+		return fmt.Errorf("%w: final CPU usage unavailable after workload termination: %v", limitErr, err)
+	}
+	return newCPUTimeLimitError(budget, finalUsage, "post-termination")
+}
+
+func (group *workloadCgroup) waitUntilEmpty() error {
+	deadline := time.Now().Add(cgroupDrainTimeout)
+	var lastReadErr error
+	for {
+		populated, err := cgroupPopulated(group.path)
+		if err == nil && !populated {
+			return nil
+		}
+		if err != nil {
+			lastReadErr = err
+		}
+		if !time.Now().Before(deadline) {
+			if lastReadErr != nil {
+				return fmt.Errorf("cgroup did not become empty within %s (last cgroup.events error: %v)", cgroupDrainTimeout, lastReadErr)
+			}
+			return fmt.Errorf("cgroup did not become empty within %s", cgroupDrainTimeout)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -341,7 +410,7 @@ func (group *workloadCgroup) handleWorkloadExit(ctx context.Context, waitErr err
 			return fmt.Errorf("%w: read cpu.stat after workload exit: %v", ErrUnavailable, usageErr)
 		}
 		if usage >= uint64(cpuBudget.Microseconds()) {
-			return ErrCPUTimeLimitExceeded
+			return newCPUTimeLimitError(cpuBudget, usage, "workload-exit")
 		}
 	}
 	return waitErr
