@@ -74,3 +74,44 @@ print(extractedMatrix);`
 		t.Errorf("backend output differs:\nVM: %q\nNative: %q", vmOutput, nativeOutput)
 	}
 }
+
+// TestMatchArmReturningArrayLocalPreservesValueSemantics exercises a match
+// expression whose arms directly return an existing array local. Unlike
+// payload binding or indexed reads, this shape used to miss the Native
+// static copy-on-write sharing boundary and allow mutation to leak to the
+// original binding.
+func TestMatchArmReturningArrayLocalPreservesValueSemantics(t *testing.T) {
+\tsource := `enum Pick {
+\tLeft,
+\tRight,
+}
+
+let mut a: Array<i64> = [1, 2];
+let pick = Pick::Left;
+let mut b: Array<i64> = match pick {
+    Pick::Left => a,
+    Pick::Right => a,
+};
+b[0] = 9;
+print(a);
+print(b);`
+
+\tvmOutput, vmErr, nativeOutput, nativeErr := runTypedOnBothBackends(t, source)
+\tif vmErr != nil {
+\t\tt.Fatalf("VM execution failed: %v\\noutput: %q", vmErr, vmOutput)
+\t}
+\tif nativeErr != nil {
+\t\tt.Fatalf("Native execution failed: %v\\noutput: %q", nativeErr, nativeOutput)
+\t}
+
+\tconst want = "[1 2]\\n[9 2]\\n"
+\tif vmOutput != want {
+\t\tt.Errorf("unexpected VM output:\\n got: %q\\nwant: %q", vmOutput, want)
+\t}
+\tif nativeOutput != want {
+\t\tt.Errorf("unexpected Native output:\\n got: %q\\nwant: %q", nativeOutput, want)
+\t}
+\tif nativeOutput != vmOutput {
+\t\tt.Errorf("backend output differs:\\nVM: %q\\nNative: %q", vmOutput, nativeOutput)
+\t}
+}
