@@ -175,7 +175,6 @@ func seededArrayProgram(seed int64) string {
 	return source.String()
 }
 
-
 func seededAggregateValues(rng *rand.Rand, length int) []int {
 	values := make([]int, length)
 	for i := range values {
@@ -371,7 +370,6 @@ func TestSeededArrayProgramsMatchBackends(t *testing.T) {
 		})
 	}
 }
-
 
 func TestSeededAggregateProgramsMatchBackends(t *testing.T) {
 	seeds := []int64{0xA66E, 0xBADD, 20261021}
