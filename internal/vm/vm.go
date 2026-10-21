@@ -798,8 +798,11 @@ func (v *VM) fault(i bytecode.Instruction, format string, args ...any) error {
 	code := diagnostic.RuntimeCode(msg)
 	start := token.Position{Offset: i.Offset, Line: i.Line, Column: i.Column}
 	if i.EndLine > 0 && i.EndColumn > 0 {
+		rangeStart := token.Position{
+			Offset: i.RangeStartOffset, Line: i.RangeStartLine, Column: i.RangeStartColumn,
+		}
 		end := token.Position{Offset: i.EndOffset, Line: i.EndLine, Column: i.EndColumn}
-		return diagnostic.NewAtSourceSpan(code, "runtime", v.program.Source, start, end, msg)
+		return diagnostic.NewAtSourceRange(code, "runtime", v.program.Source, start, rangeStart, end, msg)
 	}
 	return diagnostic.NewAtSource(code, "runtime", v.program.Source, start, msg)
 }

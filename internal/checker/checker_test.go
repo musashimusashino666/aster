@@ -1,11 +1,13 @@
 package checker
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/aster-lang/aster/internal/ast"
+	"github.com/aster-lang/aster/internal/diagnostic"
 	"github.com/aster-lang/aster/internal/ir"
 	"github.com/aster-lang/aster/internal/limits"
 	"github.com/aster-lang/aster/internal/parser"
@@ -18,6 +20,38 @@ func checkSource(t *testing.T, src string) error {
 		return err
 	}
 	return Check(p)
+}
+
+func TestTypeDiagnosticSeparatesOperatorAnchorFromDisplayedRange(t *testing.T) {
+	const source = "let result = 1 + false;"
+	tree, err := parser.Parse(source, "type-range.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Analyze(tree)
+	if err == nil {
+		t.Fatal("expected incompatible operands diagnostic")
+	}
+	var got *diagnostic.Diagnostic
+	if !errors.As(err, &got) {
+		t.Fatalf("error type = %T, want *diagnostic.Diagnostic", err)
+	}
+	wantAnchor := strings.Index(source, "+")
+	wantStart := strings.Index(source, "1")
+	wantEnd := strings.Index(source, "false") + len("false")
+	if got.Position.Offset != wantAnchor {
+		t.Fatalf("diagnostic anchor offset = %d, want operator offset %d", got.Position.Offset, wantAnchor)
+	}
+	if !got.HasRangeStartPosition || got.RangeStartPosition.Offset != wantStart {
+		t.Fatalf("range start = %+v (present=%v), want offset %d", got.RangeStartPosition, got.HasRangeStartPosition, wantStart)
+	}
+	if !got.HasEndPosition || got.EndPosition.Offset != wantEnd {
+		t.Fatalf("range end = %+v (present=%v), want offset %d", got.EndPosition, got.HasEndPosition, wantEnd)
+	}
+	wantPrefix := "type-range.ast:1:14-1:23: type error:"
+	if rendered := diagnostic.Render(err); !strings.HasPrefix(rendered, wantPrefix) {
+		t.Fatalf("rendered type diagnostic = %q, want prefix %q", rendered, wantPrefix)
+	}
 }
 
 func TestAnalyzeExposesExpressionTypesAndFunctionSignatures(t *testing.T) {

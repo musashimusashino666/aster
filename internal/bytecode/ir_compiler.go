@@ -101,15 +101,16 @@ func compileIR(tree *ir.Program) (*Program, error) {
 }
 
 type irFunctionCompiler struct {
-	program      *Program
-	fnID         int
-	name         string
-	code         []Instruction
-	symbols      map[ir.SymbolID]int
-	nextSlot     int
-	currentStart token.Position
-	currentEnd   token.Position
-	hasSpan      bool
+	program           *Program
+	fnID              int
+	name              string
+	code              []Instruction
+	symbols           map[ir.SymbolID]int
+	nextSlot          int
+	currentStart      token.Position
+	currentRangeStart token.Position
+	currentEnd        token.Position
+	hasSpan           bool
 }
 
 func newIRFunctionCompiler(p *Program, id int, name string) *irFunctionCompiler {
@@ -125,6 +126,9 @@ func (c *irFunctionCompiler) emit(op Op, a, b, line, column int) int {
 	ins := Instruction{Op: op, A: a, B: b, Line: line, Column: column}
 	if c.hasSpan && line == c.currentStart.Line && column == c.currentStart.Column {
 		ins.Offset = c.currentStart.Offset
+		ins.RangeStartOffset = c.currentRangeStart.Offset
+		ins.RangeStartLine = c.currentRangeStart.Line
+		ins.RangeStartColumn = c.currentRangeStart.Column
 		ins.EndOffset = c.currentEnd.Offset
 		ins.EndLine = c.currentEnd.Line
 		ins.EndColumn = c.currentEnd.Column
@@ -137,6 +141,9 @@ func (c *irFunctionCompiler) emitABC(op Op, a, b, operandC, line, column int) in
 	ins := Instruction{Op: op, A: a, B: b, C: operandC, Line: line, Column: column}
 	if c.hasSpan && line == c.currentStart.Line && column == c.currentStart.Column {
 		ins.Offset = c.currentStart.Offset
+		ins.RangeStartOffset = c.currentRangeStart.Offset
+		ins.RangeStartLine = c.currentRangeStart.Line
+		ins.RangeStartColumn = c.currentRangeStart.Column
 		ins.EndOffset = c.currentEnd.Offset
 		ins.EndLine = c.currentEnd.Line
 		ins.EndColumn = c.currentEnd.Column
@@ -149,6 +156,9 @@ func (c *irFunctionCompiler) emitAt(op Op, a, b int, start, end token.Position) 
 	ins := Instruction{Op: op, A: a, B: b, Line: start.Line, Column: start.Column}
 	if start.Line > 0 && start.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= start.Offset {
 		ins.Offset = start.Offset
+		ins.RangeStartOffset = start.Offset
+		ins.RangeStartLine = start.Line
+		ins.RangeStartColumn = start.Column
 		ins.EndOffset = end.Offset
 		ins.EndLine = end.Line
 		ins.EndColumn = end.Column
@@ -161,6 +171,9 @@ func (c *irFunctionCompiler) emitABCAt(op Op, a, b, operandC int, start, end tok
 	ins := Instruction{Op: op, A: a, B: b, C: operandC, Line: start.Line, Column: start.Column}
 	if start.Line > 0 && start.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= start.Offset {
 		ins.Offset = start.Offset
+		ins.RangeStartOffset = start.Offset
+		ins.RangeStartLine = start.Line
+		ins.RangeStartColumn = start.Column
 		ins.EndOffset = end.Offset
 		ins.EndLine = end.Line
 		ins.EndColumn = end.Column
@@ -169,12 +182,17 @@ func (c *irFunctionCompiler) emitABCAt(op Op, a, b, operandC int, start, end tok
 	return len(c.code) - 1
 }
 
-func (c *irFunctionCompiler) enterSpan(start, end token.Position) func() {
-	previousStart, previousEnd, previousHasSpan := c.currentStart, c.currentEnd, c.hasSpan
-	c.currentStart, c.currentEnd = start, end
-	c.hasSpan = start.Line > 0 && start.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= start.Offset
+func (c *irFunctionCompiler) enterSpan(start, end, rangeStart token.Position) func() {
+	previousStart, previousRangeStart, previousEnd, previousHasSpan :=
+		c.currentStart, c.currentRangeStart, c.currentEnd, c.hasSpan
+	c.currentStart, c.currentRangeStart, c.currentEnd = start, rangeStart, end
+	c.hasSpan = start.Line > 0 && start.Column > 0 &&
+		rangeStart.Line > 0 && rangeStart.Column > 0 &&
+		end.Line > 0 && end.Column > 0 &&
+		rangeStart.Offset >= 0 && rangeStart.Offset <= start.Offset && end.Offset >= start.Offset
 	return func() {
-		c.currentStart, c.currentEnd, c.hasSpan = previousStart, previousEnd, previousHasSpan
+		c.currentStart, c.currentRangeStart, c.currentEnd, c.hasSpan =
+			previousStart, previousRangeStart, previousEnd, previousHasSpan
 	}
 }
 
@@ -216,7 +234,7 @@ func (c *irFunctionCompiler) compileBlock(block *ir.BlockStmt) error {
 }
 
 func (c *irFunctionCompiler) compileStmt(stmt ir.Stmt) error {
-	restoreSpan := c.enterSpan(stmt.Pos(), stmt.EndPos())
+	restoreSpan := c.enterSpan(stmt.Pos(), stmt.EndPos(), ir.SourceRangeStart(stmt))
 	defer restoreSpan()
 	pos := stmt.Pos()
 	switch n := stmt.(type) {
@@ -335,7 +353,7 @@ func (c *irFunctionCompiler) compileStmt(stmt ir.Stmt) error {
 }
 
 func (c *irFunctionCompiler) compileExpr(expr ir.Expr) error {
-	restoreSpan := c.enterSpan(expr.Pos(), expr.EndPos())
+	restoreSpan := c.enterSpan(expr.Pos(), expr.EndPos(), ir.SourceRangeStart(expr))
 	defer restoreSpan()
 	pos := expr.Pos()
 	switch n := expr.(type) {

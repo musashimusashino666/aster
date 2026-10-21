@@ -302,6 +302,44 @@ func TestParserDiagnosticsRetainOffendingTokenSpan(t *testing.T) {
 	}
 }
 
+func TestSourceRangeStartUsesSyntacticLeftEdge(t *testing.T) {
+	source := `let value = (object.field[0]) + target(arg);`
+	tree, err := Parse(source, "range-start.ast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt := tree.Decls[0].(*ast.StmtDecl).Statement.(*ast.LetStmt)
+	binary := stmt.Value.(*ast.BinaryExpr)
+	if got, want := binary.Pos().Offset, strings.Index(source, "+"); got != want {
+		t.Fatalf("binary diagnostic anchor offset = %d, want operator offset %d", got, want)
+	}
+	if got, want := ast.SourceRangeStart(binary).Offset, strings.Index(source, "(object"); got != want {
+		t.Fatalf("binary source-range start = %d, want parenthesized left expression start %d", got, want)
+	}
+	index := binary.Left.(*ast.IndexExpr)
+	if got, want := index.Pos().Offset, strings.Index(source, "["); got != want {
+		t.Fatalf("index diagnostic anchor offset = %d, want '[' offset %d", got, want)
+	}
+	if got, want := ast.SourceRangeStart(index).Offset, strings.Index(source, "(object"); got != want {
+		t.Fatalf("index source-range start = %d, want parenthesized collection start %d", got, want)
+	}
+	field := index.Collection.(*ast.FieldExpr)
+	if got, want := field.Pos().Offset, strings.Index(source, "."); got != want {
+		t.Fatalf("field diagnostic anchor offset = %d, want '.' offset %d", got, want)
+	}
+	if got, want := ast.SourceRangeStart(field).Offset, strings.Index(source, "object"); got != want {
+		t.Fatalf("field source-range start = %d, want object start %d", got, want)
+	}
+	call := binary.Right.(*ast.CallExpr)
+	callOpen := strings.Index(source, "target(") + len("target")
+	if got, want := call.Pos().Offset, callOpen; got != want {
+		t.Fatalf("call diagnostic anchor offset = %d, want '(' offset %d", got, want)
+	}
+	if got, want := ast.SourceRangeStart(call).Offset, strings.Index(source, "target"); got != want {
+		t.Fatalf("call source-range start = %d, want callee start %d", got, want)
+	}
+}
+
 func TestParserPopulatesASTEndPositions(t *testing.T) {
 	source := "fn identity(value: i64) -> i64 { return value + 1; }\nlet answer = identity(41);"
 	program, err := Parse(source, "spans.ast")

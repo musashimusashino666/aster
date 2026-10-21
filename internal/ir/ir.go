@@ -58,6 +58,37 @@ type Node interface {
 	EndPos() token.Position
 }
 
+// SourceRangeStart returns the syntactic left edge to display for a node while
+// Pos remains the diagnostic anchor used for stable line/column reporting.
+func SourceRangeStart(node Node) token.Position {
+	if node == nil {
+		return token.Position{}
+	}
+	var start token.Position
+	switch n := node.(type) {
+	case *IndexAssignStmt:
+		start = n.RangeStart
+	case *ExprStmt:
+		start = n.RangeStart
+	case *BinaryExpr:
+		start = n.RangeStart
+	case *FieldExpr:
+		start = n.RangeStart
+	case *IndexExpr:
+		start = n.RangeStart
+	case *SliceExpr:
+		start = n.RangeStart
+	case *CallExpr:
+		start = n.RangeStart
+	case *MatchExpr:
+		start = n.RangeStart
+	}
+	if start.Line > 0 && start.Column > 0 && start.Offset >= 0 {
+		return start
+	}
+	return node.Pos()
+}
+
 type Function struct {
 	At         token.Position
 	EndAt      token.Position
@@ -119,13 +150,14 @@ func (n *AssignStmt) EndPos() token.Position { return n.EndAt }
 func (*AssignStmt) stmtNode()                {}
 
 type IndexAssignStmt struct {
-	At       token.Position
-	EndAt    token.Position
-	Target   SymbolID
-	Name     string
-	RootType Type
-	Indices  []Expr
-	Value    Expr
+	At         token.Position
+	EndAt      token.Position
+	RangeStart token.Position
+	Target     SymbolID
+	Name       string
+	RootType   Type
+	Indices    []Expr
+	Value      Expr
 }
 
 func (n *IndexAssignStmt) Pos() token.Position    { return n.At }
@@ -133,9 +165,10 @@ func (n *IndexAssignStmt) EndPos() token.Position { return n.EndAt }
 func (*IndexAssignStmt) stmtNode()                {}
 
 type ExprStmt struct {
-	At    token.Position
-	EndAt token.Position
-	Expr  Expr
+	At         token.Position
+	EndAt      token.Position
+	RangeStart token.Position
+	Expr       Expr
 }
 
 func (n *ExprStmt) Pos() token.Position    { return n.At }
@@ -227,6 +260,7 @@ func (n *UnaryExpr) ExprType() Type         { return n.ResolvedType }
 type BinaryExpr struct {
 	At           token.Position
 	EndAt        token.Position
+	RangeStart   token.Position
 	ResolvedType Type
 	OperandType  Type
 	Op           RuntimeOp
@@ -254,6 +288,7 @@ func (n *ArrayExpr) ExprType() Type         { return n.ResolvedType }
 type FieldExpr struct {
 	At           token.Position
 	EndAt        token.Position
+	RangeStart   token.Position
 	ResolvedType Type
 	Object       Expr
 	StructID     int
@@ -293,6 +328,7 @@ type MatchArm struct {
 type MatchExpr struct {
 	At           token.Position
 	EndAt        token.Position
+	RangeStart   token.Position
 	ResolvedType Type
 	EnumID       int
 	Subject      Expr
@@ -308,6 +344,7 @@ func (n *MatchExpr) ExprType() Type         { return n.ResolvedType }
 type IndexExpr struct {
 	At           token.Position
 	EndAt        token.Position
+	RangeStart   token.Position
 	ResolvedType Type
 	Collection   Expr
 	Index        Expr
@@ -322,6 +359,7 @@ func (n *IndexExpr) ExprType() Type         { return n.ResolvedType }
 type SliceExpr struct {
 	At           token.Position
 	EndAt        token.Position
+	RangeStart   token.Position
 	ResolvedType Type
 	Collection   Expr
 	Start        Expr
@@ -349,6 +387,7 @@ const (
 type CallExpr struct {
 	At           token.Position
 	EndAt        token.Position
+	RangeStart   token.Position
 	ResolvedType Type
 	Target       CallTarget
 	Function     FunctionID
@@ -636,7 +675,8 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 			return nil, err
 		}
 		return &IndexAssignStmt{
-			At: n.Pos(), EndAt: n.EndPos(), Target: target.ID, Name: target.Name, RootType: target.Type,
+			At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n.Target),
+			Target: target.ID, Name: target.Name, RootType: target.Type,
 			Indices: indices, Value: value,
 		}, nil
 	case *ast.AssignStmt:
@@ -654,7 +694,7 @@ func (l *lowerer) lowerStmt(stmt ast.Stmt) (Stmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &ExprStmt{At: n.Pos(), EndAt: n.EndPos(), Expr: expr}, nil
+		return &ExprStmt{At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n.Expr), Expr: expr}, nil
 	case *ast.IfStmt:
 		condition, err := l.lowerExpr(n.Condition)
 		if err != nil {
@@ -748,7 +788,8 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			return nil, fmt.Errorf("%d:%d: ir: unsupported binary operator %q for %s", n.Pos().Line, n.Pos().Column, n.Op, left.ExprType())
 		}
 		return &BinaryExpr{
-			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, OperandType: left.ExprType(),
+			At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n),
+			ResolvedType: resolvedType, OperandType: left.ExprType(),
 			Op: op, Left: left, Right: right,
 		}, nil
 	case *ast.ArrayExpr:
@@ -853,7 +894,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			irArm.Expr = lowered
 			arms = append(arms, irArm)
 		}
-		return &MatchExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
+		return &MatchExpr{At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n), ResolvedType: resolvedType, EnumID: enumID, Subject: subject, SubjectLocal: temp, Arms: arms}, nil
 	case *ast.FieldExpr:
 		object, err := l.lowerExpr(n.Object)
 		if err != nil {
@@ -877,7 +918,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if fieldIndex < 0 {
 			return nil, fmt.Errorf("%d:%d: ir: unresolved field %q on %s", n.Pos().Line, n.Pos().Column, n.Name, object.ExprType())
 		}
-		return &FieldExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Object: object, StructID: structID, FieldIndex: fieldIndex, FieldName: n.Name}, nil
+		return &FieldExpr{At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n), ResolvedType: resolvedType, Object: object, StructID: structID, FieldIndex: fieldIndex, FieldName: n.Name}, nil
 	case *ast.IndexExpr:
 		collection, err := l.lowerExpr(n.Collection)
 		if err != nil {
@@ -887,7 +928,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &IndexExpr{At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Collection: collection, Index: index, Op: OpIndexChecked}, nil
+		return &IndexExpr{At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n), ResolvedType: resolvedType, Collection: collection, Index: index, Op: OpIndexChecked}, nil
 	case *ast.SliceExpr:
 		collection, err := l.lowerExpr(n.Collection)
 		if err != nil {
@@ -902,7 +943,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			return nil, err
 		}
 		return &SliceExpr{
-			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType,
+			At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n), ResolvedType: resolvedType,
 			Collection: collection, Start: start, End: end, Op: OpSliceChecked,
 		}, nil
 	case *ast.CallExpr:
@@ -922,7 +963,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 		functionID := FunctionID(-1)
 		if structID, isStruct := l.structIDs[callee.Name]; isStruct {
 			return &CallExpr{
-				At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Target: CallStructConstructor,
+				At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n), ResolvedType: resolvedType, Target: CallStructConstructor,
 				StructID: structID, Function: FunctionID(-1), FunctionName: callee.Name, Args: args,
 			}, nil
 		}
@@ -946,7 +987,7 @@ func (l *lowerer) lowerExpr(expr ast.Expr) (Expr, error) {
 			target = CallUserFunction
 		}
 		return &CallExpr{
-			At: n.Pos(), EndAt: n.EndPos(), ResolvedType: resolvedType, Target: target,
+			At: n.Pos(), EndAt: n.EndPos(), RangeStart: ast.SourceRangeStart(n), ResolvedType: resolvedType, Target: target,
 			Function: functionID, FunctionName: callee.Name, Args: args,
 		}, nil
 	default:

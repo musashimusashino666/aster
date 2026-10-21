@@ -14,7 +14,7 @@ import (
 	"github.com/aster-lang/aster/internal/limits"
 )
 
-const FormatVersion = 8
+const FormatVersion = 9
 
 // Per-value allocation limits enforced by bytecode validation and the VM.
 // String limits are measured in UTF-8 bytes, not Unicode code points.
@@ -308,16 +308,19 @@ const (
 )
 
 type Instruction struct {
-	Op        Op  `json:"op"`
-	A         int `json:"a,omitempty"`
-	B         int `json:"b,omitempty"`
-	C         int `json:"c,omitempty"`
-	Line      int `json:"line,omitempty"`
-	Column    int `json:"column,omitempty"`
-	Offset    int `json:"offset,omitempty"`
-	EndOffset int `json:"end_offset,omitempty"`
-	EndLine   int `json:"end_line,omitempty"`
-	EndColumn int `json:"end_column,omitempty"`
+	Op               Op  `json:"op"`
+	A                int `json:"a,omitempty"`
+	B                int `json:"b,omitempty"`
+	C                int `json:"c,omitempty"`
+	Line             int `json:"line,omitempty"`
+	Column           int `json:"column,omitempty"`
+	Offset           int `json:"offset,omitempty"`
+	RangeStartOffset int `json:"range_start_offset,omitempty"`
+	RangeStartLine   int `json:"range_start_line,omitempty"`
+	RangeStartColumn int `json:"range_start_column,omitempty"`
+	EndOffset        int `json:"end_offset,omitempty"`
+	EndLine          int `json:"end_line,omitempty"`
+	EndColumn        int `json:"end_column,omitempty"`
 }
 type Function struct {
 	Name        string        `json:"name"`
@@ -808,24 +811,39 @@ const maxVerifiedStackDepth = 1 << 20
 // validateInstructionSourceSpan validates optional exclusive end-position
 // metadata. Synthetic instructions may omit the span entirely.
 func validateInstructionSourceSpan(ins Instruction) error {
-	hasSpan := ins.Offset != 0 || ins.EndOffset != 0 || ins.EndLine != 0 || ins.EndColumn != 0
+	hasSpan := ins.Offset != 0 || ins.RangeStartOffset != 0 || ins.RangeStartLine != 0 ||
+		ins.RangeStartColumn != 0 || ins.EndOffset != 0 || ins.EndLine != 0 || ins.EndColumn != 0
 	if !hasSpan {
 		return nil
 	}
 	if ins.Line <= 0 || ins.Column <= 0 {
 		return fmt.Errorf("span has no valid start line/column")
 	}
-	if ins.Offset < 0 || ins.EndOffset < 0 {
+	if ins.Offset < 0 || ins.RangeStartOffset < 0 || ins.EndOffset < 0 {
 		return fmt.Errorf("span has a negative byte offset")
+	}
+	if ins.RangeStartLine <= 0 || ins.RangeStartColumn <= 0 {
+		return fmt.Errorf("span has no valid syntactic range start")
+	}
+	if ins.RangeStartOffset > ins.Offset {
+		return fmt.Errorf("range start offset follows the diagnostic anchor")
+	}
+	if ins.Line < ins.RangeStartLine ||
+		(ins.Line == ins.RangeStartLine && ins.Column < ins.RangeStartColumn) {
+		return fmt.Errorf("diagnostic anchor precedes syntactic range start")
 	}
 	if ins.EndLine <= 0 || ins.EndColumn <= 0 {
 		return fmt.Errorf("span has no valid end line/column")
 	}
-	if ins.EndOffset < ins.Offset {
-		return fmt.Errorf("end offset precedes start offset")
+	if ins.EndOffset < ins.Offset || ins.EndOffset < ins.RangeStartOffset {
+		return fmt.Errorf("end offset precedes start or range-start offset")
+	}
+	if ins.EndLine < ins.RangeStartLine ||
+		(ins.EndLine == ins.RangeStartLine && ins.EndColumn < ins.RangeStartColumn) {
+		return fmt.Errorf("end position precedes syntactic range start")
 	}
 	if ins.EndLine < ins.Line || (ins.EndLine == ins.Line && ins.EndColumn < ins.Column) {
-		return fmt.Errorf("end position precedes start position")
+		return fmt.Errorf("end position precedes diagnostic anchor")
 	}
 	return nil
 }

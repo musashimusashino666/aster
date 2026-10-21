@@ -168,22 +168,28 @@ type sourceSpanKey struct {
 }
 
 type sourceSpanValue struct {
-	offset    int
-	endOffset int
-	endLine   int
-	endColumn int
+	rangeStartOffset int
+	rangeStartLine   int
+	rangeStartColumn int
+	offset           int
+	endOffset        int
+	endLine          int
+	endColumn        int
 }
 
 // irPositionArgs registers the exclusive source range for a runtime-helper
 // call while preserving the existing line/column arguments passed to helpers.
 func (g *generator) irPositionArgs(node ir.Node) string {
 	pos, end := node.Pos(), node.EndPos()
-	if pos.Line > 0 && pos.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= pos.Offset {
+	rangeStart := ir.SourceRangeStart(node)
+	if pos.Line > 0 && pos.Column > 0 && rangeStart.Line > 0 && rangeStart.Column > 0 &&
+		end.Line > 0 && end.Column > 0 && rangeStart.Offset >= 0 && end.Offset >= rangeStart.Offset {
 		if g.sourceSpans == nil {
 			g.sourceSpans = make(map[sourceSpanKey]sourceSpanValue)
 		}
 		key := sourceSpanKey{line: pos.Line, column: pos.Column}
 		span := sourceSpanValue{
+			rangeStartOffset: rangeStart.Offset, rangeStartLine: rangeStart.Line, rangeStartColumn: rangeStart.Column,
 			offset: pos.Offset, endOffset: end.Offset,
 			endLine: end.Line, endColumn: end.Column,
 		}
@@ -217,8 +223,9 @@ func (g *generator) writeSourceSpanTable() error {
 			return err
 		}
 		span := g.sourceSpans[key]
-		g.line(fmt.Sprintf("{line: %d, column: %d}: {offset: %d, endOffset: %d, endLine: %d, endColumn: %d},",
-			key.line, key.column, span.offset, span.endOffset, span.endLine, span.endColumn))
+		g.line(fmt.Sprintf("{line: %d, column: %d}: {rangeStartOffset: %d, rangeStartLine: %d, rangeStartColumn: %d, offset: %d, endOffset: %d, endLine: %d, endColumn: %d},",
+			key.line, key.column, span.rangeStartOffset, span.rangeStartLine, span.rangeStartColumn,
+			span.offset, span.endOffset, span.endLine, span.endColumn))
 	}
 	g.indent--
 	g.line("}")

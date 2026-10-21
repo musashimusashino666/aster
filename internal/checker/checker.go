@@ -119,6 +119,7 @@ func (s *scope) define(name string, v Variable) bool {
 }
 
 type Checker struct {
+	sourceName      string
 	functions       map[string]FunctionInfo
 	structs         map[string]StructInfo
 	enums           map[string]EnumInfo
@@ -134,7 +135,7 @@ func Check(program *ast.Program) error {
 	if err != nil {
 		return err
 	}
-	c := &Checker{functions: map[string]FunctionInfo{}, structs: map[string]StructInfo{}, enums: map[string]EnumInfo{}}
+	c := &Checker{sourceName: expanded.SourceName, functions: map[string]FunctionInfo{}, structs: map[string]StructInfo{}, enums: map[string]EnumInfo{}}
 	return c.checkProgram(expanded)
 }
 
@@ -147,6 +148,7 @@ func Analyze(program *ast.Program) (*TypedProgram, error) {
 	}
 	program = expanded
 	c := &Checker{
+		sourceName:      program.SourceName,
 		functions:       map[string]FunctionInfo{},
 		structs:         map[string]StructInfo{},
 		enums:           map[string]EnumInfo{},
@@ -573,10 +575,10 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 		return c.checkBlock(n, true)
 	case *ast.LetStmt:
 		if builtinName(n.Name) {
-			return false, typeError(n.Pos(), diagnostic.TypeReservedBinding, "'%s' is reserved", n.Name)
+			return false, c.nodeTypeError(n, diagnostic.TypeReservedBinding, "'%s' is reserved", n.Name)
 		}
 		if _, exists := c.scopes.vars[n.Name]; exists {
-			return false, typeError(n.Pos(), diagnostic.TypeDuplicateBinding, "variable '%s' is already declared in this scope", n.Name)
+			return false, c.nodeTypeError(n, diagnostic.TypeDuplicateBinding, "variable '%s' is already declared in this scope", n.Name)
 		}
 		valueType, err := c.checkExpr(n.Value)
 		if err != nil {
@@ -591,7 +593,7 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 				return false, typeError(n.Annotation.At, diagnostic.TypeUnitBinding, "variables cannot have type unit")
 			}
 			if annotated != valueType {
-				return false, typeError(n.Pos(), diagnostic.TypeBindingTypeMismatch, "cannot assign %s to variable of type %s", valueType, annotated)
+				return false, c.nodeTypeError(n, diagnostic.TypeBindingTypeMismatch, "cannot assign %s to variable of type %s", valueType, annotated)
 			}
 			valueType = annotated
 		}
@@ -603,30 +605,30 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 	case *ast.AssignStmt:
 		v, ok := c.scopes.lookup(n.Name)
 		if !ok {
-			return false, typeError(n.Pos(), diagnostic.TypeUndefinedVariable, "undefined variable '%s'", n.Name)
+			return false, c.nodeTypeError(n, diagnostic.TypeUndefinedVariable, "undefined variable '%s'", n.Name)
 		}
 		if !v.Mutable {
-			return false, typeError(n.Pos(), diagnostic.TypeImmutableAssignment, "cannot assign to immutable variable '%s'; declare it with 'let mut'", n.Name)
+			return false, c.nodeTypeError(n, diagnostic.TypeImmutableAssignment, "cannot assign to immutable variable '%s'; declare it with 'let mut'", n.Name)
 		}
 		got, err := c.checkExpr(n.Value)
 		if err != nil {
 			return false, err
 		}
 		if got != v.Type {
-			return false, typeError(n.Pos(), diagnostic.TypeAssignmentTypeMismatch, "cannot assign %s to variable '%s' of type %s", got, n.Name, v.Type)
+			return false, c.nodeTypeError(n, diagnostic.TypeAssignmentTypeMismatch, "cannot assign %s to variable '%s' of type %s", got, n.Name, v.Type)
 		}
 		return false, nil
 	case *ast.IndexAssignStmt:
 		root, ok := indexedAssignmentRoot(n.Target)
 		if !ok {
-			return false, typeError(n.Pos(), diagnostic.TypeGeneric, "array assignment target must be rooted in a variable")
+			return false, c.nodeTypeError(n, diagnostic.TypeGeneric, "array assignment target must be rooted in a variable")
 		}
 		variable, exists := c.scopes.lookup(root.Name)
 		if !exists {
-			return false, typeError(root.Pos(), diagnostic.TypeUndefinedVariable, "undefined variable '%s'", root.Name)
+			return false, c.nodeTypeError(root, diagnostic.TypeUndefinedVariable, "undefined variable '%s'", root.Name)
 		}
 		if !variable.Mutable {
-			return false, typeError(n.Pos(), diagnostic.TypeImmutableAssignment, "cannot assign to immutable variable '%s'; declare it with 'let mut'", root.Name)
+			return false, c.nodeTypeError(n, diagnostic.TypeImmutableAssignment, "cannot assign to immutable variable '%s'; declare it with 'let mut'", root.Name)
 		}
 		elementType, err := c.checkExpr(n.Target)
 		if err != nil {
@@ -637,7 +639,7 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 			return false, err
 		}
 		if valueType != elementType {
-			return false, typeError(n.Pos(), diagnostic.TypeIndexAssignmentMismatch, "cannot assign %s to array element of type %s", valueType, elementType)
+			return false, c.nodeTypeError(n, diagnostic.TypeIndexAssignmentMismatch, "cannot assign %s to array element of type %s", valueType, elementType)
 		}
 		return false, nil
 	case *ast.ExprStmt:
@@ -649,7 +651,7 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 			return false, err
 		}
 		if cond != Bool {
-			return false, typeError(n.Condition.Pos(), diagnostic.TypeIfCondition, "if condition must be bool, got %s", cond)
+			return false, c.nodeTypeError(n.Condition, diagnostic.TypeIfCondition, "if condition must be bool, got %s", cond)
 		}
 		thenRet, err := c.checkBlock(n.Then, true)
 		if err != nil {
@@ -678,7 +680,7 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 			return false, err
 		}
 		if cond != Bool {
-			return false, typeError(n.Condition.Pos(), diagnostic.TypeWhileCondition, "while condition must be bool, got %s", cond)
+			return false, c.nodeTypeError(n.Condition, diagnostic.TypeWhileCondition, "while condition must be bool, got %s", cond)
 		}
 		_, err = c.checkBlock(n.Body, true)
 		if err != nil {
@@ -688,7 +690,7 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 		return constant && condition, nil
 	case *ast.ReturnStmt:
 		if !c.inFunction {
-			return false, typeError(n.Pos(), diagnostic.TypeReturnOutsideFunction, "return is only valid inside a function")
+			return false, c.nodeTypeError(n, diagnostic.TypeReturnOutsideFunction, "return is only valid inside a function")
 		}
 		got := Unit
 		var err error
@@ -699,11 +701,11 @@ func (c *Checker) checkStmt(s ast.Stmt) (bool, error) {
 			}
 		}
 		if got != c.currentReturn {
-			return false, typeError(n.Pos(), diagnostic.TypeReturnMismatch, "return type mismatch: function returns %s but expression has type %s", c.currentReturn, got)
+			return false, c.nodeTypeError(n, diagnostic.TypeReturnMismatch, "return type mismatch: function returns %s but expression has type %s", c.currentReturn, got)
 		}
 		return true, nil
 	default:
-		return false, typeError(s.Pos(), diagnostic.TypeUnsupportedStatement, "unsupported statement node %T", s)
+		return false, c.nodeTypeError(s, diagnostic.TypeUnsupportedStatement, "unsupported statement node %T", s)
 	}
 }
 func (c *Checker) checkExpr(e ast.Expr) (Type, error) {
@@ -756,14 +758,14 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		}
 	case *ast.ArrayExpr:
 		if len(n.Elements) == 0 {
-			return "", typeError(n.Pos(), diagnostic.TypeEmptyArrayInference, "cannot infer the element type of an empty array; provide at least one element")
+			return "", c.nodeTypeError(n, diagnostic.TypeEmptyArrayInference, "cannot infer the element type of an empty array; provide at least one element")
 		}
 		elemType, err := c.checkExpr(n.Elements[0])
 		if err != nil {
 			return "", err
 		}
 		if elemType == Unit {
-			return "", typeError(n.Elements[0].Pos(), diagnostic.TypeUnitArrayElement, "arrays cannot contain unit values")
+			return "", c.nodeTypeError(n.Elements[0], diagnostic.TypeUnitArrayElement, "arrays cannot contain unit values")
 		}
 		for _, item := range n.Elements[1:] {
 			t, err := c.checkExpr(item)
@@ -771,21 +773,21 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 				return "", err
 			}
 			if t != elemType {
-				return "", typeError(item.Pos(), diagnostic.TypeHeterogeneousArray, "array elements must have one type; expected %s, got %s", elemType, t)
+				return "", c.nodeTypeError(item, diagnostic.TypeHeterogeneousArray, "array elements must have one type; expected %s, got %s", elemType, t)
 			}
 		}
 		arrayType := Type("Array<" + elemType.String() + ">")
 		if !langtypes.ValidName(arrayType.String()) {
-			return "", typeError(n.Pos(), diagnostic.TypeNestingLimit, "type nesting exceeds limit %d", langtypes.MaxNestingDepth)
+			return "", c.nodeTypeError(n, diagnostic.TypeNestingLimit, "type nesting exceeds limit %d", langtypes.MaxNestingDepth)
 		}
 		return arrayType, nil
 	case *ast.EnumVariantExpr:
 		if len(n.TypeArgs) > 0 {
-			return "", typeError(n.Pos(), diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit type arguments on enum '%s' were not resolved; only generic enum templates accept them", n.EnumName)
+			return "", c.nodeTypeError(n, diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit type arguments on enum '%s' were not resolved; only generic enum templates accept them", n.EnumName)
 		}
 		info, ok := c.enums[n.EnumName]
 		if !ok {
-			return "", typeError(n.Pos(), diagnostic.TypeUnknownEnumVariant, "unknown enum '%s'", n.EnumName)
+			return "", c.nodeTypeError(n, diagnostic.TypeUnknownEnumVariant, "unknown enum '%s'", n.EnumName)
 		}
 		variantIndex := -1
 		variant := EnumVariantInfo{}
@@ -796,10 +798,10 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			}
 		}
 		if variantIndex < 0 {
-			return "", typeError(n.Pos(), diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", n.EnumName, n.VariantName)
+			return "", c.nodeTypeError(n, diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", n.EnumName, n.VariantName)
 		}
 		if n.HasPayload != (len(variant.Payload) > 0) || len(n.Args) != len(variant.Payload) {
-			return "", typeError(n.Pos(), diagnostic.TypeEnumConstructorArity, "variant %s::%s requires %d payload arguments", n.EnumName, n.VariantName, len(variant.Payload))
+			return "", c.nodeTypeError(n, diagnostic.TypeEnumConstructorArity, "variant %s::%s requires %d payload arguments", n.EnumName, n.VariantName, len(variant.Payload))
 		}
 		for i, arg := range n.Args {
 			got, err := c.checkExprExpected(arg, variant.Payload[i])
@@ -807,7 +809,7 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 				return "", err
 			}
 			if got != variant.Payload[i] {
-				return "", typeError(arg.Pos(), diagnostic.TypeEnumPayloadMismatch, "payload %d of %s::%s expects %s, got %s", i+1, n.EnumName, n.VariantName, variant.Payload[i], got)
+				return "", c.nodeTypeError(arg, diagnostic.TypeEnumPayloadMismatch, "payload %d of %s::%s expects %s, got %s", i+1, n.EnumName, n.VariantName, variant.Payload[i], got)
 			}
 		}
 		return Type(n.EnumName), nil
@@ -820,14 +822,14 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		}
 		info, ok := c.structs[string(objectType)]
 		if !ok {
-			return "", typeError(n.Pos(), diagnostic.TypeFieldOnNonStruct, "field selection requires a struct value, got %s", objectType)
+			return "", c.nodeTypeError(n, diagnostic.TypeFieldOnNonStruct, "field selection requires a struct value, got %s", objectType)
 		}
 		for _, field := range info.Fields {
 			if field.Name == n.Name {
 				return field.Type, nil
 			}
 		}
-		return "", typeError(n.Pos(), diagnostic.TypeUnknownStructField, "struct '%s' has no field '%s'", info.Name, n.Name)
+		return "", c.nodeTypeError(n, diagnostic.TypeUnknownStructField, "struct '%s' has no field '%s'", info.Name, n.Name)
 	case *ast.IndexExpr:
 		collectionType, err := c.checkExpr(n.Collection)
 		if err != nil {
@@ -835,14 +837,14 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		}
 		elemType, ok := arrayElement(collectionType)
 		if !ok {
-			return "", typeError(n.Collection.Pos(), diagnostic.TypeIndexNonArray, "indexing requires an Array<T>, got %s", collectionType)
+			return "", c.nodeTypeError(n.Collection, diagnostic.TypeIndexNonArray, "indexing requires an Array<T>, got %s", collectionType)
 		}
 		indexType, err := c.checkExpr(n.Index)
 		if err != nil {
 			return "", err
 		}
 		if indexType != I64 {
-			return "", typeError(n.Index.Pos(), diagnostic.TypeIndexType, "array index must be i64, got %s", indexType)
+			return "", c.nodeTypeError(n.Index, diagnostic.TypeIndexType, "array index must be i64, got %s", indexType)
 		}
 		return elemType, nil
 	case *ast.SliceExpr:
@@ -851,27 +853,27 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			return "", err
 		}
 		if _, ok := arrayElement(collectionType); !ok {
-			return "", typeError(n.Collection.Pos(), diagnostic.TypeSliceNonArray, "slicing requires an Array<T>, got %s", collectionType)
+			return "", c.nodeTypeError(n.Collection, diagnostic.TypeSliceNonArray, "slicing requires an Array<T>, got %s", collectionType)
 		}
 		startType, err := c.checkExpr(n.Start)
 		if err != nil {
 			return "", err
 		}
 		if startType != I64 {
-			return "", typeError(n.Start.Pos(), diagnostic.TypeSliceBoundType, "slice bounds must be i64, got %s", startType)
+			return "", c.nodeTypeError(n.Start, diagnostic.TypeSliceBoundType, "slice bounds must be i64, got %s", startType)
 		}
 		endType, err := c.checkExpr(n.End)
 		if err != nil {
 			return "", err
 		}
 		if endType != I64 {
-			return "", typeError(n.End.Pos(), diagnostic.TypeSliceBoundType, "slice bounds must be i64, got %s", endType)
+			return "", c.nodeTypeError(n.End, diagnostic.TypeSliceBoundType, "slice bounds must be i64, got %s", endType)
 		}
 		return collectionType, nil
 	case *ast.IdentifierExpr:
 		v, ok := c.scopes.lookup(n.Name)
 		if !ok {
-			return "", typeError(n.Pos(), diagnostic.TypeUndefinedVariable, "undefined variable '%s'", n.Name)
+			return "", c.nodeTypeError(n, diagnostic.TypeUndefinedVariable, "undefined variable '%s'", n.Name)
 		}
 		return v.Type, nil
 	case *ast.UnaryExpr:
@@ -884,12 +886,12 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			if t == I64 || t == F64 {
 				return t, nil
 			}
-			return "", typeError(n.Pos(), diagnostic.TypeUnaryMinusOperand, "unary '-' requires a number, got %s", t)
+			return "", c.nodeTypeError(n, diagnostic.TypeUnaryMinusOperand, "unary '-' requires a number, got %s", t)
 		case "!":
 			if t == Bool {
 				return Bool, nil
 			}
-			return "", typeError(n.Pos(), diagnostic.TypeNotOperand, "'!' requires bool, got %s", t)
+			return "", c.nodeTypeError(n, diagnostic.TypeNotOperand, "'!' requires bool, got %s", t)
 		}
 	case *ast.BinaryExpr:
 		l, err := c.checkExpr(n.Left)
@@ -908,50 +910,50 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			if l == r && (l == I64 || l == F64) {
 				return l, nil
 			}
-			return "", typeError(n.Pos(), diagnostic.TypePlusOperands, "operator '+' does not support %s and %s", l, r)
+			return "", c.nodeTypeError(n, diagnostic.TypePlusOperands, "operator '+' does not support %s and %s", l, r)
 		case "-", "*", "/", "%":
 			if l != r || (l != I64 && l != F64) {
-				return "", typeError(n.Pos(), diagnostic.TypeNumericOperands, "operator '%s' requires matching numeric types, got %s and %s", n.Op, l, r)
+				return "", c.nodeTypeError(n, diagnostic.TypeNumericOperands, "operator '%s' requires matching numeric types, got %s and %s", n.Op, l, r)
 			}
 			if n.Op == "%" && l != I64 {
-				return "", typeError(n.Pos(), diagnostic.TypeRemainderOperands, "operator '%%' requires i64 operands")
+				return "", c.nodeTypeError(n, diagnostic.TypeRemainderOperands, "operator '%%' requires i64 operands")
 			}
 			return l, nil
 		case "<", "<=", ">", ">=":
 			if l != r || !(l == I64 || l == F64 || l == String) {
-				return "", typeError(n.Pos(), diagnostic.TypeOperatorOperands, "operator '%s' requires matching numbers or strings", n.Op)
+				return "", c.nodeTypeError(n, diagnostic.TypeOperatorOperands, "operator '%s' requires matching numbers or strings", n.Op)
 			}
 			return Bool, nil
 		case "==", "!=":
 			if l != r || !comparableType(l) {
-				return "", typeError(n.Pos(), diagnostic.TypeComparisonOperands, "cannot compare values of type %s and %s", l, r)
+				return "", c.nodeTypeError(n, diagnostic.TypeComparisonOperands, "cannot compare values of type %s and %s", l, r)
 			}
 			return Bool, nil
 		case "&&", "||":
 			if l != Bool || r != Bool {
-				return "", typeError(n.Pos(), diagnostic.TypeLogicalOperands, "operator '%s' requires bool operands", n.Op)
+				return "", c.nodeTypeError(n, diagnostic.TypeLogicalOperands, "operator '%s' requires bool operands", n.Op)
 			}
 			return Bool, nil
 		}
 	case *ast.CallExpr:
 		if len(n.TypeArgs) > 0 {
-			return "", typeError(n.Pos(), diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit type arguments are not supported for this call")
+			return "", c.nodeTypeError(n, diagnostic.TypeGenericArgumentsOnNonGeneric, "explicit type arguments are not supported for this call")
 		}
 		id, ok := n.Callee.(*ast.IdentifierExpr)
 		if !ok {
-			return "", typeError(n.Pos(), diagnostic.TypeCallTarget, "only named functions can be called")
+			return "", c.nodeTypeError(n, diagnostic.TypeCallTarget, "only named functions can be called")
 		}
 		args := n.Args
 		if id.Name == "i64" || id.Name == "f64" {
 			if len(args) != 1 {
-				return "", typeError(n.Pos(), diagnostic.TypeNumericCastArity, "%s conversion expects exactly one argument", id.Name)
+				return "", c.nodeTypeError(n, diagnostic.TypeNumericCastArity, "%s conversion expects exactly one argument", id.Name)
 			}
 			argType, err := c.checkExpr(args[0])
 			if err != nil {
 				return "", err
 			}
 			if argType != I64 && argType != F64 {
-				return "", typeError(args[0].Pos(), diagnostic.TypeNumericCastOperand, "%s conversion requires i64 or f64, got %s", id.Name, argType)
+				return "", c.nodeTypeError(args[0], diagnostic.TypeNumericCastOperand, "%s conversion requires i64 or f64, got %s", id.Name, argType)
 			}
 			if id.Name == "i64" {
 				return I64, nil
@@ -960,23 +962,23 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 		}
 		if id.Name == "print" {
 			if len(args) != 1 {
-				return "", typeError(n.Pos(), diagnostic.TypePrintArity, "print expects exactly one argument")
+				return "", c.nodeTypeError(n, diagnostic.TypePrintArity, "print expects exactly one argument")
 			}
 			argType, err := c.checkExpr(args[0])
 			if err != nil {
 				return "", err
 			}
 			if argType == Unit {
-				return "", typeError(args[0].Pos(), diagnostic.TypePrintUnit, "print cannot display a unit value")
+				return "", c.nodeTypeError(args[0], diagnostic.TypePrintUnit, "print cannot display a unit value")
 			}
 			if !printableType(argType) {
-				return "", typeError(args[0].Pos(), diagnostic.TypePrintStructUnsupported, "print does not yet support values of type %s", argType)
+				return "", c.nodeTypeError(args[0], diagnostic.TypePrintStructUnsupported, "print does not yet support values of type %s", argType)
 			}
 			return Unit, nil
 		}
 		if id.Name == "len" {
 			if len(args) != 1 {
-				return "", typeError(n.Pos(), diagnostic.TypeLenArity, "len expects exactly one argument")
+				return "", c.nodeTypeError(n, diagnostic.TypeLenArity, "len expects exactly one argument")
 			}
 			t, err := c.checkExpr(args[0])
 			if err != nil {
@@ -984,27 +986,27 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 			}
 			if t != String {
 				if _, ok := arrayElement(t); !ok {
-					return "", typeError(n.Pos(), diagnostic.TypeLenArgument, "len accepts string or Array<T>, got %s", t)
+					return "", c.nodeTypeError(n, diagnostic.TypeLenArgument, "len accepts string or Array<T>, got %s", t)
 				}
 			}
 			return I64, nil
 		}
 		if id.Name == "assert" {
 			if len(args) != 1 {
-				return "", typeError(n.Pos(), diagnostic.TypeAssertArity, "assert expects exactly one argument")
+				return "", c.nodeTypeError(n, diagnostic.TypeAssertArity, "assert expects exactly one argument")
 			}
 			t, err := c.checkExpr(args[0])
 			if err != nil {
 				return "", err
 			}
 			if t != Bool {
-				return "", typeError(n.Pos(), diagnostic.TypeAssertArgument, "assert expects bool, got %s", t)
+				return "", c.nodeTypeError(n, diagnostic.TypeAssertArgument, "assert expects bool, got %s", t)
 			}
 			return Unit, nil
 		}
 		if structInfo, isStruct := c.structs[id.Name]; isStruct {
 			if len(args) != len(structInfo.Fields) {
-				return "", typeError(n.Pos(), diagnostic.TypeStructConstructorArity, "struct '%s' expects %d fields, got %d", id.Name, len(structInfo.Fields), len(args))
+				return "", c.nodeTypeError(n, diagnostic.TypeStructConstructorArity, "struct '%s' expects %d fields, got %d", id.Name, len(structInfo.Fields), len(args))
 			}
 			for i, arg := range args {
 				got, err := c.checkExprExpected(arg, structInfo.Fields[i].Type)
@@ -1013,17 +1015,17 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 				}
 				want := structInfo.Fields[i].Type
 				if got != want {
-					return "", typeError(arg.Pos(), diagnostic.TypeStructFieldMismatch, "field '%s' of struct '%s' expects %s, got %s", structInfo.Fields[i].Name, id.Name, want, got)
+					return "", c.nodeTypeError(arg, diagnostic.TypeStructFieldMismatch, "field '%s' of struct '%s' expects %s, got %s", structInfo.Fields[i].Name, id.Name, want, got)
 				}
 			}
 			return Type(id.Name), nil
 		}
 		fn, ok := c.functions[id.Name]
 		if !ok {
-			return "", typeError(n.Pos(), diagnostic.TypeUndefinedFunction, "undefined function '%s'", id.Name)
+			return "", c.nodeTypeError(n, diagnostic.TypeUndefinedFunction, "undefined function '%s'", id.Name)
 		}
 		if len(args) != len(fn.Params) {
-			return "", typeError(n.Pos(), diagnostic.TypeFunctionArity, "function '%s' expects %d arguments, got %d", id.Name, len(fn.Params), len(args))
+			return "", c.nodeTypeError(n, diagnostic.TypeFunctionArity, "function '%s' expects %d arguments, got %d", id.Name, len(fn.Params), len(args))
 		}
 		for i, arg := range args {
 			t, err := c.checkExpr(arg)
@@ -1031,12 +1033,12 @@ func (c *Checker) checkExprImpl(e ast.Expr) (Type, error) {
 				return "", err
 			}
 			if t != fn.Params[i] {
-				return "", typeError(arg.Pos(), diagnostic.TypeArgumentMismatch, "argument %d to '%s' has type %s; expected %s", i+1, id.Name, t, fn.Params[i])
+				return "", c.nodeTypeError(arg, diagnostic.TypeArgumentMismatch, "argument %d to '%s' has type %s; expected %s", i+1, id.Name, t, fn.Params[i])
 			}
 		}
 		return fn.Return, nil
 	}
-	return "", typeError(e.Pos(), diagnostic.TypeUnsupportedExpression, "unsupported expression node %T", e)
+	return "", c.nodeTypeError(e, diagnostic.TypeUnsupportedExpression, "unsupported expression node %T", e)
 }
 
 func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
@@ -1046,10 +1048,10 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 	}
 	enumInfo, ok := c.enums[string(subjectType)]
 	if !ok {
-		return "", typeError(n.Subject.Pos(), diagnostic.TypeMatchNonEnum, "match subject must have an enum type, got %s", subjectType)
+		return "", c.nodeTypeError(n.Subject, diagnostic.TypeMatchNonEnum, "match subject must have an enum type, got %s", subjectType)
 	}
 	if len(n.Arms) == 0 {
-		return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match expression requires at least one arm")
+		return "", c.nodeTypeError(n, diagnostic.TypeMatchNonExhaustive, "match expression requires at least one arm")
 	}
 	covered := make(map[int]bool, len(enumInfo.Variants))
 	wildcardSeen := false
@@ -1060,15 +1062,15 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 		var bindings []Variable
 		if pattern.Wildcard {
 			if wildcardSeen || len(covered) == len(enumInfo.Variants) {
-				return "", typeError(pattern.At, diagnostic.TypeMatchUnreachableArm, "wildcard arm cannot match any remaining variant")
+				return "", c.nodeTypeError(pattern, diagnostic.TypeMatchUnreachableArm, "wildcard arm cannot match any remaining variant")
 			}
 			wildcardSeen = true
 		} else {
 			if wildcardSeen {
-				return "", typeError(pattern.At, diagnostic.TypeMatchUnreachableArm, "arm for %s::%s is unreachable after wildcard", pattern.EnumName, pattern.VariantName)
+				return "", c.nodeTypeError(pattern, diagnostic.TypeMatchUnreachableArm, "arm for %s::%s is unreachable after wildcard", pattern.EnumName, pattern.VariantName)
 			}
 			if pattern.EnumName != enumInfo.Name {
-				return "", typeError(pattern.At, diagnostic.TypeMatchVariantEnum, "pattern %s::%s does not belong to matched enum %s", pattern.EnumName, pattern.VariantName, enumInfo.Name)
+				return "", c.nodeTypeError(pattern, diagnostic.TypeMatchVariantEnum, "pattern %s::%s does not belong to matched enum %s", pattern.EnumName, pattern.VariantName, enumInfo.Name)
 			}
 			variantIndex := -1
 			variant := EnumVariantInfo{}
@@ -1079,26 +1081,26 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 				}
 			}
 			if variantIndex < 0 {
-				return "", typeError(pattern.At, diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", pattern.EnumName, pattern.VariantName)
+				return "", c.nodeTypeError(pattern, diagnostic.TypeUnknownEnumVariant, "enum '%s' has no variant '%s'", pattern.EnumName, pattern.VariantName)
 			}
 			if covered[variantIndex] {
-				return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateArm, "variant %s::%s is matched more than once", pattern.EnumName, pattern.VariantName)
+				return "", c.nodeTypeError(pattern, diagnostic.TypeMatchDuplicateArm, "variant %s::%s is matched more than once", pattern.EnumName, pattern.VariantName)
 			}
 			covered[variantIndex] = true
 			if pattern.HasPayload != (len(variant.Payload) > 0) || len(pattern.Bindings) != len(variant.Payload) {
-				return "", typeError(pattern.At, diagnostic.TypeMatchPayloadArity, "pattern %s::%s requires %d payload bindings", pattern.EnumName, pattern.VariantName, len(variant.Payload))
+				return "", c.nodeTypeError(pattern, diagnostic.TypeMatchPayloadArity, "pattern %s::%s requires %d payload bindings", pattern.EnumName, pattern.VariantName, len(variant.Payload))
 			}
 			seenNames := make(map[string]struct{}, len(pattern.Bindings))
 			for i, name := range pattern.Bindings {
 				if len(name) == 0 || len(name) > langtypes.MaxTypeNameBytes || !langtypes.ValidName(name) {
-					return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateBinding, "invalid payload binding '%s'", name)
+					return "", c.nodeTypeError(pattern, diagnostic.TypeMatchDuplicateBinding, "invalid payload binding '%s'", name)
 				}
 				if _, duplicate := seenNames[name]; duplicate {
-					return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateBinding, "payload binding '%s' is repeated", name)
+					return "", c.nodeTypeError(pattern, diagnostic.TypeMatchDuplicateBinding, "payload binding '%s' is repeated", name)
 				}
 				seenNames[name] = struct{}{}
 				if builtinName(name) {
-					return "", typeError(pattern.At, diagnostic.TypeReservedBinding, "payload binding '%s' is reserved", name)
+					return "", c.nodeTypeError(pattern, diagnostic.TypeReservedBinding, "payload binding '%s' is reserved", name)
 				}
 				bindings = append(bindings, Variable{Type: variant.Payload[i]})
 			}
@@ -1109,7 +1111,7 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 			for i, name := range pattern.Bindings {
 				if !c.scopes.define(name, bindings[i]) {
 					c.scopes = oldScope
-					return "", typeError(pattern.At, diagnostic.TypeMatchDuplicateBinding, "payload binding '%s' is repeated", name)
+					return "", c.nodeTypeError(pattern, diagnostic.TypeMatchDuplicateBinding, "payload binding '%s' is repeated", name)
 				}
 			}
 		}
@@ -1121,7 +1123,7 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 		if !haveResult {
 			resultType, haveResult = armType, true
 		} else if resultType != armType {
-			return "", typeError(arm.At, diagnostic.TypeMatchArmTypeMismatch, "match arms must have one result type; expected %s, got %s", resultType, armType)
+			return "", c.nodeTypeError(arm, diagnostic.TypeMatchArmTypeMismatch, "match arms must have one result type; expected %s, got %s", resultType, armType)
 		}
 	}
 	if !wildcardSeen && len(covered) != len(enumInfo.Variants) {
@@ -1131,10 +1133,10 @@ func (c *Checker) checkMatchExpr(n *ast.MatchExpr) (Type, error) {
 				missing = append(missing, variant.Name)
 			}
 		}
-		return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match on %s is missing variants: %s", enumInfo.Name, strings.Join(missing, ", "))
+		return "", c.nodeTypeError(n, diagnostic.TypeMatchNonExhaustive, "match on %s is missing variants: %s", enumInfo.Name, strings.Join(missing, ", "))
 	}
 	if !haveResult {
-		return "", typeError(n.Pos(), diagnostic.TypeMatchNonExhaustive, "match expression has no reachable arms")
+		return "", c.nodeTypeError(n, diagnostic.TypeMatchNonExhaustive, "match expression has no reachable arms")
 	}
 	return resultType, nil
 }
@@ -1157,6 +1159,32 @@ func astBoolLiteral(expr ast.Expr) (bool, bool) {
 		return false, false
 	}
 	return literal.Bool, true
+}
+
+func (c *Checker) nodeTypeError(node ast.Node, code, format string, args ...any) error {
+	message := fmt.Sprintf(format, args...)
+	if node == nil {
+		return diagnostic.New(code, "type", token.Position{}, message)
+	}
+	anchor := node.Pos()
+	rangeStart := ast.SourceRangeStart(node)
+	end := node.EndPos()
+	valid := anchor.Offset >= rangeStart.Offset && end.Offset >= anchor.Offset &&
+		anchor.Line > 0 && anchor.Column > 0 &&
+		rangeStart.Line > 0 && rangeStart.Column > 0 &&
+		end.Line > 0 && end.Column > 0
+	if valid && (anchor.Line < rangeStart.Line ||
+		(anchor.Line == rangeStart.Line && anchor.Column < rangeStart.Column) ||
+		end.Line < anchor.Line || (end.Line == anchor.Line && end.Column < anchor.Column)) {
+		valid = false
+	}
+	if valid {
+		return diagnostic.NewAtSourceRange(code, "type", c.sourceName, anchor, rangeStart, end, message)
+	}
+	if c.sourceName != "" {
+		return diagnostic.NewAtSource(code, "type", c.sourceName, anchor, message)
+	}
+	return diagnostic.New(code, "type", anchor, message)
 }
 
 func typeError(pos token.Position, code string, format string, args ...any) error {

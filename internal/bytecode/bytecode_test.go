@@ -983,7 +983,8 @@ func TestRejectsOutOfRangeEnumPayloadInstruction(t *testing.T) {
 func TestInstructionSourceSpanValidation(t *testing.T) {
 	valid := Instruction{
 		Op: OpHalt, Line: 1, Column: 1,
-		Offset: 0, EndOffset: 1, EndLine: 1, EndColumn: 2,
+		Offset: 0, RangeStartOffset: 0, RangeStartLine: 1, RangeStartColumn: 1,
+		EndOffset: 1, EndLine: 1, EndColumn: 2,
 	}
 	makeProgram := func(instruction Instruction) *Program {
 		return &Program{
@@ -1005,25 +1006,35 @@ func TestInstructionSourceSpanValidation(t *testing.T) {
 			name: "end offset before start",
 			instruction: Instruction{
 				Op: OpHalt, Line: 1, Column: 3,
-				Offset: 5, EndOffset: 4, EndLine: 1, EndColumn: 8,
+				Offset: 5, RangeStartOffset: 0, RangeStartLine: 1, RangeStartColumn: 1,
+				EndOffset: 4, EndLine: 1, EndColumn: 8,
 			},
-			want: "end offset precedes start offset",
+			want: "end offset precedes",
 		},
 		{
-			name: "end position before start",
+			name: "end position before syntactic range start",
 			instruction: Instruction{
 				Op: OpHalt, Line: 2, Column: 3,
-				Offset: 5, EndOffset: 6, EndLine: 1, EndColumn: 8,
+				Offset: 5, RangeStartOffset: 5, RangeStartLine: 2, RangeStartColumn: 3,
+				EndOffset: 6, EndLine: 1, EndColumn: 8,
 			},
-			want: "end position precedes start position",
+			want: "end position precedes syntactic range start",
 		},
 		{
 			name: "partial end position",
 			instruction: Instruction{
 				Op: OpHalt, Line: 1, Column: 1,
-				Offset: 0, EndOffset: 1,
+				Offset: 0, RangeStartOffset: 0, RangeStartLine: 1, RangeStartColumn: 1,
+				EndOffset: 1,
 			},
 			want: "span has no valid end line/column",
+		},
+		{
+			name: "missing syntactic range start",
+			instruction: Instruction{
+				Op: OpHalt, Line: 1, Column: 1, Offset: 0, EndOffset: 1, EndLine: 1, EndColumn: 2,
+			},
+			want: "span has no valid syntactic range start",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1041,7 +1052,8 @@ func TestInstructionSourceSpanRoundTripsThroughJSON(t *testing.T) {
 			Name: "main", Return: "unit",
 			Code: []Instruction{{
 				Op: OpHalt, Line: 2, Column: 4,
-				Offset: 12, EndOffset: 15, EndLine: 2, EndColumn: 7,
+				Offset: 12, RangeStartOffset: 9, RangeStartLine: 2, RangeStartColumn: 1,
+				EndOffset: 15, EndLine: 2, EndColumn: 7,
 			}},
 		}},
 		Entry: 0,
@@ -1059,13 +1071,13 @@ func TestInstructionSourceSpanRoundTripsThroughJSON(t *testing.T) {
 	}
 }
 
-func TestRejectsBytecodeVersionSevenAfterSourceSpanSchemaBump(t *testing.T) {
+func TestRejectsBytecodeVersionEightAfterRangeStartSchemaBump(t *testing.T) {
 	p := &Program{
-		Format: "aster-bytecode", Version: 7, Constants: []Value{},
+		Format: "aster-bytecode", Version: 8, Constants: []Value{},
 		Functions: []Function{{Name: "main", Return: "unit", Code: []Instruction{{Op: OpHalt}}}},
 		Entry:     0,
 	}
 	if err := p.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported bytecode version") {
-		t.Fatalf("expected version 7 to be rejected, got %v", err)
+		t.Fatalf("expected version 8 to be rejected, got %v", err)
 	}
 }

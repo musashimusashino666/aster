@@ -253,8 +253,8 @@ func TestSeededRuntimeFailureClassAndExitStatusMatch(t *testing.T) {
 			if result.nativeErr == nil || result.nativeExitCode == 0 {
 				t.Fatalf("Native should exit unsuccessfully for seed %#x, got error=%v exit=%d output=%q\nsource:\n%s", tc.seed, result.nativeErr, result.nativeExitCode, result.nativeOutput, source)
 			}
-			if got := strings.TrimSpace(result.nativeOutput); got != result.vmErr.Error() {
-				t.Fatalf("backend failure diagnostics differ for seed %#x: VM=%q Native=%q\nsource:\n%s", tc.seed, result.vmErr.Error(), got, source)
+			if got := nativeDiagnosticPayload(strings.TrimSpace(result.nativeOutput)); got != nativeDiagnosticPayload(result.vmErr.Error()) {
+				t.Fatalf("backend diagnostic payloads differ for seed %#x: VM=%q Native=%q\nsource:\n%s", tc.seed, nativeDiagnosticPayload(result.vmErr.Error()), got, source)
 			}
 		})
 	}
