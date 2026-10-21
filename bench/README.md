@@ -57,6 +57,24 @@ The summary reports the median, minimum, maximum, median absolute deviation (MAD
 
 The `-benchmem` allocation figures for Native are allocations made by the Go test process (including process-launch harness work). They do **not** measure allocations inside the child Native executable and must not be used as a VM-versus-Native child-memory comparison. If child-process allocation or peak-memory data is needed, add a separate process-aware measurement rather than inferring it from `-benchmem`.
 
+## Native child-process peak memory
+
+To measure the generated Native executable itself, run the Linux-only process-aware harness:
+
+```bash
+bash scripts/bench-native-memory.sh
+# Reduce to one repetition for a functional smoke test:
+ASTER_BENCH_REPEATS=1 bash scripts/bench-native-memory.sh bench/native-memory-smoke.out
+# Or choose an output path:
+bash scripts/bench-native-memory.sh bench/native-memory-baseline.out
+```
+
+The script requires Linux, GNU `/usr/bin/time`, Go, Python 3, and Git. It records OS/kernel, CPU, logical CPU count, Go version, source commit, each raw sample, and a summary (median, min/max, MAD, and range relative to median). It builds a no-op executable and workloads retaining one, four, or eight independent 16 MiB ASCII strings, corresponding to 0, 16, 64, and 128 MiB of retained string payload. Native build elapsed time and binary size are reported separately from runtime measurements.
+
+Peak RSS is reported in KiB from GNU `time`'s `%M` metric. It includes Go runtime costs and mapped executable pages; it is not Aster heap size, total allocated bytes, or a process-wide memory quota. The workloads are bounded and do not attempt to trigger OOM. Runtime measurements are collected in fresh standalone child processes without a resource supervisor, so they do not measure isolation overhead. No CI performance threshold is inferred from these results. Repeat on an otherwise idle host, retain the raw report, and compare only measurements with compatible host/toolchain metadata.
+
+This harness is the measurement prerequisite for [Issue #82](https://github.com/musashimusashino666/aster/issues/82) and the proposed [ADR 0010](../docs/adr/0010-process-resource-isolation.md). It must not be used to pick default enforcement thresholds from one runner or to claim a hard memory guarantee.
+
 ## Further workloads
 
 Parsing/type-checking time over a fixed source corpus, native build time and executable size, and process peak resident memory still need dedicated harnesses. AI/GPU, WebAssembly, game-loop latency, mobile and embedded benchmarks are deferred until those backends exist.
