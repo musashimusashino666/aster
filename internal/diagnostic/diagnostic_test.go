@@ -33,6 +33,8 @@ func TestRuntimeCodeAssignsStableFailureClasses(t *testing.T) {
 		{"call depth limit exceeded (maximum 4)", RuntimeCallDepthLimit},
 		{"instruction budget exceeded (100 steps)", RuntimeInstructionBudget},
 		{"instruction budget exceeded (maximum 100000000 Native fuel units)", RuntimeInstructionBudget},
+		{"process memory limit exceeded", RuntimeProcessMemoryLimit},
+		{"cumulative CPU-time budget exceeded", RuntimeCPUTimeLimit},
 		{"operand stack limit exceeded", RuntimeOperandStackLimit},
 		{"active local slot limit exceeded", RuntimeLocalSlotLimit},
 		{"write output: broken pipe", RuntimeOutputWrite},
@@ -64,6 +66,8 @@ func TestNativeRuntimeDiagnosticClassifierMatchesVM(t *testing.T) {
 		"call depth limit exceeded (maximum 4)",
 		"instruction budget exceeded (100 steps)",
 		"instruction budget exceeded (maximum 100000000 Native fuel units)",
+		"process memory limit exceeded",
+		"cumulative CPU-time budget exceeded",
 		"operand stack limit exceeded",
 		"active local slot limit exceeded",
 		"write output: broken pipe",
@@ -261,5 +265,17 @@ func TestNewAtSourceSpanRetainsSourcePathAndEnd(t *testing.T) {
 	const want = "example.ast:2:4: runtime error: runtime failed [RUN000]"
 	if got.Error() != want {
 		t.Fatalf("Error() = %q, want %q", got.Error(), want)
+	}
+}
+
+func TestResourceIsolationDiagnosticCodes(t *testing.T) {
+	if got := RuntimeCode("process memory limit exceeded"); got != RuntimeProcessMemoryLimit {
+		t.Fatalf("RuntimeCode(memory limit) = %q, want %q", got, RuntimeProcessMemoryLimit)
+	}
+	if got := RuntimeCode("cumulative CPU-time budget exceeded"); got != RuntimeCPUTimeLimit {
+		t.Fatalf("RuntimeCode(CPU-time limit) = %q, want %q", got, RuntimeCPUTimeLimit)
+	}
+	if got := ToolchainCode("resource isolation unavailable: cgroup v2 is missing"); got != ToolchainResourceIsolationUnavailable {
+		t.Fatalf("ToolchainCode(resource isolation) = %q, want %q", got, ToolchainResourceIsolationUnavailable)
 	}
 }
