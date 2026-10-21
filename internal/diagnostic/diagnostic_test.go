@@ -26,6 +26,7 @@ func TestRuntimeFailureCarriesExplicitCodeAndMessage(t *testing.T) {
 		{RuntimeRemainderByZero, "remainder by zero"},
 		{RuntimeNonFiniteFloat, "non-finite floating-point result"},
 		{RuntimeArrayIndexBounds, "array index 4 out of bounds for length 2"},
+		{RuntimeArrayLimit, "invalid array element count"},
 		{RuntimeSliceBounds, "slice bounds [2:1] out of bounds for length 3"},
 		{RuntimeNumericConversionRange, "f64 value out of range for i64 conversion"},
 		{RuntimeStringLimit, "string length limit exceeded (maximum 16 bytes)"},
@@ -39,6 +40,7 @@ func TestRuntimeFailureCarriesExplicitCodeAndMessage(t *testing.T) {
 		{RuntimeLocalSlotLimit, "active local slot limit exceeded"},
 		{RuntimeOutputWrite, "write output: broken pipe"},
 		{RuntimeGeneric, "unexpected runtime condition"},
+		{RuntimeGeneric, "unexpected message containing overflow but not a runtime overflow failure"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.code, func(t *testing.T) {
