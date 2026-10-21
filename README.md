@@ -43,7 +43,7 @@
 
 ## Requirements
 
-- Go 1.23 or newer for building the Aster CLI and native backend.
+- Go 1.26 or newer for building the Aster CLI and native backend.
 - Both `go` and `gofmt` must be available on `PATH`; `gofmt` is normally included with the Go distribution.
 - No third-party Go modules are required by the current implementation.
 
@@ -238,7 +238,7 @@ make check
 make examples
 ```
 
-The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci.yml) checks Go formatting, runs the test suite and race detector, runs `go vet`, builds the CLI, and executes the examples on Go 1.23 and the latest stable Go release.
+The GitHub Actions workflow at [`.github/workflows/ci.yml`](.github/workflows/ci.yml) checks Go formatting, runs the test suite and race detector, runs `go vet`, builds the CLI, and executes the examples on Go 1.26.x (the minimum supported line) and the latest stable Go release.
 
 ## Roadmap
 
