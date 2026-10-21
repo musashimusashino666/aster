@@ -230,6 +230,9 @@ func commandRun(args []string) error {
 			if err != nil {
 				return fmt.Errorf("invalid --cpu-time-limit %q: %w", *cpuTimeLimit, err)
 			}
+			if limits.CPUTimeLimit <= 0 {
+				return fmt.Errorf("--cpu-time-limit must be greater than zero")
+			}
 		}
 		if err := limits.Validate(); err != nil {
 			return fmt.Errorf("invalid constrained resource limits: %w", err)
