@@ -120,10 +120,10 @@ func TestCgroupMemoryHelper(t *testing.T) {
 	}
 	const size = 128 << 20
 	payload := make([]byte, size)
-	var checksum byte
+	var checksum uint64
 	for offset := 0; offset < len(payload); offset += 4096 {
 		payload[offset] = 1
-		checksum += payload[offset]
+		checksum += uint64(payload[offset])
 	}
 	if len(payload) != size || checksum == 0 {
 		t.Fatal("unexpected memory test payload")
