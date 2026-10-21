@@ -24,8 +24,8 @@ const (
 	gateEnvironment = "ASTER_RESOURCE_GATE"
 )
 
-// Run starts cmd behind a generated-program startup gate, attaches the child
-// to a dedicated cgroup v2, and only then releases user code. releasePath must
+// Run starts a gated internal launcher, attaches it to a dedicated cgroup v2,
+// and only then releases it to exec the Native program. releasePath must
 // name a private, initially absent file in a directory owned by the caller.
 func Run(ctx context.Context, cmd *exec.Cmd, releasePath string, limits Limits) error {
 	if ctx == nil {
@@ -145,6 +145,9 @@ func createCgroup(limits Limits) (*workloadCgroup, error) {
 	if limits.MemoryMaxBytes > 0 {
 		if err := writeControl(filepath.Join(path, "memory.max"), strconv.FormatInt(limits.MemoryMaxBytes, 10)); err != nil {
 			return nil, fmt.Errorf("%w: configure memory.max: %v", ErrUnavailable, err)
+		}
+		if err := writeControl(filepath.Join(path, "memory.swap.max"), "0"); err != nil {
+			return nil, fmt.Errorf("%w: configure memory.swap.max to disable swap for the workload: %v", ErrUnavailable, err)
 		}
 		group.initialOOMKills, err = readOOMKillCount(path)
 		if err != nil {
