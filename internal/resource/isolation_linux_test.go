@@ -38,3 +38,25 @@ func TestCurrentCgroupPathIsAbsolute(t *testing.T) {
 		t.Fatalf("current cgroup path %q is not absolute", path)
 	}
 }
+
+func TestCgroupMetricParsers(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cpu.stat"), []byte("usage_usec 12345\nuser_usec 10000\nsystem_usec 2345\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readCPUUsage(dir); err != nil || got != 12345 {
+		t.Fatalf("readCPUUsage() = (%d, %v), want (12345, nil)", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "memory.events"), []byte("low 0\nhigh 0\nmax 2\noom 1\noom_kill 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readOOMKillCount(dir); err != nil || got != 1 {
+		t.Fatalf("readOOMKillCount() = (%d, %v), want (1, nil)", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cgroup.events"), []byte("populated 1\nfrozen 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := cgroupPopulated(dir); err != nil || !got {
+		t.Fatalf("cgroupPopulated() = (%v, %v), want (true, nil)", got, err)
+	}
+}
