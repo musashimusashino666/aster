@@ -276,11 +276,11 @@ func TestWorkloadExitDoesNotMaskExpiredContext(t *testing.T) {
 
 func TestMemoryLimitClassificationRequiresBothOOMCounters(t *testing.T) {
 	tests := []struct {
-		name       string
-		initialOOM uint64
-		initialKill uint64
-		currentOOM uint64
-		currentKill uint64
+		name            string
+		initialOOM      uint64
+		initialKill     uint64
+		currentOOM      uint64
+		currentKill     uint64
 		wantMemoryLimit bool
 	}{
 		{name: "both counters increase", initialOOM: 2, initialKill: 3, currentOOM: 3, currentKill: 4, wantMemoryLimit: true},
@@ -296,10 +296,10 @@ func TestMemoryLimitClassificationRequiresBothOOMCounters(t *testing.T) {
 				t.Fatal(err)
 			}
 			group := &workloadCgroup{
-				path: dir,
-				limits: Limits{MemoryMaxBytes: 64 << 20},
-				initialOOM: tt.initialOOM,
-				initialOOMKills: tt.initialKill,
+				path            : dir,
+				limits          : Limits{MemoryMaxBytes: 64 << 20},
+				initialOOM      : tt.initialOOM,
+				initialOOMKills : tt.initialKill,
 			}
 			err := group.handleWorkloadExit(context.Background(), nil, 0)
 			gotMemoryLimit := errors.Is(err, ErrMemoryLimitExceeded)
@@ -705,4 +705,3 @@ func TestRunKillsDescendantsAndCleansUpOnContextDeadline(t *testing.T) {
 	assertNoNewAsterCgroups(t, root, before)
 	t.Logf("termination=context-deadline child_pid=%d child_stopped=true cleanup=clean", pid)
 }
-
