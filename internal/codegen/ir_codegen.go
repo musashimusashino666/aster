@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -161,9 +162,65 @@ func (g *generator) irEnumType(enumType ir.EnumType) error {
 	return nil
 }
 
-func irPositionArgs(node ir.Node) string {
-	pos := node.Pos()
+type sourceSpanKey struct {
+	line   int
+	column int
+}
+
+type sourceSpanValue struct {
+	offset    int
+	endOffset int
+	endLine   int
+	endColumn int
+}
+
+// irPositionArgs registers the exclusive source range for a runtime-helper
+// call while preserving the existing line/column arguments passed to helpers.
+func (g *generator) irPositionArgs(node ir.Node) string {
+	pos, end := node.Pos(), node.EndPos()
+	if pos.Line > 0 && pos.Column > 0 && end.Line > 0 && end.Column > 0 && end.Offset >= pos.Offset {
+		if g.sourceSpans == nil {
+			g.sourceSpans = make(map[sourceSpanKey]sourceSpanValue)
+		}
+		key := sourceSpanKey{line: pos.Line, column: pos.Column}
+		span := sourceSpanValue{
+			offset: pos.Offset, endOffset: end.Offset,
+			endLine: end.Line, endColumn: end.Column,
+		}
+		if current, ok := g.sourceSpans[key]; !ok || span.endOffset > current.endOffset {
+			g.sourceSpans[key] = span
+		}
+	}
 	return fmt.Sprintf("%d, %d", pos.Line, pos.Column)
+}
+
+func (g *generator) writeSourceSpanTable() error {
+	if err := g.checkContext(); err != nil {
+		return err
+	}
+	keys := make([]sourceSpanKey, 0, len(g.sourceSpans))
+	for key := range g.sourceSpans {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].line != keys[j].line {
+			return keys[i].line < keys[j].line
+		}
+		return keys[i].column < keys[j].column
+	})
+	g.line("var asterSourceSpans = map[asterSourcePosition]asterSourceSpan{")
+	g.indent++
+	for _, key := range keys {
+		if err := g.checkContext(); err != nil {
+			return err
+		}
+		span := g.sourceSpans[key]
+		g.line(fmt.Sprintf("{line: %d, column: %d}: {offset: %d, endOffset: %d, endLine: %d, endColumn: %d},",
+			key.line, key.column, span.offset, span.endOffset, span.endLine, span.endColumn))
+	}
+	g.indent--
+	g.line("}")
+	return nil
 }
 
 // needsArrayShareAtBoundary reports expression forms that return an existing
@@ -269,7 +326,7 @@ func (g *generator) irStatement(stmt ir.Stmt) error {
 			return err
 		}
 		g.line(fmt.Sprintf("%s = asterSetIndexPath(%s, []int64{%s}, %s, %s).(%s)",
-			root, root, strings.Join(indices, ", "), value, irPositionArgs(n), goType(string(n.RootType))))
+			root, root, strings.Join(indices, ", "), value, g.irPositionArgs(n), goType(string(n.RootType))))
 		return nil
 	case *ir.AssignStmt:
 		expr, err := g.irExpression(n.Value)
@@ -496,7 +553,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		if n.Op != ir.OpIndexChecked {
 			return "", fmt.Errorf("codegen: unsupported IR index operation %q", n.Op)
 		}
-		return "asterIndexI64(" + collection + ", " + index + ", " + irPositionArgs(n) + ")", nil
+		return "asterIndexI64(" + collection + ", " + index + ", " + g.irPositionArgs(n) + ")", nil
 	case *ir.SliceExpr:
 		collection, err := g.irExpression(n.Collection)
 		if err != nil {
@@ -513,7 +570,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		if n.Op != ir.OpSliceChecked {
 			return "", fmt.Errorf("codegen: unsupported IR slice operation %q", n.Op)
 		}
-		return "asterSlice(" + collection + ", " + start + ", " + end + ", " + irPositionArgs(n) + ")", nil
+		return "asterSlice(" + collection + ", " + start + ", " + end + ", " + g.irPositionArgs(n) + ")", nil
 	case *ir.LocalExpr:
 		return irLocalName(n.Symbol), nil
 	case *ir.UnaryExpr:
@@ -523,7 +580,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 		}
 		switch n.Op {
 		case ir.OpNegI64Checked:
-			return "asterNegI64(" + right + ", " + irPositionArgs(n) + ")", nil
+			return "asterNegI64(" + right + ", " + g.irPositionArgs(n) + ")", nil
 		case ir.OpNegF64:
 			return "asterNegF64(" + right + ")", nil
 		case ir.OpNotBool:
@@ -553,7 +610,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			ir.OpConcatStringChecked: "asterAddString",
 		}
 		if helper, ok := checkedHelpers[n.Op]; ok {
-			return helper + "(" + left + ", " + right + ", " + irPositionArgs(n) + ")", nil
+			return helper + "(" + left + ", " + right + ", " + g.irPositionArgs(n) + ")", nil
 		}
 		goOperators := map[ir.RuntimeOp]string{
 			ir.OpEqual:                  "==",
@@ -592,7 +649,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			}
 			return irStructTypeName(n.FunctionName) + "{" + strings.Join(fields, ", ") + "}", nil
 		case ir.CallPrint:
-			return "asterPrint(" + joined + ", " + irPositionArgs(n) + ")", nil
+			return "asterPrint(" + joined + ", " + g.irPositionArgs(n) + ")", nil
 		case ir.CallLen:
 			if len(n.Args) != 1 {
 				return "", fmt.Errorf("codegen: malformed IR len call")
@@ -602,7 +659,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			}
 			return "asterLenString(" + joined + ")", nil
 		case ir.CallAssert:
-			return "asterAssert(" + joined + ", " + irPositionArgs(n) + ")", nil
+			return "asterAssert(" + joined + ", " + g.irPositionArgs(n) + ")", nil
 		case ir.CallI64Cast:
 			if len(n.Args) != 1 {
 				return "", fmt.Errorf("codegen: malformed i64 cast call")
@@ -611,7 +668,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			case "i64":
 				return args[0], nil
 			case "f64":
-				return "asterF64ToI64(" + args[0] + ", " + irPositionArgs(n) + ")", nil
+				return "asterF64ToI64(" + args[0] + ", " + g.irPositionArgs(n) + ")", nil
 			default:
 				return "", fmt.Errorf("codegen: invalid i64 cast source type %q", n.Args[0].ExprType())
 			}
@@ -632,7 +689,7 @@ func (g *generator) irExpression(expr ir.Expr) (string, error) {
 			if callArgs != "" {
 				callArgs += ", "
 			}
-			return irFunctionName(n.Function) + "(" + callArgs + irPositionArgs(n) + ")", nil
+			return irFunctionName(n.Function) + "(" + callArgs + g.irPositionArgs(n) + ")", nil
 		default:
 			return "", fmt.Errorf("codegen: unsupported IR call target %q", n.Target)
 		}
