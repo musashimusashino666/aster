@@ -118,19 +118,19 @@ func TestExpansionDiagnosticRangesCoverFunctionStructAndEnumPaths(t *testing.T) 
 			name:   "function inference",
 			source: "fn make<T>() -> T { return 1; }\nlet result = make();",
 			code:   diagnostic.TypeGenericInference,
-			marker: "make();",
+			marker: "make()",
 		},
 		{
 			name:   "growing generic struct",
 			source: "struct Nest<T> { next: Nest<Array<T>> }\nfn take(value: Nest<i64>) { }",
 			code:   "TYP086",
-			marker: "Nest<i64>",
+			marker: "Nest<Array<T>>",
 		},
 		{
 			name:   "growing generic enum",
 			source: "enum Nest<T> { End, Next(Nest<Array<T>>), }\nfn consume(value: Nest<i64>) { }",
 			code:   "TYP089",
-			marker: "Nest<i64>",
+			marker: "Nest<Array<T>>",
 		},
 	}
 
