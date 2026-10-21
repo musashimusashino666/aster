@@ -13,6 +13,30 @@ type Node interface {
 	// EndPos returns the exclusive end position of the node's source syntax.
 	EndPos() token.Position
 }
+
+// SourceRangeStart returns the syntactic left edge used when displaying a
+// source range. Pos remains the diagnostic anchor and may point at an operator
+// or postfix delimiter. Parentheses are transparent to this anchor; EndPos
+// still includes a closing parenthesis when the parser retains it.
+func SourceRangeStart(node Node) token.Position {
+	if node == nil {
+		return token.Position{}
+	}
+	switch n := node.(type) {
+	case *BinaryExpr:
+		return SourceRangeStart(n.Left)
+	case *FieldExpr:
+		return SourceRangeStart(n.Object)
+	case *IndexExpr:
+		return SourceRangeStart(n.Collection)
+	case *SliceExpr:
+		return SourceRangeStart(n.Collection)
+	case *CallExpr:
+		return SourceRangeStart(n.Callee)
+	default:
+		return node.Pos()
+	}
+}
 type Decl interface {
 	Node
 	declNode()
