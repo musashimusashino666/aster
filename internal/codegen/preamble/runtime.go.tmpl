@@ -54,11 +54,11 @@ func asterPrint(v any, line, column int) struct{} {
 	text := out.String()
 	printBytes := int64(len(text)) + 1 // Include the newline emitted by Fprintln.
 	if printBytes > int64(asterMaxStdoutBytes)-asterStdoutBytes {
-		asterRuntimeError(line, column, fmt.Sprintf("stdout byte limit exceeded (maximum %d bytes)", asterMaxStdoutBytes))
+		asterRuntimeError("RUN011", line, column, fmt.Sprintf("stdout byte limit exceeded (maximum %d bytes)", asterMaxStdoutBytes))
 	}
 	n, err := fmt.Fprintln(os.Stdout, text)
 	if err != nil {
-		asterRuntimeError(line, column, fmt.Sprintf("write output: %v", err))
+		asterRuntimeError("RUN016", line, column, fmt.Sprintf("write output: %v", err))
 	}
 	asterStdoutBytes += int64(n)
 	return struct{}{}
@@ -71,14 +71,14 @@ func asterLenString(s string) int64 {
 func asterEnterCall(line, column int) {
 	asterConsumeFuel(line, column)
 	if asterCallDepth >= asterMaxCallDepth {
-		asterRuntimeError(line, column, fmt.Sprintf("call depth limit exceeded (maximum %d)", asterMaxCallDepth))
+		asterRuntimeError("RUN012", line, column, fmt.Sprintf("call depth limit exceeded (maximum %d)", asterMaxCallDepth))
 	}
 	asterCallDepth++
 }
 
 func asterConsumeFuel(line, column int) {
 	if asterFuelRemaining <= 0 {
-		asterRuntimeError(line, column, fmt.Sprintf("instruction budget exceeded (maximum %d Native fuel units)", asterMaxFuelUnits))
+		asterRuntimeError("RUN013", line, column, fmt.Sprintf("instruction budget exceeded (maximum %d Native fuel units)", asterMaxFuelUnits))
 	}
 	asterFuelRemaining--
 }
@@ -89,7 +89,7 @@ func asterLeaveCall() {
 
 func asterDisplayWrite(out *strings.Builder, text string, line, column int) {
 	if len(text) > asterMaxStringBytes-out.Len() {
-		asterRuntimeError(line, column, fmt.Sprintf("printed value exceeds %d-byte output limit", asterMaxStringBytes))
+		asterRuntimeError("RUN010", line, column, fmt.Sprintf("printed value exceeds %d-byte output limit", asterMaxStringBytes))
 	}
 	out.WriteString(text)
 }
@@ -107,7 +107,7 @@ func asterFormatValue(value reflect.Value, out *strings.Builder, line, column, d
 	}
 	if items.IsValid() {
 		if depth >= asterMaxArrayNestingDepth && items.Len() > 0 {
-			asterRuntimeError(line, column, "printed array nesting exceeds depth limit")
+			asterRuntimeError("RUN010", line, column, "printed array nesting exceeds depth limit")
 		}
 		asterDisplayWrite(out, "[", line, column)
 		for i := 0; i < items.Len(); i++ {
@@ -128,7 +128,7 @@ func asterFormatValue(value reflect.Value, out *strings.Builder, line, column, d
 
 func asterAddString(a, b string, line, column int) string {
 	if len(b) > asterMaxStringBytes || len(a) > asterMaxStringBytes-len(b) {
-		asterRuntimeError(line, column, fmt.Sprintf("string length limit exceeded (maximum %d UTF-8 bytes)", asterMaxStringBytes))
+		asterRuntimeError("RUN009", line, column, fmt.Sprintf("string length limit exceeded (maximum %d UTF-8 bytes)", asterMaxStringBytes))
 	}
 	return a + b
 }
@@ -192,54 +192,7 @@ func asterWriteRuntimeDiagnostic(failure asterRuntimeFailure) {
 	fmt.Fprintln(os.Stderr, "\x1eASTER-RUNTIME-DIAGNOSTIC:"+string(encoded))
 }
 
-// Keep this classification in sync with internal/diagnostic.RuntimeCode.
-func asterRuntimeDiagnosticCode(message string) string {
-	switch {
-	case strings.Contains(message, "assertion failed"):
-		return "RUN001"
-	case strings.Contains(message, "division by zero"):
-		return "RUN003"
-	case strings.Contains(message, "remainder by zero"):
-		return "RUN004"
-	case strings.Contains(message, "overflow"):
-		return "RUN002"
-	case strings.Contains(message, "non-finite floating-point result"):
-		return "RUN005"
-	case strings.Contains(message, "array index") && strings.Contains(message, "out of bounds"):
-		return "RUN006"
-	case strings.Contains(message, "slice bounds"):
-		return "RUN007"
-	case strings.Contains(message, "out of range for i64 conversion"):
-		return "RUN008"
-	case strings.Contains(message, "string length limit exceeded"):
-		return "RUN009"
-	case strings.Contains(message, "printed value exceeds") || strings.Contains(message, "printed array nesting"):
-		return "RUN010"
-	case strings.Contains(message, "stdout byte limit exceeded"):
-		return "RUN011"
-	case strings.Contains(message, "call depth limit exceeded"):
-		return "RUN012"
-	case strings.Contains(message, "instruction budget exceeded"):
-		return "RUN013"
-	case strings.Contains(message, "process memory limit exceeded"):
-		return "RUN018"
-	case strings.Contains(message, "cumulative CPU-time budget exceeded"):
-		return "RUN019"
-	case strings.Contains(message, "operand stack limit exceeded"):
-		return "RUN014"
-	case strings.Contains(message, "active local slot limit exceeded"):
-		return "RUN015"
-	case strings.HasPrefix(message, "write output:"):
-		return "RUN016"
-	case strings.Contains(message, "invalid array element count") || strings.Contains(message, "array length limit exceeded"):
-		return "RUN017"
-	default:
-		return "RUN000"
-	}
-}
-
-func asterRuntimeError(line, column int, message string) {
-	code := asterRuntimeDiagnosticCode(message)
+func asterRuntimeError(code string, line, column int, message string) {
 	detail := message
 	message = fmt.Sprintf("%s [%s]", message, code)
 	failure := asterRuntimeFailure{
@@ -277,7 +230,7 @@ func asterRuntimeError(line, column int, message string) {
 
 func asterAssert(ok bool, line, column int) struct{} {
 	if !ok {
-		asterRuntimeError(line, column, "assertion failed")
+		asterRuntimeError("RUN001", line, column, "assertion failed")
 	}
 	return struct{}{}
 }
@@ -363,7 +316,7 @@ func asterLenArray[T any](array asterArray[T]) int64 {
 
 func asterIndexI64[T any](s asterArray[T], i int64, line, column int) T {
 	if i < 0 || i >= int64(len(s.Items)) {
-		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", i, len(s.Items)))
+		asterRuntimeError("RUN006", line, column, fmt.Sprintf("array index %d out of bounds for length %d", i, len(s.Items)))
 	}
 	// Indexing is a read, not a semantic copy. The code generator marks
 	// array-valued index results shared only when they cross a value-copy
@@ -373,7 +326,7 @@ func asterIndexI64[T any](s asterArray[T], i int64, line, column int) T {
 
 func asterSlice[T any](s asterArray[T], start, end int64, line, column int) asterArray[T] {
 	if start < 0 || end < start || end > int64(len(s.Items)) {
-		asterRuntimeError(line, column, fmt.Sprintf("slice bounds [%d:%d] out of bounds for length %d", start, end, len(s.Items)))
+		asterRuntimeError("RUN007", line, column, fmt.Sprintf("slice bounds [%d:%d] out of bounds for length %d", start, end, len(s.Items)))
 	}
 	items := make([]T, int(end-start))
 	copy(items, s.Items[int(start):int(end)])
@@ -386,7 +339,7 @@ func asterSlice[T any](s asterArray[T], start, end int64, line, column int) aste
 func asterF64ToI64(value float64, line, column int) int64 {
 	limit := math.Ldexp(1, 63)
 	if math.IsNaN(value) || math.IsInf(value, 0) || value < -limit || value >= limit {
-		asterRuntimeError(line, column, "f64 value out of range for i64 conversion")
+		asterRuntimeError("RUN008", line, column, "f64 value out of range for i64 conversion")
 	}
 	return int64(value)
 }
@@ -402,20 +355,20 @@ func asterNegF64(value float64) float64 {
 
 func asterSetIndexPath(collection any, indices []int64, replacement any, line, column int) any {
 	if len(indices) == 0 {
-		asterRuntimeError(line, column, "indexed assignment requires at least one index")
+		asterRuntimeError("RUN000", line, column, "indexed assignment requires at least one index")
 	}
 	source, ok := collection.(asterArrayRuntime)
 	if !ok {
-		asterRuntimeError(line, column, "indexed assignment requires an array value")
+		asterRuntimeError("RUN000", line, column, "indexed assignment requires an array value")
 	}
 	index := indices[0]
 	length := source.AsterArrayLength()
 	if index < 0 || index >= int64(length) {
-		asterRuntimeError(line, column, fmt.Sprintf("array index %d out of bounds for length %d", index, length))
+		asterRuntimeError("RUN006", line, column, fmt.Sprintf("array index %d out of bounds for length %d", index, length))
 	}
 	writable, ok := source.PrepareArrayWrite().(asterArrayRuntime)
 	if !ok {
-		asterRuntimeError(line, column, "array value returned invalid writable storage")
+		asterRuntimeError("RUN000", line, column, "array value returned invalid writable storage")
 	}
 
 	var item any
@@ -426,21 +379,21 @@ func asterSetIndexPath(collection any, indices []int64, replacement any, line, c
 		item = asterSetIndexPath(writable.AsterArrayItem(int(index)), indices[1:], replacement, line, column)
 	}
 	if !writable.AsterSetArrayItem(int(index), item) {
-		asterRuntimeError(line, column, "indexed assignment value has incompatible type")
+		asterRuntimeError("RUN000", line, column, "indexed assignment value has incompatible type")
 	}
 	return writable
 }
 
 func asterAddI64(a, b int64, line, column int) int64 {
 	if (b > 0 && a > asterMaxI64-b) || (b < 0 && a < asterMinI64-b) {
-		asterRuntimeError(line, column, "i64 overflow in addition")
+		asterRuntimeError("RUN002", line, column, "i64 overflow in addition")
 	}
 	return a + b
 }
 
 func asterSubI64(a, b int64, line, column int) int64 {
 	if (b < 0 && a > asterMaxI64+b) || (b > 0 && a < asterMinI64+b) {
-		asterRuntimeError(line, column, "i64 overflow in subtraction")
+		asterRuntimeError("RUN002", line, column, "i64 overflow in subtraction")
 	}
 	return a - b
 }
@@ -450,28 +403,28 @@ func asterMulI64(a, b int64, line, column int) int64 {
 		return 0
 	}
 	if (a == asterMinI64 && b == -1) || (b == asterMinI64 && a == -1) {
-		asterRuntimeError(line, column, "i64 overflow in multiplication")
+		asterRuntimeError("RUN002", line, column, "i64 overflow in multiplication")
 	}
 	z := a * b
 	if z/b != a {
-		asterRuntimeError(line, column, "i64 overflow in multiplication")
+		asterRuntimeError("RUN002", line, column, "i64 overflow in multiplication")
 	}
 	return z
 }
 
 func asterDivI64(a, b int64, line, column int) int64 {
 	if b == 0 {
-		asterRuntimeError(line, column, "division by zero")
+		asterRuntimeError("RUN003", line, column, "division by zero")
 	}
 	if a == asterMinI64 && b == -1 {
-		asterRuntimeError(line, column, "i64 overflow in division")
+		asterRuntimeError("RUN002", line, column, "i64 overflow in division")
 	}
 	return a / b
 }
 
 func asterModI64(a, b int64, line, column int) int64 {
 	if b == 0 {
-		asterRuntimeError(line, column, "remainder by zero")
+		asterRuntimeError("RUN004", line, column, "remainder by zero")
 	}
 	if a == asterMinI64 && b == -1 {
 		return 0
@@ -481,7 +434,7 @@ func asterModI64(a, b int64, line, column int) int64 {
 
 func asterNegI64(a int64, line, column int) int64 {
 	if a == asterMinI64 {
-		asterRuntimeError(line, column, "integer overflow in unary '-'")
+		asterRuntimeError("RUN002", line, column, "integer overflow in unary '-'")
 	}
 	return -a
 }
@@ -489,7 +442,7 @@ func asterNegI64(a int64, line, column int) int64 {
 func asterAddF64(a, b float64, line, column int) float64 {
 	z := a + b
 	if math.IsInf(z, 0) || math.IsNaN(z) {
-		asterRuntimeError(line, column, "non-finite floating-point result")
+		asterRuntimeError("RUN005", line, column, "non-finite floating-point result")
 	}
 	return z
 }
@@ -497,7 +450,7 @@ func asterAddF64(a, b float64, line, column int) float64 {
 func asterSubF64(a, b float64, line, column int) float64 {
 	z := a - b
 	if math.IsInf(z, 0) || math.IsNaN(z) {
-		asterRuntimeError(line, column, "non-finite floating-point result")
+		asterRuntimeError("RUN005", line, column, "non-finite floating-point result")
 	}
 	return z
 }
@@ -505,18 +458,18 @@ func asterSubF64(a, b float64, line, column int) float64 {
 func asterMulF64(a, b float64, line, column int) float64 {
 	z := a * b
 	if math.IsInf(z, 0) || math.IsNaN(z) {
-		asterRuntimeError(line, column, "non-finite floating-point result")
+		asterRuntimeError("RUN005", line, column, "non-finite floating-point result")
 	}
 	return z
 }
 
 func asterDivF64(a, b float64, line, column int) float64 {
 	if b == 0 {
-		asterRuntimeError(line, column, "division by zero")
+		asterRuntimeError("RUN003", line, column, "division by zero")
 	}
 	z := a / b
 	if math.IsInf(z, 0) || math.IsNaN(z) {
-		asterRuntimeError(line, column, "non-finite floating-point result")
+		asterRuntimeError("RUN005", line, column, "non-finite floating-point result")
 	}
 	return z
 }

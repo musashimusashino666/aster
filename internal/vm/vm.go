@@ -2,6 +2,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -49,7 +50,7 @@ func Run(program *bytecode.Program, out io.Writer) error {
 	v := &VM{program: program, out: out, stack: make([]bytecode.Value, 0, 128)}
 	entry := program.Functions[program.Entry]
 	if entry.Locals > maxActiveLocalSlots {
-		return v.fault(bytecode.Instruction{}, "active local slot limit exceeded (entry requires %d slots, maximum %d)", entry.Locals, maxActiveLocalSlots)
+		return v.faultCode(bytecode.Instruction{}, diagnostic.RuntimeLocalSlotLimit, "active local slot limit exceeded (entry requires %d slots, maximum %d)", entry.Locals, maxActiveLocalSlots)
 	}
 	v.activeLocalSlots = entry.Locals
 	v.frames = append(v.frames, frame{function: program.Entry, locals: make([]bytecode.Value, entry.Locals)})
@@ -57,7 +58,7 @@ func Run(program *bytecode.Program, out io.Writer) error {
 	for len(v.frames) > 0 {
 		steps++
 		if steps > maxInstructionSteps {
-			return v.fault(bytecode.Instruction{}, "instruction budget exceeded (%d steps)", maxInstructionSteps)
+			return v.faultCode(bytecode.Instruction{}, diagnostic.RuntimeInstructionBudget, "instruction budget exceeded (%d steps)", maxInstructionSteps)
 		}
 		fi := len(v.frames) - 1
 		fr := &v.frames[fi]
@@ -71,10 +72,10 @@ func Run(program *bytecode.Program, out io.Writer) error {
 			return err
 		}
 		if len(v.stack) > maxStackDepth {
-			return v.fault(ins, "operand stack limit exceeded")
+			return v.faultCode(ins, diagnostic.RuntimeOperandStackLimit, "operand stack limit exceeded")
 		}
 		if len(v.frames) > maxCallDepth {
-			return v.fault(ins, "call depth limit exceeded")
+			return v.faultCode(ins, diagnostic.RuntimeCallDepthLimit, "call depth limit exceeded")
 		}
 	}
 	return nil
@@ -89,7 +90,7 @@ func setIndexPath(collection bytecode.Value, indices []int64, replacement byteco
 	collection.EnsureArrayStorage()
 	index := indices[0]
 	if index < 0 || index >= int64(len(collection.Array)) {
-		return bytecode.Value{}, fmt.Errorf("array index %d out of bounds for length %d", index, len(collection.Array))
+		return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArrayIndexBounds, fmt.Sprintf("array index %d out of bounds for length %d", index, len(collection.Array)))
 	}
 
 	// Only detach shared containers. An unshared local can be mutated in place,
@@ -298,7 +299,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			return v.fault(i, "array index must be i64, got %s", index.Kind)
 		}
 		if index.I64 < 0 || index.I64 >= int64(len(collection.Array)) {
-			return v.fault(i, "array index %d out of bounds for length %d", index.I64, len(collection.Array))
+			return v.faultCode(i, diagnostic.RuntimeArrayIndexBounds, "array index %d out of bounds for length %d", index.I64, len(collection.Array))
 		}
 		value := collection.Array[int(index.I64)]
 		if value.Kind == bytecode.ValueArray {
@@ -329,7 +330,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			return v.fault(i, "slice bounds must be i64")
 		}
 		if start.I64 < 0 || end.I64 < start.I64 || end.I64 > int64(len(collection.Array)) {
-			return v.fault(i, "slice bounds [%d:%d] out of bounds for length %d", start.I64, end.I64, len(collection.Array))
+			return v.faultCode(i, diagnostic.RuntimeSliceBounds, "slice bounds [%d:%d] out of bounds for length %d", start.I64, end.I64, len(collection.Array))
 		}
 		items := make([]bytecode.Value, int(end.I64-start.I64))
 		copy(items, collection.Array[int(start.I64):int(end.I64)])
@@ -348,7 +349,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		}
 		limit := math.Ldexp(1, 63)
 		if math.IsNaN(value.F64) || math.IsInf(value.F64, 0) || value.F64 < -limit || value.F64 >= limit {
-			return v.fault(i, "f64 value out of range for i64 conversion")
+			return v.faultCode(i, diagnostic.RuntimeNumericConversionRange, "f64 value out of range for i64 conversion")
 		}
 		push(bytecode.Value{Kind: bytecode.ValueI64, I64: int64(value.F64)})
 	case bytecode.OpToF64:
@@ -385,7 +386,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		}
 		updated, err := setIndexPath(collection, indices, replacement)
 		if err != nil {
-			return v.fault(i, "%v", err)
+			return v.faultFromError(i, err)
 		}
 		push(updated)
 	case bytecode.OpLoadLocal:
@@ -437,7 +438,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		switch x.Kind {
 		case bytecode.ValueI64:
 			if x.I64 == minInt64 {
-				return v.fault(i, "integer overflow in unary '-'")
+				return v.faultCode(i, diagnostic.RuntimeArithmeticOverflow, "integer overflow in unary '-'")
 			}
 			push(bytecode.I64(-x.I64))
 		case bytecode.ValueF64:
@@ -465,7 +466,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		}
 		res, err := applyBinary(i.Op, l, r)
 		if err != nil {
-			return v.fault(i, "%v", err)
+			return v.faultFromError(i, err)
 		}
 		push(res)
 	case bytecode.OpJump:
@@ -492,7 +493,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 		}
 	case bytecode.OpCall:
 		if len(v.frames) >= maxCallDepth {
-			return v.fault(i, "call depth limit exceeded (maximum %d)", maxCallDepth)
+			return v.faultCode(i, diagnostic.RuntimeCallDepthLimit, "call depth limit exceeded (maximum %d)", maxCallDepth)
 		}
 		if i.A < 0 || i.A >= len(v.program.Functions) {
 			return v.fault(i, "invalid function index %d", i.A)
@@ -505,7 +506,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			return v.fault(i, "not enough arguments on stack")
 		}
 		if target.Locals > maxActiveLocalSlots-v.activeLocalSlots {
-			return v.fault(i, "active local slot limit exceeded (requested %d additional slots, %d of %d already active)", target.Locals, v.activeLocalSlots, maxActiveLocalSlots)
+			return v.faultCode(i, diagnostic.RuntimeLocalSlotLimit, "active local slot limit exceeded (requested %d additional slots, %d of %d already active)", target.Locals, v.activeLocalSlots, maxActiveLocalSlots)
 		}
 		argsStart := len(v.stack) - i.B
 		args := append([]bytecode.Value(nil), v.stack[argsStart:]...)
@@ -540,15 +541,15 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 			}
 			text, err := display(args[0])
 			if err != nil {
-				return v.fault(i, "%v", err)
+				return v.faultFromError(i, err)
 			}
 			printBytes := int64(len(text)) + 1 // Include the newline emitted by Fprintln.
 			if printBytes > limits.MaxStdoutBytes-v.stdoutBytes {
-				return v.fault(i, "stdout byte limit exceeded (maximum %d bytes)", limits.MaxStdoutBytes)
+				return v.faultCode(i, diagnostic.RuntimeStdoutLimit, "stdout byte limit exceeded (maximum %d bytes)", limits.MaxStdoutBytes)
 			}
 			n, writeErr := fmt.Fprintln(v.out, text)
 			if writeErr != nil {
-				return v.fault(i, "write output: %v", writeErr)
+				return v.faultCode(i, diagnostic.RuntimeOutputWrite, "write output: %v", writeErr)
 			}
 			v.stdoutBytes += int64(n)
 			push(bytecode.Unit())
@@ -569,7 +570,7 @@ func (v *VM) step(i bytecode.Instruction, fnName string) error {
 				return v.fault(i, "assert expects one bool argument")
 			}
 			if !args[0].Bool {
-				return v.fault(i, "assertion failed")
+				return v.faultCode(i, diagnostic.RuntimeAssertionFailed, "assertion failed")
 			}
 			push(bytecode.Unit())
 		default:
@@ -623,7 +624,7 @@ func display(v bytecode.Value) (string, error) {
 func appendDisplay(out *strings.Builder, value bytecode.Value, depth int) error {
 	write := func(s string) error {
 		if len(s) > bytecode.MaxStringBytes-out.Len() {
-			return fmt.Errorf("printed value exceeds %d-byte output limit", bytecode.MaxStringBytes)
+			return diagnostic.NewRuntimeFailure(diagnostic.RuntimeRenderedOutputLimit, fmt.Sprintf("printed value exceeds %d-byte output limit", bytecode.MaxStringBytes))
 		}
 		out.WriteString(s)
 		return nil
@@ -631,7 +632,7 @@ func appendDisplay(out *strings.Builder, value bytecode.Value, depth int) error 
 
 	if value.Kind == bytecode.ValueArray {
 		if depth >= 256 && len(value.Array) > 0 {
-			return fmt.Errorf("printed array nesting exceeds depth limit")
+			return diagnostic.NewRuntimeFailure(diagnostic.RuntimeRenderedOutputLimit, "printed array nesting exceeds depth limit")
 		}
 		if err := write("["); err != nil {
 			return err
@@ -670,7 +671,7 @@ func applyBinary(op bytecode.Op, a, b bytecode.Value) (bytecode.Value, error) {
 		switch op {
 		case bytecode.OpAdd:
 			if len(b.String) > bytecode.MaxStringBytes || len(a.String) > bytecode.MaxStringBytes-len(b.String) {
-				return bytecode.Value{}, fmt.Errorf("string length limit exceeded (maximum %d UTF-8 bytes)", bytecode.MaxStringBytes)
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeStringLimit, fmt.Sprintf("string length limit exceeded (maximum %d UTF-8 bytes)", bytecode.MaxStringBytes))
 			}
 			return bytecode.Str(a.String + b.String), nil
 		case bytecode.OpLess:
@@ -690,37 +691,37 @@ func applyBinary(op bytecode.Op, a, b bytecode.Value) (bytecode.Value, error) {
 		switch op {
 		case bytecode.OpAdd:
 			if (y > 0 && x > maxInt64-y) || (y < 0 && x < minInt64-y) {
-				return bytecode.Value{}, fmt.Errorf("i64 overflow in addition")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in addition")
 			}
 			return bytecode.I64(x + y), nil
 		case bytecode.OpSub:
 			if (y < 0 && x > maxInt64+y) || (y > 0 && x < minInt64+y) {
-				return bytecode.Value{}, fmt.Errorf("i64 overflow in subtraction")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in subtraction")
 			}
 			return bytecode.I64(x - y), nil
 		case bytecode.OpMul:
 			if x != 0 && y != 0 {
 				if (x == minInt64 && y == -1) || (y == minInt64 && x == -1) {
-					return bytecode.Value{}, fmt.Errorf("i64 overflow in multiplication")
+					return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in multiplication")
 				}
 				z := x * y
 				if z/y != x {
-					return bytecode.Value{}, fmt.Errorf("i64 overflow in multiplication")
+					return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in multiplication")
 				}
 				return bytecode.I64(z), nil
 			}
 			return bytecode.I64(0), nil
 		case bytecode.OpDiv:
 			if y == 0 {
-				return bytecode.Value{}, fmt.Errorf("division by zero")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeDivisionByZero, "division by zero")
 			}
 			if x == minInt64 && y == -1 {
-				return bytecode.Value{}, fmt.Errorf("i64 overflow in division")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeArithmeticOverflow, "i64 overflow in division")
 			}
 			return bytecode.I64(x / y), nil
 		case bytecode.OpMod:
 			if y == 0 {
-				return bytecode.Value{}, fmt.Errorf("remainder by zero")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeRemainderByZero, "remainder by zero")
 			}
 			if x == minInt64 && y == -1 {
 				return bytecode.I64(0), nil
@@ -742,28 +743,28 @@ func applyBinary(op bytecode.Op, a, b bytecode.Value) (bytecode.Value, error) {
 		case bytecode.OpAdd:
 			z := x + y
 			if math.IsInf(z, 0) || math.IsNaN(z) {
-				return bytecode.Value{}, fmt.Errorf("non-finite floating-point result")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeNonFiniteFloat, "non-finite floating-point result")
 			}
 			return bytecode.F64(z), nil
 		case bytecode.OpSub:
 			z := x - y
 			if math.IsInf(z, 0) || math.IsNaN(z) {
-				return bytecode.Value{}, fmt.Errorf("non-finite floating-point result")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeNonFiniteFloat, "non-finite floating-point result")
 			}
 			return bytecode.F64(z), nil
 		case bytecode.OpMul:
 			z := x * y
 			if math.IsInf(z, 0) || math.IsNaN(z) {
-				return bytecode.Value{}, fmt.Errorf("non-finite floating-point result")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeNonFiniteFloat, "non-finite floating-point result")
 			}
 			return bytecode.F64(z), nil
 		case bytecode.OpDiv:
 			if y == 0 {
-				return bytecode.Value{}, fmt.Errorf("division by zero")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeDivisionByZero, "division by zero")
 			}
 			z := x / y
 			if math.IsInf(z, 0) || math.IsNaN(z) {
-				return bytecode.Value{}, fmt.Errorf("non-finite floating-point result")
+				return bytecode.Value{}, diagnostic.NewRuntimeFailure(diagnostic.RuntimeNonFiniteFloat, "non-finite floating-point result")
 			}
 			return bytecode.F64(z), nil
 		case bytecode.OpLess:
@@ -794,8 +795,13 @@ func valueEqual(a, b bytecode.Value) bool {
 	return false
 }
 func (v *VM) fault(i bytecode.Instruction, format string, args ...any) error {
+	return v.faultCode(i, diagnostic.RuntimeGeneric, format, args...)
+}
+
+// faultCode associates a runtime diagnostic class at the point the VM detects
+// a failure. Human-readable text is not used to infer the stable public code.
+func (v *VM) faultCode(i bytecode.Instruction, code, format string, args ...any) error {
 	msg := fmt.Sprintf(format, args...)
-	code := diagnostic.RuntimeCode(msg)
 	start := token.Position{Offset: i.Offset, Line: i.Line, Column: i.Column}
 	if i.EndLine > 0 && i.EndColumn > 0 {
 		rangeStart := token.Position{
@@ -805,4 +811,14 @@ func (v *VM) fault(i bytecode.Instruction, format string, args ...any) error {
 		return diagnostic.NewAtSourceRange(code, "runtime", v.program.Source, start, rangeStart, end, msg)
 	}
 	return diagnostic.NewAtSource(code, "runtime", v.program.Source, start, msg)
+}
+
+// faultFromError preserves a structured runtime failure's stable code and uses
+// RUN000 only for helper failures without an explicit runtime classification.
+func (v *VM) faultFromError(i bytecode.Instruction, err error) error {
+	var failure *diagnostic.RuntimeFailure
+	if errors.As(err, &failure) && failure != nil {
+		return v.faultCode(i, failure.Code, "%s", failure.Message)
+	}
+	return v.faultCode(i, diagnostic.RuntimeGeneric, "%v", err)
 }

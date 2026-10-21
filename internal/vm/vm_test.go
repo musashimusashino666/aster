@@ -13,6 +13,29 @@ import (
 	"github.com/musashimusashino666/aster/internal/token"
 )
 
+func TestVMRuntimeDiagnosticCodesAreStructured(t *testing.T) {
+	v := &VM{program: &bytecode.Program{Source: "test.ast"}}
+
+	generic := v.fault(bytecode.Instruction{}, "unexpected message mentions overflow and division by zero")
+	var genericDiagnostic *diagnostic.Diagnostic
+	if !errors.As(generic, &genericDiagnostic) {
+		t.Fatalf("generic fault is not a diagnostic: %v", generic)
+	}
+	if genericDiagnostic.Code != diagnostic.RuntimeGeneric {
+		t.Fatalf("generic fault code = %q, want %q", genericDiagnostic.Code, diagnostic.RuntimeGeneric)
+	}
+
+	typed := diagnostic.NewRuntimeFailure(diagnostic.RuntimeArrayIndexBounds, "message mentions overflow")
+	got := v.faultFromError(bytecode.Instruction{}, typed)
+	var typedDiagnostic *diagnostic.Diagnostic
+	if !errors.As(got, &typedDiagnostic) {
+		t.Fatalf("typed runtime fault is not a diagnostic: %v", got)
+	}
+	if typedDiagnostic.Code != diagnostic.RuntimeArrayIndexBounds {
+		t.Fatalf("typed runtime fault code = %q, want %q", typedDiagnostic.Code, diagnostic.RuntimeArrayIndexBounds)
+	}
+}
+
 func runSource(t *testing.T, src string) (string, error) {
 	t.Helper()
 	p, err := parser.Parse(src, "test.ast")
