@@ -280,7 +280,7 @@ func ToolchainCode(message string) string {
 		return ToolchainResourceIsolationUnavailable
 	case strings.Contains(lower, "timed out"), strings.Contains(lower, "deadline exceeded"):
 		return ToolchainTimeout
-	case strings.Contains(lower, "not found in path"), strings.Contains(lower, "requires go 1.23"),
+	case strings.Contains(lower, "not found in path"), strings.Contains(lower, "requires go 1.26"),
 		strings.Contains(lower, "requires gofmt"), strings.Contains(lower, "executable \"go\""):
 		return ToolchainUnavailable
 	case strings.Contains(lower, "format generated code"):
