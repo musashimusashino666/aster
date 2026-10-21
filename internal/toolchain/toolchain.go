@@ -26,6 +26,10 @@ const (
 	// for a CLI native-run invocation.
 	NativeRunTimeout = 5 * time.Minute
 
+	// nativeCommandWaitDelay bounds subprocesses that outlive their direct
+	// parent while keeping an inherited stdout/stderr pipe open.
+	nativeCommandWaitDelay = 2 * time.Second
+
 	nativeBuildTimeout = NativeBuildTimeout
 	nativeRunTimeout   = NativeRunTimeout
 )
@@ -76,6 +80,7 @@ func BuildNativeContext(ctx context.Context, goSource, output string) (resultErr
 	}
 	fmtcmd := exec.CommandContext(ctx, gofmtPath, "-w", "main.go")
 	fmtcmd.Dir = dir
+	fmtcmd.WaitDelay = nativeCommandWaitDelay
 	if out, err := fmtcmd.CombinedOutput(); err != nil {
 		return commandFailure(ctx, "format generated code", err, out)
 	}
@@ -92,6 +97,7 @@ func BuildNativeContext(ctx context.Context, goSource, output string) (resultErr
 	cmd := exec.CommandContext(ctx, goPath, "build", "-trimpath", "-ldflags=-s -w", "-o", tempOutput, ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOPROXY=off", "GOSUMDB=off")
+	cmd.WaitDelay = nativeCommandWaitDelay
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return commandFailure(ctx, "native build", err, out)
 	}
@@ -134,6 +140,7 @@ func RunNativeContext(ctx context.Context, goSource string) (resultErr error) {
 		return err
 	}
 	cmd := exec.CommandContext(ctx, bin)
+	cmd.WaitDelay = nativeCommandWaitDelay
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	var stderr bytes.Buffer
@@ -193,6 +200,7 @@ func RunNativeConstrainedContext(ctx context.Context, goSource string, limits re
 		return fmt.Errorf("resolve Aster resource launcher: %w", err)
 	}
 	cmd := exec.Command(launcherPath, "__resource-launcher", bin)
+	cmd.WaitDelay = nativeCommandWaitDelay
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	var stderr bytes.Buffer
