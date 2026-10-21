@@ -30,9 +30,9 @@ The bytecode reader rejects unknown JSON fields and unsupported format versions.
 ### 3. Preserve spans at VM runtime failures
 
 - The VM copies the active instruction's span into structured runtime `Diagnostic` fields when complete metadata is present.
-- If a programmatic or synthetic instruction has no span, the VM preserves the legacy start-only diagnostic path.
-- Human-readable diagnostic text remains start-only for compatibility. A later CLI/editor integration may render the end range without changing the stable diagnostic code.
-- Native-generated runtime diagnostics remain a separate implementation slice; this decision does not claim that the generated Go backend exposes structured end spans yet.
+- The Native runtime registers typed-IR source ranges by their existing start line/column anchors. When launched by `aster run --engine native`, it can emit a private structured stderr record that the toolchain wrapper consumes and converts into the same `Diagnostic` shape.
+- If a programmatic or synthetic instruction has no span, the VM preserves the legacy start-only diagnostic path. Native instructions/helpers with no registered span likewise retain start-only diagnostics.
+- Human-readable diagnostic text remains start-only for compatibility. Standalone Native executables do not use the CLI's private protocol by default; displaying end ranges remains deferred.
 
 ## Consequences
 
