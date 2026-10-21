@@ -149,20 +149,20 @@ func (failure asterRuntimeFailure) Error() string {
 }
 
 type asterRuntimeProtocolDiagnostic struct {
-	Kind               string `json:"kind"`
-	Code               string `json:"code"`
-	Source             string `json:"source"`
-	Message            string `json:"message"`
-	Offset             int    `json:"offset"`
-	Line               int    `json:"line"`
-	Column             int    `json:"column"`
-	RangeStartOffset   int    `json:"range_start_offset"`
-	RangeStartLine     int    `json:"range_start_line"`
-	RangeStartColumn   int    `json:"range_start_column"`
-	EndOffset          int    `json:"end_offset"`
-	EndLine            int    `json:"end_line"`
-	EndColumn          int    `json:"end_column"`
-	HasSpan            bool   `json:"has_span"`
+	Kind             string `json:"kind"`
+	Code             string `json:"code"`
+	Source           string `json:"source"`
+	Message          string `json:"message"`
+	Offset           int    `json:"offset"`
+	Line             int    `json:"line"`
+	Column           int    `json:"column"`
+	RangeStartOffset int    `json:"range_start_offset"`
+	RangeStartLine   int    `json:"range_start_line"`
+	RangeStartColumn int    `json:"range_start_column"`
+	EndOffset        int    `json:"end_offset"`
+	EndLine          int    `json:"end_line"`
+	EndColumn        int    `json:"end_column"`
+	HasSpan          bool   `json:"has_span"`
 }
 
 func asterWriteRuntimeDiagnostic(failure asterRuntimeFailure) {
