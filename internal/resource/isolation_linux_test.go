@@ -358,6 +358,12 @@ func TestCgroupIntegrationHelper(t *testing.T) {
 	if report.CPUmax, err = readCgroupControlForCurrentProcess("cpu.max"); err != nil && mode != "memory-inspect" {
 		t.Fatalf("read workload cpu.max: %v", err)
 	}
+	if mode == "cpu-inspect" {
+		if err := writeCgroupIntegrationReport(report); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	if mode == "memory-inspect" {
 		if report.MemoryMax, err = readCgroupControlForCurrentProcess("memory.max"); err != nil {
 			t.Fatalf("read workload memory.max: %v", err)
@@ -475,7 +481,7 @@ func TestRunConfiguresCPUQuotaBeforeWorkloadAndCleansUp(t *testing.T) {
 	reportPath := filepath.Join(t.TempDir(), "report.json")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := newGatedTestCommand(t, "TestCgroupIntegrationHelper", "inspect", reportPath)
+	cmd := newGatedTestCommand(t, "TestCgroupIntegrationHelper", "cpu-inspect", reportPath)
 	// The helper reads /proc/self/cgroup and cpu.max only after the gate lets
 	// it exec; membership must already be inside the temporary workload group.
 	err := Run(ctx, cmd, filepath.Join(t.TempDir(), "release"), limits)
