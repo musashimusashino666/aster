@@ -39,7 +39,7 @@ The bytecode reader rejects unknown JSON fields and unsupported format versions.
 - Bytecode v8 makes source spans available after serialization and VM loading, while existing start-location text and diagnostic codes remain stable.
 - The strict bytecode version check prevents older or partially populated artifacts from being misinterpreted as v8.
 - Source locations still identify the operation's existing diagnostic anchor, not necessarily its complete syntactic left edge. Improving start-anchor semantics is separate from adding end positions.
-- End-span propagation through Native runtime diagnostics and a user-facing range renderer remains outstanding and is tracked in the roadmap.
+- CLI-run Native runtime diagnostics now receive structured source spans through the toolchain's private stderr protocol. Standalone Native executables still use start-only diagnostic text, and the user-facing range renderer and consistent syntactic start-anchor semantics remain outstanding in the roadmap.
 
 ## Validation
 
