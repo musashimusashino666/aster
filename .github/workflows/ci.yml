@@ -32,6 +32,23 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
+      - name: Verify external Go module installation at this revision
+        env:
+          ASTER_INSTALL_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          install_dir="$(mktemp -d)"
+          GOBIN="$install_dir" GOPROXY=direct go install "github.com/musashimusashino666/aster/cmd/aster@${ASTER_INSTALL_REVISION}"
+          "$install_dir/aster" version
+
+      - name: Verify latest Go module installation on main
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GOBIN: ${{ runner.temp }}/aster-install-latest
+        run: |
+          mkdir -p "$GOBIN"
+          GOPROXY=direct go install github.com/musashimusashino666/aster/cmd/aster@latest
+          "$GOBIN/aster" version
+
       - name: Check formatting
         run: make fmt-check
 
