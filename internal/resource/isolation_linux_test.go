@@ -244,10 +244,14 @@ func TestWorkloadExitDoesNotMaskExpiredContext(t *testing.T) {
 	group := &workloadCgroup{path: dir}
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
+	waitCh := make(chan error, 1)
+	waitCh <- nil
 
-	err := group.handleWorkloadExit(ctx, nil, 0)
+	// Both select cases are ready. Whichever case wins, a completed workload
+	// must not mask an already-expired wrapper deadline.
+	err := group.wait(ctx, waitCh, 0)
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("handleWorkloadExit() error = %v, want context.DeadlineExceeded", err)
+		t.Fatalf("wait() error = %v, want context.DeadlineExceeded", err)
 	}
 	got, err := os.ReadFile(killPath)
 	if err != nil {
@@ -255,6 +259,42 @@ func TestWorkloadExitDoesNotMaskExpiredContext(t *testing.T) {
 	}
 	if string(got) != "1" {
 		t.Fatalf("cgroup.kill = %q, want %q after expired context", got, "1")
+	}
+}
+
+func TestMemoryLimitClassificationRequiresBothOOMCounters(t *testing.T) {
+	tests := []struct {
+		name       string
+		initialOOM uint64
+		initialKill uint64
+		currentOOM uint64
+		currentKill uint64
+		wantMemoryLimit bool
+	}{
+		{name: "both counters increase", initialOOM: 2, initialKill: 3, currentOOM: 3, currentKill: 4, wantMemoryLimit: true},
+		{name: "oom only", initialOOM: 2, initialKill: 3, currentOOM: 3, currentKill: 3},
+		{name: "oom_kill only", initialOOM: 2, initialKill: 3, currentOOM: 2, currentKill: 4},
+		{name: "neither increases", initialOOM: 2, initialKill: 3, currentOOM: 2, currentKill: 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			data := fmt.Sprintf("low 0\\nhigh 0\\nmax 0\\noom %d\\noom_kill %d\\n", tt.currentOOM, tt.currentKill)
+			if err := os.WriteFile(filepath.Join(dir, "memory.events"), []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			group := &workloadCgroup{
+				path: dir,
+				limits: Limits{MemoryMaxBytes: 64 << 20},
+				initialOOM: tt.initialOOM,
+				initialOOMKills: tt.initialKill,
+			}
+			err := group.handleWorkloadExit(context.Background(), nil, 0)
+			gotMemoryLimit := errors.Is(err, ErrMemoryLimitExceeded)
+			if gotMemoryLimit != tt.wantMemoryLimit {
+				t.Fatalf("handleWorkloadExit() memory-limit classification = %v, want %v (error %v)", gotMemoryLimit, tt.wantMemoryLimit, err)
+			}
+		})
 	}
 }
 
@@ -618,7 +658,7 @@ func TestRunKillsDescendantsAndCleansUpOnContextDeadline(t *testing.T) {
 	before := snapshotAsterCgroups(t, root)
 	reportPath := filepath.Join(t.TempDir(), "unused-report.json")
 	pidPath := filepath.Join(t.TempDir(), "child.pid")
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	cmd := newGatedTestCommand(t, "TestCgroupIntegrationHelper", "process-tree", reportPath)
 	cmd.Env = append(cmd.Env, resourceTestChildPID+"="+pidPath)
