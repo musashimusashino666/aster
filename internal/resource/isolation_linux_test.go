@@ -63,3 +63,23 @@ func TestCgroupMetricParsers(t *testing.T) {
 		t.Fatalf("cgroupPopulated() = (%v, %v), want (true, nil)", got, err)
 	}
 }
+
+func TestRunEnforcesCumulativeCPUTimeWhenDelegatedCgroupIsAvailable(t *testing.T) {
+	limits := Limits{CPUTimeLimit: 50 * time.Millisecond}
+	probe, err := createCgroup(limits)
+	if err != nil {
+		t.Skipf("Linux cgroup v2 CPU controller is not delegated to this test runner: %v", err)
+	}
+	if err := probe.cleanup(); err != nil {
+		t.Fatalf("cleanup cgroup capability probe: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	gate := filepath.Join(t.TempDir(), "release")
+	cmd := exec.Command("sh", "-c", `while [ ! -e "$ASTER_RESOURCE_GATE" ]; do :; done; while :; do :; done`)
+	err = Run(ctx, cmd, gate, limits)
+	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
+		t.Fatalf("Run() error = %v, want ErrCPUTimeLimitExceeded", err)
+	}
+}
