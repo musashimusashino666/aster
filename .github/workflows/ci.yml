@@ -57,6 +57,7 @@ jobs:
           bash -n scripts/bench-array-assignment.sh
           bash -n scripts/bench-native-memory.sh
           bash -n scripts/test-resource-isolation.sh
+          python3 -c 'import ast; ast.parse(open("scripts/bench-resource-isolation.py", encoding="utf-8").read())'
 
       - name: Smoke-test Native child-process memory benchmark
         run: ASTER_BENCH_REPEATS=1 bash scripts/bench-native-memory.sh bench/native-memory-smoke.out
