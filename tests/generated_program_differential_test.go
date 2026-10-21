@@ -175,6 +175,150 @@ func seededArrayProgram(seed int64) string {
 	return source.String()
 }
 
+func seededAggregateValues(rng *rand.Rand, length int) []int {
+	values := make([]int, length)
+	for i := range values {
+		values[i] = rng.Intn(11) - 5
+	}
+	return values
+}
+
+func seededAggregateArrayLiteral(values []int) string {
+	parts := make([]string, len(values))
+	for i, value := range values {
+		parts[i] = strconv.Itoa(value)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func seededAggregateArrayDisplay(values []int) string {
+	parts := make([]string, len(values))
+	for i, value := range values {
+		parts[i] = strconv.Itoa(value)
+	}
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
+func seededAggregateMatrixLiteral(rows [][]int) string {
+	parts := make([]string, len(rows))
+	for i, row := range rows {
+		parts[i] = seededAggregateArrayLiteral(row)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func seededAggregateMatrixDisplay(rows [][]int) string {
+	parts := make([]string, len(rows))
+	for i, row := range rows {
+		parts[i] = seededAggregateArrayDisplay(row)
+	}
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
+// seededAggregateProgram generates a deterministic program that exercises all
+// enum variants, match payload extraction, struct-wrapped nested arrays,
+// copies, function argument/return boundaries, and mutation after extraction.
+// Values stay small so arithmetic traps cannot obscure backend mismatches.
+func seededAggregateProgram(seed int64) (string, string) {
+	rng := rand.New(rand.NewSource(seed))
+	flat := seededAggregateValues(rng, 3)
+	matrix := [][]int{seededAggregateValues(rng, 3), seededAggregateValues(rng, 3)}
+	boxedRows := [][]int{seededAggregateValues(rng, 3), seededAggregateValues(rng, 3)}
+	flatMutation := 40 + rng.Intn(30)
+	matrixMutation := 70 + rng.Intn(30)
+	boxedMutation := 100 + rng.Intn(30)
+	tag := 200 + rng.Intn(50)
+
+	var source strings.Builder
+	source.WriteString("struct Bundle { tag: i64, rows: Array<Array<i64>> }\n")
+	source.WriteString("enum Payload { Empty, Flat(Array<i64>), Matrix(Array<Array<i64>>), Boxed(Bundle), }\n\n")
+	source.WriteString("fn relay(value: Payload) -> Payload {\n")
+	source.WriteString("    return match value {\n")
+	source.WriteString("        Payload::Empty => Payload::Empty,\n")
+	source.WriteString("        Payload::Flat(items) => Payload::Flat(items),\n")
+	source.WriteString("        Payload::Matrix(rows) => Payload::Matrix(rows),\n")
+	source.WriteString("        Payload::Boxed(bundle) => Payload::Boxed(bundle),\n")
+	source.WriteString("    };\n")
+	source.WriteString("}\n\n")
+
+	source.WriteString("let emptyRoundTrip = relay(Payload::Empty);\n")
+	source.WriteString("print(match emptyRoundTrip { Payload::Empty => 101, Payload::Flat(items) => items[0], Payload::Matrix(rows) => rows[0][0], Payload::Boxed(bundle) => bundle.tag, });\n")
+
+	fmt.Fprintf(&source, "let mut flat: Array<i64> = %s;\n", seededAggregateArrayLiteral(flat))
+	source.WriteString("let flatPacket = Payload::Flat(flat);\n")
+	source.WriteString("let flatCopy = flatPacket;\n")
+	source.WriteString("let flatRoundTrip = relay(flatCopy);\n")
+	source.WriteString("let mut extractedFlat: Array<i64> = match flatRoundTrip {\n")
+	source.WriteString("    Payload::Empty => [0],\n")
+	source.WriteString("    Payload::Flat(items) => items,\n")
+	source.WriteString("    Payload::Matrix(rows) => rows[0],\n")
+	source.WriteString("    Payload::Boxed(bundle) => bundle.rows[0],\n")
+	source.WriteString("};\n")
+	fmt.Fprintf(&source, "extractedFlat[0] = %d;\n", flatMutation)
+	source.WriteString("print(flat);\n")
+	source.WriteString("print(match flatPacket { Payload::Empty => [0], Payload::Flat(items) => items, Payload::Matrix(rows) => rows[0], Payload::Boxed(bundle) => bundle.rows[0], });\n")
+	source.WriteString("print(match flatRoundTrip { Payload::Empty => [0], Payload::Flat(items) => items, Payload::Matrix(rows) => rows[0], Payload::Boxed(bundle) => bundle.rows[0], });\n")
+	source.WriteString("print(extractedFlat);\n")
+
+	fmt.Fprintf(&source, "let mut matrix: Array<Array<i64>> = %s;\n", seededAggregateMatrixLiteral(matrix))
+	source.WriteString("let matrixPacket = Payload::Matrix(matrix);\n")
+	source.WriteString("let matrixCopy = matrixPacket;\n")
+	source.WriteString("let matrixRoundTrip = relay(matrixCopy);\n")
+	source.WriteString("let mut extractedMatrix: Array<Array<i64>> = match matrixRoundTrip {\n")
+	source.WriteString("    Payload::Empty => [[0]],\n")
+	source.WriteString("    Payload::Flat(items) => [items],\n")
+	source.WriteString("    Payload::Matrix(rows) => rows,\n")
+	source.WriteString("    Payload::Boxed(bundle) => bundle.rows,\n")
+	source.WriteString("};\n")
+	fmt.Fprintf(&source, "extractedMatrix[0][1] = %d;\n", matrixMutation)
+	source.WriteString("print(matrix);\n")
+	source.WriteString("print(match matrixPacket { Payload::Empty => [[0]], Payload::Flat(items) => [items], Payload::Matrix(rows) => rows, Payload::Boxed(bundle) => bundle.rows, });\n")
+	source.WriteString("print(match matrixRoundTrip { Payload::Empty => [[0]], Payload::Flat(items) => [items], Payload::Matrix(rows) => rows, Payload::Boxed(bundle) => bundle.rows, });\n")
+	source.WriteString("print(extractedMatrix);\n")
+
+	fmt.Fprintf(&source, "let mut boxedRows: Array<Array<i64>> = %s;\n", seededAggregateMatrixLiteral(boxedRows))
+	fmt.Fprintf(&source, "let bundle = Bundle(%d, boxedRows);\n", tag)
+	source.WriteString("let boxedPacket = Payload::Boxed(bundle);\n")
+	source.WriteString("let boxedCopy = boxedPacket;\n")
+	source.WriteString("let boxedRoundTrip = relay(boxedCopy);\n")
+	source.WriteString("let mut extractedBoxRows: Array<Array<i64>> = match boxedRoundTrip {\n")
+	source.WriteString("    Payload::Empty => [[0]],\n")
+	source.WriteString("    Payload::Flat(items) => [items],\n")
+	source.WriteString("    Payload::Matrix(rows) => rows,\n")
+	source.WriteString("    Payload::Boxed(bundle) => bundle.rows,\n")
+	source.WriteString("};\n")
+	fmt.Fprintf(&source, "extractedBoxRows[1][0] = %d;\n", boxedMutation)
+	source.WriteString("print(boxedRows);\n")
+	source.WriteString("print(match boxedPacket { Payload::Empty => [[0]], Payload::Flat(items) => [items], Payload::Matrix(rows) => rows, Payload::Boxed(bundle) => bundle.rows, });\n")
+	source.WriteString("print(match boxedRoundTrip { Payload::Empty => [[0]], Payload::Flat(items) => [items], Payload::Matrix(rows) => rows, Payload::Boxed(bundle) => bundle.rows, });\n")
+	source.WriteString("print(extractedBoxRows);\n")
+	source.WriteString("print(match boxedRoundTrip { Payload::Empty => -101, Payload::Flat(items) => items[0], Payload::Matrix(rows) => rows[0][0], Payload::Boxed(bundle) => bundle.tag, });\n")
+
+	mutatedFlat := append([]int(nil), flat...)
+	mutatedFlat[0] = flatMutation
+	mutatedMatrix := [][]int{append([]int(nil), matrix[0]...), append([]int(nil), matrix[1]...)}
+	mutatedMatrix[0][1] = matrixMutation
+	mutatedBoxedRows := [][]int{append([]int(nil), boxedRows[0]...), append([]int(nil), boxedRows[1]...)}
+	mutatedBoxedRows[1][0] = boxedMutation
+	want := []string{
+		"101",
+		seededAggregateArrayDisplay(flat),
+		seededAggregateArrayDisplay(flat),
+		seededAggregateArrayDisplay(flat),
+		seededAggregateArrayDisplay(mutatedFlat),
+		seededAggregateMatrixDisplay(matrix),
+		seededAggregateMatrixDisplay(matrix),
+		seededAggregateMatrixDisplay(matrix),
+		seededAggregateMatrixDisplay(mutatedMatrix),
+		seededAggregateMatrixDisplay(boxedRows),
+		seededAggregateMatrixDisplay(boxedRows),
+		seededAggregateMatrixDisplay(boxedRows),
+		seededAggregateMatrixDisplay(mutatedBoxedRows),
+		strconv.Itoa(tag),
+	}
+	return source.String(), strings.Join(want, "\n") + "\n"
+}
+
 // seededRuntimeFailureProgram generates one valid program that fails at
 // runtime. The requested failure class is held constant, while the seed varies
 // values so a regression remains reproducible without hardcoding every source.
@@ -195,6 +339,9 @@ func seededRuntimeFailureProgram(seed int64, kind string) (string, string) {
 		values := seededI64Row(rng, length)
 		invalidIndex := length + 1 + rng.Intn(17)
 		return fmt.Sprintf("let values: Array<i64> = %s;\nprint(values[%d]);\n", values, invalidIndex), "out of bounds"
+	case "aggregate_payload_overflow":
+		increment := 1 + rng.Intn(9)
+		return fmt.Sprintf("struct Bundle { values: Array<i64> }\nenum Payload { Boxed(Bundle), }\nfn relay(value: Payload) -> Payload { return match value { Payload::Boxed(bundle) => Payload::Boxed(bundle), }; }\nlet payload = Payload::Boxed(Bundle([9223372036854775807]));\nprint(match relay(payload) { Payload::Boxed(bundle) => bundle.values[0] + %d, });\n", increment), "overflow"
 	default:
 		panic("unknown seeded runtime failure kind: " + kind)
 	}
@@ -224,6 +371,37 @@ func TestSeededArrayProgramsMatchBackends(t *testing.T) {
 	}
 }
 
+func TestSeededAggregateProgramsMatchBackends(t *testing.T) {
+	seeds := []int64{0xA66E, 0xBADD, 20261021}
+	for _, seed := range seeds {
+		seed := seed
+		t.Run(fmt.Sprintf("seed_%x", seed), func(t *testing.T) {
+			source, want := seededAggregateProgram(seed)
+			repeatedSource, repeatedWant := seededAggregateProgram(seed)
+			if repeatedSource != source || repeatedWant != want {
+				t.Fatalf("aggregate generator is not deterministic for seed %#x", seed)
+			}
+
+			result := runSeededProgramOnBothBackends(t, source, "seeded-aggregate-differential.ast")
+			if result.vmErr != nil {
+				t.Fatalf("VM execution failed for seed %#x: %v\noutput: %q\nsource:\n%s", seed, result.vmErr, result.vmOutput, source)
+			}
+			if result.nativeErr != nil || result.nativeExitCode != 0 {
+				t.Fatalf("Native execution failed for seed %#x: error=%v exit=%d\noutput:\n%s\nsource:\n%s", seed, result.nativeErr, result.nativeExitCode, result.nativeOutput, source)
+			}
+			if result.vmOutput != want {
+				t.Fatalf("unexpected VM output for seed %#x:\n got: %q\nwant: %q\nsource:\n%s", seed, result.vmOutput, want, source)
+			}
+			if result.nativeOutput != want {
+				t.Fatalf("unexpected Native output for seed %#x:\n got: %q\nwant: %q\nsource:\n%s", seed, result.nativeOutput, want, source)
+			}
+			if result.vmOutput != result.nativeOutput {
+				t.Fatalf("backend output differs for seed %#x\nVM:\n%s\nNative:\n%s\nsource:\n%s", seed, result.vmOutput, result.nativeOutput, source)
+			}
+		})
+	}
+}
+
 func TestSeededRuntimeFailureClassAndExitStatusMatch(t *testing.T) {
 	cases := []struct {
 		name string
@@ -233,6 +411,7 @@ func TestSeededRuntimeFailureClassAndExitStatusMatch(t *testing.T) {
 		{name: "division_by_zero", seed: 0xB0A0D5},
 		{name: "assertion_failure", seed: 0xA55E47},
 		{name: "out_of_bounds", seed: 0x0B0A75},
+		{name: "aggregate_payload_overflow", seed: 0xA66E0F},
 	}
 	for _, tc := range cases {
 		tc := tc
