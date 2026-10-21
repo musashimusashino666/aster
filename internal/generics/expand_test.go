@@ -149,7 +149,7 @@ func TestExpansionDiagnosticRangesCoverFunctionStructAndEnumPaths(t *testing.T) 
 			source: "enum Pair<T> { Item(T, T) }\nlet result = Pair::Item(1, \"x\");",
 			code:   diagnostic.TypeGenericEnumInference,
 			marker: "\"x\"",
-
+		},
 		{
 			name:   "invalid type in generic expansion",
 			source: "fn identity<T>(value: T) -> T { return value; }\nfn broken(value: Missing) { }",
