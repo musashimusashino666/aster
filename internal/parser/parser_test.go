@@ -313,15 +313,15 @@ func TestSourceRangeStartUsesSyntacticLeftEdge(t *testing.T) {
 	if got, want := binary.Pos().Offset, strings.Index(source, "+"); got != want {
 		t.Fatalf("binary diagnostic anchor offset = %d, want operator offset %d", got, want)
 	}
-	if got, want := ast.SourceRangeStart(binary).Offset, strings.Index(source, "object"); got != want {
-		t.Fatalf("binary source-range start = %d, want left expression start %d", got, want)
+	if got, want := ast.SourceRangeStart(binary).Offset, strings.Index(source, "(object"); got != want {
+		t.Fatalf("binary source-range start = %d, want parenthesized left expression start %d", got, want)
 	}
 	index := binary.Left.(*ast.IndexExpr)
 	if got, want := index.Pos().Offset, strings.Index(source, "["); got != want {
 		t.Fatalf("index diagnostic anchor offset = %d, want '[' offset %d", got, want)
 	}
-	if got, want := ast.SourceRangeStart(index).Offset, strings.Index(source, "object"); got != want {
-		t.Fatalf("index source-range start = %d, want collection start %d", got, want)
+	if got, want := ast.SourceRangeStart(index).Offset, strings.Index(source, "(object"); got != want {
+		t.Fatalf("index source-range start = %d, want parenthesized collection start %d", got, want)
 	}
 	field := index.Collection.(*ast.FieldExpr)
 	if got, want := field.Pos().Offset, strings.Index(source, "."); got != want {
@@ -331,11 +331,6 @@ func TestSourceRangeStartUsesSyntacticLeftEdge(t *testing.T) {
 		t.Fatalf("field source-range start = %d, want object start %d", got, want)
 	}
 	call := binary.Right.(*ast.CallExpr)
-	if got, want := call.Pos().Offset, strings.Index(source, "(")+len("(object.field[0]) + target"); got == want {
-		// The first parenthesis belongs to the grouped left operand; compare
-		// directly to the call's opening delimiter below instead.
-		t.Fatalf("call anchor unexpectedly equals delimiter calculation %d", want)
-	}
 	callOpen := strings.Index(source, "target(") + len("target")
 	if got := call.Pos().Offset, want := callOpen; got != want {
 		t.Fatalf("call diagnostic anchor offset = %d, want '(' offset %d", got, want)
