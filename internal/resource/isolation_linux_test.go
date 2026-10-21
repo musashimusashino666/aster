@@ -137,7 +137,7 @@ func TestCgroupMemoryHelper(t *testing.T) {
 
 func TestRunChecksCPUTimeBudgetWhenWorkloadExitsBetweenPolls(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "cpu.stat"), []byte("usage_usec 2000\\nuser_usec 2000\\nsystem_usec 0\\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "cpu.stat"), []byte("usage_usec 2000\nuser_usec 2000\nsystem_usec 0\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
