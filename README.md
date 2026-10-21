@@ -47,6 +47,16 @@
 - Both `go` and `gofmt` must be available on `PATH`; `gofmt` is normally included with the Go distribution.
 - No third-party Go modules are required by the current implementation.
 
+## Install the CLI
+
+Install the latest version available through the Go module version query:
+
+```bash
+go install github.com/musashimusashino666/aster/cmd/aster@latest
+```
+
+The executable is installed as `aster` in `GOBIN` (or `$GOPATH/bin`). Build from source below when working on the compiler or running its tests.
+
 ## Build
 
 From the repository root:
