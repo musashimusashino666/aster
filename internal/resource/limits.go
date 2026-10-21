@@ -41,6 +41,9 @@ func (limits Limits) Validate() error {
 	if limits.CPUTimeLimit < 0 {
 		return fmt.Errorf("CPU-time limit must be positive")
 	}
+	if limits.CPUTimeLimit > 0 && limits.CPUTimeLimit < time.Microsecond {
+		return fmt.Errorf("CPU-time limit must be at least 1 microsecond because cgroup cpu.stat uses microsecond units")
+	}
 	if limits.MemoryMaxBytes == 0 && limits.CPUQuota == 0 && limits.CPUTimeLimit == 0 {
 		return fmt.Errorf("constrained execution requires at least one resource limit")
 	}
