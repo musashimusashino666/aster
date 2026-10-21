@@ -78,4 +78,4 @@ This ADR records the resource contract and the criteria for future work. [ADR 00
 - Native fuel bounds the specified statement/function/loop events, but it is not a wall-clock guarantee and does not keep a program under a process-wide memory ceiling.
 - The five-minute `aster run --engine native` deadline is useful for a CLI invocation, but it must not be presented as an execution limit on standalone binaries.
 - VM and Native can retain different internal budgets only when the documentation explicitly identifies the affected execution path. Cross-backend parity tests remain required for language-visible failures.
-- Process-wide resource isolation remains deferred until an implementation proposal defines measurable memory/CPU guarantees, diagnostics, platform coverage, and adversarial tests.
+- A process-wide resource-isolation proposal is now recorded in [ADR 0010](0010-process-resource-isolation.md). It remains Proposed; no OS-backed process-memory or CPU isolation is implemented by this ADR or ADR 0009.
