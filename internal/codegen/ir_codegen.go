@@ -240,7 +240,7 @@ func (g *generator) writeSourceSpanTable() error {
 // result is stored or otherwise becomes independently mutable.
 func needsArrayShareAtBoundary(expr ir.Expr) bool {
 	switch expr.(type) {
-	case *ir.LocalExpr, *ir.IndexExpr, *ir.FieldExpr:
+	case *ir.LocalExpr, *ir.IndexExpr, *ir.FieldExpr, *ir.MatchExpr:
 		return true
 	default:
 		return false
