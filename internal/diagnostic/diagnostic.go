@@ -13,16 +13,16 @@ import (
 // HasEndPosition is true, EndPosition is an exclusive source position.
 // Error preserves the traditional message prefix and appends the code in brackets.
 type Diagnostic struct {
-	Code           string
-	Phase          string
-	Message        string
-	Position             token.Position
-	RangeStartPosition   token.Position
+	Code                  string
+	Phase                 string
+	Message               string
+	Position              token.Position
+	RangeStartPosition    token.Position
 	HasRangeStartPosition bool
-	EndPosition          token.Position
-	HasEndPosition       bool
-	Source               string
-	Cause          error
+	EndPosition           token.Position
+	HasEndPosition        bool
+	Source                string
+	Cause                 error
 }
 
 // New constructs a diagnostic with a stable code, phase, position, and message.
