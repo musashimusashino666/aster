@@ -74,7 +74,7 @@ PY
   echo "- Measurement time (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "- Source commit: $(git rev-parse HEAD)"
   echo "- OS/kernel: $(uname -srmo)"
-  echo "- CPU: $(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -n 1)"
+  echo "- CPU: $(awk '/^model name[[:space:]]*:/ { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }' /proc/cpuinfo)"
   echo "- Logical CPUs: $(getconf _NPROCESSORS_ONLN)"
   echo "- Go: $(go version)"
   echo "- Repetitions per workload: $REPEATS"
