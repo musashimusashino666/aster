@@ -114,7 +114,7 @@ Linux では、CLI の Native 実行に cgroup v2 の制限を明示的に要求
 
 要求した制限に必要なコントローラーが有効な委譲済みcgroup v2ディレクトリと、`cgroup.kill` が必要です。`ASTER_CGROUP_ROOT` で絶対パスを指定するか、現在のプロセスのcgroupを自動検出します。OS制御を利用できない場合は `TOOL008` で実行前に失敗し、無制限実行には切り替えません。Windows／macOSのプロセスツリー単位の制限、通常のNative実行、`aster build` で生成した単独実行ファイルのプロセス全体の分離は未実装です。この機能はファイル／ネットワークのサンドボックスではありません。
 
-実際に委譲された cgroup v2 上でのOS制限の実効性は、まだ検証が必要です。コントローラーを利用できないホストCIではカーネルレベルの統合テストが skip される場合があります。検証作業は [Issue #85](https://github.com/musashimusashino666/aster/issues/85) で追跡します。設計と制約は [ADR 0010](docs/adr/0010-process-resource-isolation.md) を参照してください。
+委譲された cgroup v2 上での手動検証は、Windows 11 / WSL2（Ubuntu 26.04.1 LTS）、カーネル `6.18.54.1-microsoft-standard-WSL2`、Go 1.26.8 の環境で成功しました。子 cgroup 用の CPU・メモリコントローラーを有効にした状態で、CPU時間上限 50 ms に対して停止後の観測値は 59.999 ms（超過 9.999 ms）、別の実行では 60.620 ms（超過 10.620 ms）でした。CPUスロットリング、メモリ制御、子プロセス停止、cgroup後始末も成功しています。これらは当該 WSL2 環境での実測値であり、最悪超過幅の保証やベアメタル Linux の検証結果を意味しません。コントローラーが委譲されていないホストCIでは統合テストが skip される場合があり、skip は実効性の証拠ではありません。検証ログと対象範囲は [Issue #85](https://github.com/musashimusashino666/aster/issues/85)、設計と制約は [ADR 0010](docs/adr/0010-process-resource-isolation.md) を参照してください。
 
 ## Asterのコード例
 
