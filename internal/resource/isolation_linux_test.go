@@ -198,7 +198,7 @@ func TestRunEnforcesMemoryLimitWhenDelegatedCgroupIsAvailable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	gate := filepath.Join(t.TempDir(), "release")
-	script := \`while [ ! -e "$ASTER_RESOURCE_GATE" ]; do :; done; unset ASTER_RESOURCE_GATE; exec "$ASTER_RESOURCE_TEST_BINARY" -test.run=^TestCgroupMemoryHelper$\`
+	script := "while [ ! -e \"$ASTER_RESOURCE_GATE\" ]; do :; done; unset ASTER_RESOURCE_GATE; exec \"$ASTER_RESOURCE_TEST_BINARY\" -test.run=^TestCgroupMemoryHelper$"
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Env = append(os.Environ(), "ASTER_RESOURCE_TEST_HELPER=memory", "ASTER_RESOURCE_TEST_BINARY="+binary)
 	err = Run(ctx, cmd, gate, limits)
