@@ -296,10 +296,10 @@ func TestMemoryLimitClassificationRequiresBothOOMCounters(t *testing.T) {
 				t.Fatal(err)
 			}
 			group := &workloadCgroup{
-				path            : dir,
-				limits          : Limits{MemoryMaxBytes: 64 << 20},
-				initialOOM      : tt.initialOOM,
-				initialOOMKills : tt.initialKill,
+				path:            dir,
+				limits:          Limits{MemoryMaxBytes: 64 << 20},
+				initialOOM:      tt.initialOOM,
+				initialOOMKills: tt.initialKill,
 			}
 			err := group.handleWorkloadExit(context.Background(), nil, 0)
 			gotMemoryLimit := errors.Is(err, ErrMemoryLimitExceeded)
