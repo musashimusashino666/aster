@@ -72,33 +72,24 @@ func TestCgroupMetricParsers(t *testing.T) {
 
 func TestRunEnforcesCumulativeCPUTimeWhenDelegatedCgroupIsAvailable(t *testing.T) {
 	limits := Limits{CPUTimeLimit: 50 * time.Millisecond}
-	probe, err := createCgroup(limits)
-	if err != nil {
-		t.Skipf("Linux cgroup v2 CPU controller is not delegated to this test runner: %v", err)
-	}
-	if err := probe.cleanup(); err != nil {
-		t.Fatalf("cleanup cgroup capability probe: %v", err)
-	}
+	root := requireDelegatedCgroup(t, limits)
+	before := snapshotAsterCgroups(t, root)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	gate := filepath.Join(t.TempDir(), "release")
 	cmd := exec.Command("sh", "-c", `while [ ! -e "$ASTER_RESOURCE_GATE" ]; do :; done; while :; do :; done`)
-	err = Run(ctx, cmd, gate, limits)
+	err := Run(ctx, cmd, gate, limits)
 	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
 		t.Fatalf("Run() error = %v, want ErrCPUTimeLimitExceeded", err)
 	}
+	assertNoNewAsterCgroups(t, root, before)
 }
 
 func TestRunEnforcesMemoryLimitWhenDelegatedCgroupIsAvailable(t *testing.T) {
 	limits := Limits{MemoryMaxBytes: 64 << 20}
-	probe, err := createCgroup(limits)
-	if err != nil {
-		t.Skipf("Linux cgroup v2 memory controller is not delegated to this test runner: %v", err)
-	}
-	if err := probe.cleanup(); err != nil {
-		t.Fatalf("cleanup cgroup capability probe: %v", err)
-	}
+	root := requireDelegatedCgroup(t, limits)
+	before := snapshotAsterCgroups(t, root)
 
 	binary, err := os.Executable()
 	if err != nil {
@@ -107,13 +98,102 @@ func TestRunEnforcesMemoryLimitWhenDelegatedCgroupIsAvailable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	gate := filepath.Join(t.TempDir(), "release")
-	script := `while [ ! -e "$ASTER_RESOURCE_GATE" ]; do :; done; exec "$ASTER_RESOURCE_TEST_BINARY" -test.run=^TestCgroupMemoryHelper$`
+	script := `while [ ! -e "$ASTER_RESOURCE_GATE" ]; do :; done; unset ASTER_RESOURCE_GATE; exec "$ASTER_RESOURCE_TEST_BINARY" -test.run=^TestCgroupMemoryHelper//go:build linux
+
+package resource
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+)
+
+func TestRunFailsClosedWhenCgroupRootIsNotCgroupV2(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("ASTER_CGROUP_ROOT", root)
+	marker := filepath.Join(t.TempDir(), "child-started")
+	release := filepath.Join(t.TempDir(), "release")
+	cmd := exec.Command("sh", "-c", "printf started > "+marker)
+	err := Run(context.Background(), cmd, release, Limits{MemoryMaxBytes: 64 << 20})
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Run() error = %v, want ErrUnavailable", err)
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatalf("child ran despite unavailable cgroup controls: stat err = %v", statErr)
+	}
+	if _, statErr := os.Stat(release); !os.IsNotExist(statErr) {
+		t.Fatalf("release gate was created despite unavailable controls: stat err = %v", statErr)
+	}
+}
+
+func TestCurrentCgroupPathIsAbsolute(t *testing.T) {
+	path, err := currentUnifiedCgroupPath()
+	if err != nil {
+		t.Skipf("unified cgroup v2 path unavailable on this runner: %v", err)
+	}
+	if !filepath.IsAbs(path) {
+		t.Fatalf("current cgroup path %q is not absolute", path)
+	}
+}
+
+func TestCgroupMetricParsers(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cpu.stat"), []byte("usage_usec 12345\nuser_usec 10000\nsystem_usec 2345\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readCPUUsage(dir); err != nil || got != 12345 {
+		t.Fatalf("readCPUUsage() = (%d, %v), want (12345, nil)", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "memory.events"), []byte("low 0\nhigh 0\nmax 2\noom 1\noom_kill 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readOOMCount(dir); err != nil || got != 1 {
+		t.Fatalf("readOOMCount() = (%d, %v), want (1, nil)", got, err)
+	}
+	if got, err := readOOMKillCount(dir); err != nil || got != 1 {
+		t.Fatalf("readOOMKillCount() = (%d, %v), want (1, nil)", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cgroup.events"), []byte("populated 1\nfrozen 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := cgroupPopulated(dir); err != nil || !got {
+		t.Fatalf("cgroupPopulated() = (%v, %v), want (true, nil)", got, err)
+	}
+}
+
+func TestRunEnforcesCumulativeCPUTimeWhenDelegatedCgroupIsAvailable(t *testing.T) {
+	limits := Limits{CPUTimeLimit: 50 * time.Millisecond}
+	root := requireDelegatedCgroup(t, limits)
+	before := snapshotAsterCgroups(t, root)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	gate := filepath.Join(t.TempDir(), "release")
+	cmd := exec.Command("sh", "-c", `while [ ! -e "$ASTER_RESOURCE_GATE" ]; do :; done; while :; do :; done`)
+	err := Run(ctx, cmd, gate, limits)
+	if !errors.Is(err, ErrCPUTimeLimitExceeded) {
+		t.Fatalf("Run() error = %v, want ErrCPUTimeLimitExceeded", err)
+	}
+	assertNoNewAsterCgroups(t, root, before)
+}
+
+
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Env = append(os.Environ(), "ASTER_RESOURCE_TEST_HELPER=memory", "ASTER_RESOURCE_TEST_BINARY="+binary)
 	err = Run(ctx, cmd, gate, limits)
 	if !errors.Is(err, ErrMemoryLimitExceeded) {
 		t.Fatalf("Run() error = %v, want ErrMemoryLimitExceeded", err)
 	}
+	assertNoNewAsterCgroups(t, root, before)
 }
 
 // TestCgroupMemoryHelper is a child-process helper for the conditional cgroup
