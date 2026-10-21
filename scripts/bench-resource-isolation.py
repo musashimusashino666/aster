@@ -524,8 +524,29 @@ def write_reports(
     ):
         lines.append(f"| {label} | {summarize(numeric_values(terminations, field))} |")
 
+    oom_rows = [
+        row for row in records
+        if row["kind"] == "run" and row["workload"] == "memory-oom" and row["profile"] == "constrained"
+    ]
+    oom_classified = [
+        row for row in oom_rows
+        if row["outcome"] == "memory-limit-oom"
+        and row["termination_classification"] == "RUN018"
+        and row["cgroup_cleanup_status"] == "clean"
+    ]
     lines.extend(
         [
+            "",
+            "## Memory-limit OOM classification and cleanup",
+            "",
+            f"Configured cgroup memory limit: {info['oom_memory_limit']}. The OOM workload retains five independent 16 MiB strings, intentionally exceeding this limit. Each run must be classified as RUN018 and leave no Aster cgroup behind.",
+            "",
+            "| Check | Result |",
+            "|---|---:|",
+            f"| RUN018 classification and clean cgroup cleanup | {len(oom_classified)}/{len(oom_rows)} |",
+            f"| Recorded OOM samples | {len(oom_rows)} |",
+            "",
+            "## Overshoot interpretation",
             "",
             "The maximum observed overshoot is the sample maximum for this host and these runs, not a kernel-independent or workload-independent upper bound. Exact supervisor setup/cleanup duration is not exported by the current CLI, so it is reported as unavailable rather than inferred from total CLI latency.",
             "",
