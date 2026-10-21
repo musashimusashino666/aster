@@ -320,9 +320,9 @@ func TestMemoryLimitClassificationRequiresLocalOOMGroupKillCounter(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			files := map[string]string{
-				"cgroup.kill":          "0",
-				"cgroup.events":        "populated 0\nfrozen 0\n",
-				"memory.events":        fmt.Sprintf("low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\n", tt.currentOOM, tt.currentOOMKill),
+				"cgroup.kill":         "0",
+				"cgroup.events":       "populated 0\nfrozen 0\n",
+				"memory.events":       fmt.Sprintf("low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\n", tt.currentOOM, tt.currentOOMKill),
 				"memory.events.local": fmt.Sprintf("low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\noom_group_kill %d\n", tt.currentOOM, tt.currentOOMKill, tt.currentGroupOOMKills),
 			}
 			for name, content := range files {
