@@ -84,3 +84,47 @@ func TestRunEnforcesCumulativeCPUTimeWhenDelegatedCgroupIsAvailable(t *testing.T
 		t.Fatalf("Run() error = %v, want ErrCPUTimeLimitExceeded", err)
 	}
 }
+
+func TestRunEnforcesMemoryLimitWhenDelegatedCgroupIsAvailable(t *testing.T) {
+	limits := Limits{MemoryMaxBytes: 64 << 20}
+	probe, err := createCgroup(limits)
+	if err != nil {
+		t.Skipf("Linux cgroup v2 memory controller is not delegated to this test runner: %v", err)
+	}
+	if err := probe.cleanup(); err != nil {
+		t.Fatalf("cleanup cgroup capability probe: %v", err)
+	}
+
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	gate := filepath.Join(t.TempDir(), "release")
+	script := `while [ ! -e "$ASTER_RESOURCE_GATE" ]; do :; done; exec "$ASTER_RESOURCE_TEST_BINARY" -test.run=^TestCgroupMemoryHelper$`
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = append(os.Environ(), "ASTER_RESOURCE_TEST_HELPER=memory", "ASTER_RESOURCE_TEST_BINARY="+binary)
+	err = Run(ctx, cmd, gate, limits)
+	if !errors.Is(err, ErrMemoryLimitExceeded) {
+		t.Fatalf("Run() error = %v, want ErrMemoryLimitExceeded", err)
+	}
+}
+
+// TestCgroupMemoryHelper is a child-process helper for the conditional cgroup
+// integration test. Ordinary go test runs return immediately without the
+// explicit helper environment variable.
+func TestCgroupMemoryHelper(t *testing.T) {
+	if os.Getenv("ASTER_RESOURCE_TEST_HELPER") != "memory" {
+		return
+	}
+	const size = 128 << 20
+	payload := make([]byte, size)
+	for offset := 0; offset < len(payload); offset += 4096 {
+		payload[offset] = 1
+	}
+	if len(payload) != size || payload[len(payload)-1] != 0 {
+		t.Fatal("unexpected memory test payload")
+	}
+	time.Sleep(5 * time.Second)
+}
